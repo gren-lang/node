@@ -1,0 +1,4 @@
+module Node exposing (test)
+
+test : String
+test = "TEST"
