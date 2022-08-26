@@ -1,4 +1,6 @@
 module Node exposing (test)
 
+import Gren.Kernel.Node
+
 test : String
 test = "TEST"
