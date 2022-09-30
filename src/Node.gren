@@ -5,6 +5,7 @@ effect module Node where { command = NodeCmd } exposing
     , sendToStream
     )
 
+import Dict exposing (Dict)
 import Gren.Kernel.Node
 import Task
 
@@ -28,6 +29,7 @@ cmdMap _ cmd =
 
 type alias InitializationResult =
     { args : Array String
+    , env : Dict String String
     , stdout : Stream
     , stderr : Stream
     }
