@@ -1,2 +1,5 @@
 .gren
 .DS_Store
+artifacts.dat
+docs.json
+node_modules/
