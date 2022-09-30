@@ -1,6 +1,78 @@
-module Node exposing (test)
+effect module Node where { command = NodeCmd } exposing
+    ( Stream
+    , InitializationResult
+    , initialize
+    , sendToStream
+    )
 
 import Gren.Kernel.Node
+import Task
 
-test : String
-test = "TEST"
+
+type NodeCmd a
+    = SendToStream Stream String
+
+
+-- Actual implementation resides in kernel code
+type Stream = Stream
+
+
+cmdMap : (a -> b) -> NodeCmd a -> NodeCmd b
+cmdMap _ cmd =
+    case cmd of
+        SendToStream stream payload -> SendToStream stream payload
+
+
+-- API
+
+
+type alias InitializationResult =
+    { args : Array String
+    , stdout : Stream
+    , stderr : Stream
+    }
+
+
+initialize : Task.Task Never InitializationResult
+initialize =
+    Gren.Kernel.Node.initialize
+
+
+sendToStream : Stream -> String -> Cmd msg
+sendToStream stream text =
+    command <| SendToStream stream text
+
+
+-- LOOP
+
+
+type alias State =
+    {}
+
+
+init : Task.Task Never State
+init =
+    Task.succeed {}
+
+
+onEffects : Platform.Router msg event -> Array (NodeCmd msg) -> State -> Task.Task Never State
+onEffects router commands state =
+    case Array.popFirst commands of
+        Nothing ->
+            Task.succeed state
+
+        Just { first = (SendToStream stream text), rest } ->
+            let
+                _ =
+                    Gren.Kernel.Node.sendToStream stream text
+            in
+            onEffects router rest state
+
+
+type alias Event =
+    Never
+
+
+onSelfMsg : Platform.Router msg Event -> Event -> State -> Task.Task Never State
+onSelfMsg _ _ state =
+    Task.succeed state
