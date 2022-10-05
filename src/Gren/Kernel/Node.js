@@ -2,7 +2,7 @@
 
 import Dict exposing (empty, insert)
 import Gren.Kernel.Platform exposing (export)
-import Gren.Kernel.Scheduler exposing (binding, succeed)
+import Gren.Kernel.Scheduler exposing (binding, succeed, rawSpawn)
 
 */
 
@@ -21,8 +21,29 @@ var _Node_initialize = __Scheduler_binding(function (callback) {
       __$env: _Node_objToDict(process.env),
       __$stdout: process.stdout,
       __$stderr: process.stderr,
+      __$stdin: process.stdin,
     })
   );
+});
+
+var _Node_streamId = function (stream) {
+  return stream.fd;
+};
+
+var _Node_attachListener = F2(function (stream, callback) {
+  return __Scheduler_binding(function (noUseCallback) {
+    stream.setEncoding('utf-8');
+
+    var listener = function (data) {
+      __Scheduler_rawSpawn(callback(data));
+    };
+
+    stream.on("data", listener);
+
+    return function () {
+      stream.off("data", listener);
+    };
+  });
 });
 
 var _Node_sendToStream = F2(function (stream, text) {
