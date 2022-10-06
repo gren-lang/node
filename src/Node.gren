@@ -182,8 +182,9 @@ spawnHelp router toSpawn processes =
       let
         spawnStream =
           Process.spawn <|
-            attachListener nextStream
-                <| (\data -> Platform.sendToSelf router (FromStream nextStream data))
+            attachListener nextStream (\data ->
+                Platform.sendToSelf router (FromStream nextStream data)
+            )
 
         rest =
           Array.dropFirst 1 toSpawn
@@ -205,8 +206,16 @@ type Event
 
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task.Task Never (State msg)
-onSelfMsg _router event state =
-    let
-        _ = Debug.log "event" event
-    in
-    Task.succeed state
+onSelfMsg router event state =
+    case event of
+        FromStream stream data ->
+            Dict.get (streamId stream) state.taggers
+                |> Maybe.map .taggers
+                |> Maybe.withDefault []
+                |> Array.map (\tagger -> tagger data)
+                |> Array.foldl
+                    (\msg tasks ->
+                        Task.andThen (\Unit -> Platform.sendToApp router msg) tasks
+                    )
+                    (Task.succeed Unit)
+                |> Task.andThen (\_ -> Task.succeed state)

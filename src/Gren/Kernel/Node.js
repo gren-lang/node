@@ -42,6 +42,7 @@ var _Node_attachListener = F2(function (stream, callback) {
 
     return function () {
       stream.off("data", listener);
+      stream.pause();
     };
   });
 });
