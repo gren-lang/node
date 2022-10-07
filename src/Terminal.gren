@@ -1,0 +1,188 @@
+effect module Terminal where { command = TerminalCmd, subscription = TerminalSub } exposing
+    ( TerminalConnection
+    , TerminalConfiguration
+    , TerminalSize
+    --
+    , initialize
+    --
+    , setStdInRawMode
+    --
+    , onResize
+    )
+
+
+import Task exposing (Task)
+import Process
+import Gren.Kernel.Terminal
+
+
+type TerminalConnection
+    = TerminalConnection
+
+
+type alias TerminalConfiguration =
+    { connection : TerminalConnection
+    , colorDepth : Int
+    , columns : Int
+    , rows : Int
+    }
+
+
+type alias TerminalSize =
+    { columns : Int
+    , rows : Int
+    }
+
+
+-- INIT
+
+
+initialize : Task Never (Maybe TerminalConfiguration)
+initialize =
+    Gren.Kernel.Terminal.init
+        |> Task.map (\raw ->
+            if raw.isTTY then
+                Just
+                    { connection = TerminalConnection
+                    , colorDepth = raw.colorDepth
+                    , columns = raw.columns
+                    , rows = raw.rows
+                    }
+
+            else
+                Nothing
+        )
+
+
+-- COMMANDS
+
+
+type TerminalCmd a
+    = SetStdInRawMode Bool
+
+
+cmdMap : (a -> b) -> TerminalCmd a -> TerminalCmd b
+cmdMap _ cmd =
+    case cmd of
+        SetStdInRawMode toggle ->
+            SetStdInRawMode toggle
+
+
+setStdInRawMode : TerminalConnection -> Bool -> Cmd a
+setStdInRawMode _ toggle =
+    command (SetStdInRawMode toggle)
+
+
+-- SUBSCRIPTIONS
+
+
+type TerminalSub msg
+    = OnResize (TerminalSize -> msg)
+
+
+subMap : (a -> b) -> TerminalSub a -> TerminalSub b
+subMap mapFn sub =
+    case sub of
+        OnResize msgMap ->
+            OnResize (mapFn << msgMap)
+
+
+onResize : TerminalConnection -> (TerminalSize -> msg) -> Sub msg
+onResize _ toMsg =
+    subscription (OnResize toMsg)
+
+
+-- LOOP
+
+
+type alias State msg =
+    { taggers : Array (TerminalSize -> msg)
+    , maybeProcessId : Maybe Process.Id
+    }
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed
+        { taggers = []
+        , maybeProcessId = Nothing
+        }
+
+
+onEffects
+    : Platform.Router msg Event
+    -> Array (TerminalCmd msg)
+    -> Array (TerminalSub msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router commands subs state =
+    let
+        newTaggers =
+            Array.foldl extractTagger [] subs
+
+        extractTagger (OnResize tagger) acc =
+            Array.pushLast tagger acc
+
+        subscriptionTask =
+            if Array.length newTaggers > 0 then
+                case state.maybeProcessId of
+                    Just pid ->
+                        Task.succeed <| Just pid
+
+                    Nothing ->
+                        Gren.Kernel.Terminal.attachListener (\data -> Platform.sendToSelf router (SelfOnResize data))
+                            |> Process.spawn
+                            |> Task.map Just
+
+
+            else
+                case state.maybeProcessId of
+                    Just pid ->
+                        Process.kill pid
+                            |> Task.map (\_ -> Nothing)
+
+                    Nothing ->
+                        Task.succeed Nothing
+
+        commandTasks =
+            Array.foldl
+                (\(SetStdInRawMode toggle) tasks ->
+                    Task.andThen (\_ -> Platform.sendToSelf router (SelfToggleStdInRawMode toggle)) tasks
+                )
+                (Task.succeed Unit)
+                commands
+    in
+        commandTasks
+            |> Task.andThen (\_ -> subscriptionTask)
+            |> Task.andThen (\maybeProcessId ->
+                Task.succeed
+                    { taggers = newTaggers
+                    , maybeProcessId = maybeProcessId
+                    }
+                )
+
+
+type Event
+    = SelfToggleStdInRawMode Bool
+    | SelfOnResize TerminalSize
+
+
+onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task Never (State msg)
+onSelfMsg router event state =
+    case event of
+        SelfToggleStdInRawMode toggle ->
+            let
+                _ =
+                    Gren.Kernel.Terminal.setStdInRawMode toggle
+            in
+                Task.succeed state
+
+        SelfOnResize newSize ->
+            state.taggers
+                |> Array.map (\tagger -> tagger newSize)
+                |> Array.foldl
+                    (\msg tasks ->
+                        Task.andThen (\Unit -> Platform.sendToApp router msg) tasks
+                    )
+                    (Task.succeed Unit)
+                |> Task.andThen (\_ -> Task.succeed state)
