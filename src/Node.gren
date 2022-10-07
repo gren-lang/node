@@ -1,8 +1,19 @@
-module Node exposing ( InitResult, Platform, init )
+module Node exposing
+    ( InitResult
+    , Platform
+    , CpuArchitecture
+    --
+    , init
+    --
+    , getEnvironmentVariables
+    --
+    , exit
+    , exitWithCode
+    )
 
 import Dict exposing ( Dict )
 import Gren.Kernel.Node
-import Task
+import Task exposing (Task)
 import Internal.Stream as IStream
 
 
@@ -28,7 +39,7 @@ type alias InitResult =
     }
 
 
-init : Task.Task Never InitResult
+init : Task Never InitResult
 init =
     Gren.Kernel.Node.init
         |> Task.map
@@ -138,3 +149,23 @@ archFromString arch =
 
         _ ->
             UnknownArchitecture
+
+
+-- TASKS
+
+getEnvironmentVariables : Task Never (Dict String String)
+getEnvironmentVariables =
+    Gren.Kernel.Node.getEnvironmentVariables
+
+
+exit : Cmd msg
+exit =
+    Gren.Kernel.Node.exit
+        |> Task.perform never
+
+
+exitWithCode : Int -> Cmd msg
+exitWithCode code =
+    Gren.Kernel.Node.exitWithCode code
+        |> Task.perform never
+
