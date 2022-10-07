@@ -1,16 +1,15 @@
-module Node exposing
-    ( InitResult
-    , init
-    )
+module Node exposing ( InitResult, Platform, init )
 
-import Dict exposing (Dict)
+import Dict exposing ( Dict )
 import Gren.Kernel.Node
 import Task
 import Internal.Stream as IStream
 
 
 type alias RawInitResult =
-    { args : Array String
+    { platform : String
+    , arch : String
+    , args : Array String
     , env : Dict String String
     , stdout : IStream.RawStream
     , stderr : IStream.RawStream
@@ -19,7 +18,9 @@ type alias RawInitResult =
 
 
 type alias InitResult =
-    { args : Array String
+    { platform : Platform
+    , cpuArchitecture : CpuArchitecture
+    , args : Array String
     , env : Dict String String
     , stdout : IStream.Stream
     , stderr : IStream.Stream
@@ -30,12 +31,110 @@ type alias InitResult =
 init : Task.Task Never InitResult
 init =
     Gren.Kernel.Node.init
-        |> Task.map (\rawResult ->
-            { args = rawResult.args
-            , env = rawResult.env
-            , stdout = IStream.Stream 0 rawResult.stdout
-            , stderr = IStream.Stream 1 rawResult.stderr
-            , stdin = IStream.Stream 2 rawResult.stdin
-            }
-        )
+        |> Task.map
+                (\rawResult ->
+                    { platform = platformFromString rawResult.platform
+                    , cpuArchitecture = archFromString rawResult.arch
+                    , args = rawResult.args
+                    , env = rawResult.env
+                    , stdout = IStream.Stream 0 rawResult.stdout
+                    , stderr = IStream.Stream 1 rawResult.stderr
+                    , stdin = IStream.Stream 2 rawResult.stdin
+                    }
+                )
 
+
+-- PLATFORM
+
+
+type Platform
+    = Win32
+    | Darwin
+    | Linux
+    | FreeBSD
+    | OpenBSD
+    | SunOS
+    | Aix
+    | UnknownPlatform
+
+
+platformFromString : String -> Platform
+platformFromString platform =
+    case String.toLower platform of
+        "win32" ->
+            Win32
+
+        "darwin" ->
+            Darwin
+
+        "linux" ->
+            Linux
+
+        "freebsd" ->
+            FreeBSD
+
+        "openbsd" ->
+            OpenBSD
+
+        "sunos" ->
+            SunOS
+
+        "aix" ->
+            Aix
+
+        _ ->
+            UnknownPlatform
+
+
+-- ARCH
+
+
+type CpuArchitecture
+    = Arm
+    | Arm64
+    | IA32
+    | Mips
+    | Mipsel
+    | PPC
+    | PPC64
+    | S390
+    | S390x
+    | X64
+    | UnknownArchitecture
+
+
+archFromString : String -> CpuArchitecture
+archFromString arch =
+    case String.toLower arch of
+        "arm" ->
+            Arm
+
+        "arm64" ->
+            Arm64
+
+        "ia32" ->
+            IA32
+
+        "mips" ->
+            Mips
+
+        "mipsel" ->
+            Mipsel
+
+        "ppc" ->
+            PPC
+
+        "ppc64" ->
+            PPC64
+
+        "s390" ->
+            S390
+
+        "s390x" ->
+            S390x
+
+        "x64" ->
+            X64
+
+        _ ->
+            UnknownArchitecture

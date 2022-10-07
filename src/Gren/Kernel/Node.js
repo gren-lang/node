@@ -17,6 +17,8 @@ var _Node_log = F2(function (text, args) {
 var _Node_init = __Scheduler_binding(function (callback) {
   return callback(
     __Scheduler_succeed({
+      __$platform: process.platform,
+      __$arch: process.arch,
       __$args: process.argv,
       __$env: _Node_objToDict(process.env),
       __$stdout: process.stdout,
