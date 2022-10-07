@@ -9,23 +9,24 @@ effect module Node where { command = NodeCmd, subscription = NodeSub } exposing
 import Dict exposing (Dict)
 import Gren.Kernel.Node
 import Task
+import Bytes exposing (Bytes)
 import Process
 
 
+type Stream
+    = Stream Int RawStream
+
+
 -- Actual implementation resides in kernel code
-type Stream = Stream
-
-
-streamId : Stream -> Int
-streamId =
-    Gren.Kernel.Node.streamId
+type RawStream
+    = RawStream
 
 
 -- COMMANDS
 
 
 type NodeCmd a
-    = SendToStream Stream String
+    = SendToStream Stream Bytes
 
 
 cmdMap : (a -> b) -> NodeCmd a -> NodeCmd b
@@ -35,31 +36,40 @@ cmdMap _ cmd =
             SendToStream stream payload
 
 
-sendToStream : Stream -> String -> Cmd msg
-sendToStream stream text =
-    command <| SendToStream stream text
+sendToStream : Stream -> Bytes -> Cmd msg
+sendToStream stream bytes =
+    command <| SendToStream stream bytes
 
 
 -- SUBSCRIPTION
 
 
 type NodeSub msg
-    = Listen Stream (String -> msg)
+    = Listen Stream (Bytes -> msg)
 
 
 subMap : (a -> b) -> NodeSub a -> NodeSub b
-subMap tagger sub =
+subMap mapFn sub =
     case sub of
         Listen stream msgMap ->
-            Listen stream (tagger << msgMap)
+            Listen stream (mapFn << msgMap)
 
 
-listen : Stream -> (String -> msg) -> Sub msg
+listen : Stream -> (Bytes -> msg) -> Sub msg
 listen stream msgMap =
     subscription (Listen stream msgMap)
 
 
 -- API
+
+
+type alias RawInitializationResult =
+    { args : Array String
+    , env : Dict String String
+    , stdout : RawStream
+    , stderr : RawStream
+    , stdin : RawStream
+    }
 
 
 type alias InitializationResult =
@@ -74,6 +84,14 @@ type alias InitializationResult =
 initialize : Task.Task Never InitializationResult
 initialize =
     Gren.Kernel.Node.initialize
+        |> Task.map (\rawResult ->
+            { args = rawResult.args
+            , env = rawResult.env
+            , stdout = Stream 0 rawResult.stdout
+            , stderr = Stream 1 rawResult.stderr
+            , stdin = Stream 2 rawResult.stdin
+            }
+        )
 
 
 -- LOOP
@@ -87,7 +105,7 @@ type alias State msg =
 
 type alias Tagger msg =
     { stream : Stream
-    , taggers : Array (String -> msg)
+    , taggers : Array (Bytes -> msg)
     }
 
 
@@ -107,32 +125,33 @@ onEffects
     -> Task.Task Never (State msg)
 onEffects router commands subs state =
     let
-        newListenings =
+        newTaggers =
             Array.foldl subToListener Dict.empty subs
 
         toSpawn =
-            Dict.diff newListenings state.taggers
+            Dict.diff newTaggers state.taggers
                 |> Dict.values
                 |> Array.map .stream
 
         existingProcesses =
-            Dict.filter (\sid _ -> Dict.member sid newListenings) state.processes
+            Dict.filter (\sid _ -> Dict.member sid newTaggers) state.processes
 
         killTask =
-            Dict.diff state.processes newListenings
+            Dict.diff state.processes newTaggers
                 |> Dict.values
                 |> Array.foldl
                     (\id tasks -> Task.andThen (\Unit -> Process.kill id) tasks)
                     (Task.succeed Unit)
 
+        -- TODO: Should be turned into tasks
         stateAfterCommands =
             Array.foldl
                 (\cmd oldState ->
                     case cmd of
-                        SendToStream stream text ->
+                        SendToStream (Stream _ rawStream) bytes ->
                             let
                                 _ =
-                                    Gren.Kernel.Node.sendToStream stream text
+                                    Gren.Kernel.Node.sendToStream rawStream bytes
                             in
                                 oldState
                 )
@@ -144,32 +163,28 @@ onEffects router commands subs state =
             |> Task.andThen (\_ -> spawnHelp router toSpawn existingProcesses)
             |> Task.andThen (\newProcesses ->
                 Task.succeed
-                    { taggers = newListenings
+                    { taggers = newTaggers
                     , processes = newProcesses
                     }
                 )
 
 
 subToListener : NodeSub msg -> Dict Int (Tagger msg) -> Dict Int (Tagger msg)
-subToListener sub listeners =
+subToListener sub taggers =
     case sub of
-        Listen stream tagger ->
-            let
-                sid =
-                    streamId stream
-            in
-            case Dict.get sid listeners of
+        Listen (Stream sid _ as stream) tagger ->
+            case Dict.get sid taggers of
                 Just data ->
                     Dict.insert sid
                         { data | taggers = Array.pushLast tagger data.taggers }
-                        listeners
+                        taggers
 
                 Nothing ->
                     Dict.insert sid
                         { stream = stream
                         , taggers = [ tagger ]
                         }
-                        listeners
+                        taggers
 
 
 spawnHelp : Platform.Router msg Event -> Array Stream -> Dict Int Process.Id -> Task.Task Never (Dict Int Process.Id)
@@ -178,11 +193,11 @@ spawnHelp router toSpawn processes =
     Nothing ->
       Task.succeed processes
 
-    Just nextStream ->
+    Just ((Stream sid rawStream) as nextStream) ->
       let
         spawnStream =
           Process.spawn <|
-            attachListener nextStream (\data ->
+            attachListener rawStream (\data ->
                 Platform.sendToSelf router (FromStream nextStream data)
             )
 
@@ -190,26 +205,26 @@ spawnHelp router toSpawn processes =
           Array.dropFirst 1 toSpawn
 
         spawnRest processId =
-          spawnHelp router rest (Dict.insert (streamId nextStream) processId processes)
+          spawnHelp router rest (Dict.insert sid processId processes)
       in
         spawnStream
           |> Task.andThen spawnRest
 
 
-attachListener : Stream -> (String -> Task.Task Never Unit) -> Task.Task x Never
+attachListener : RawStream -> (Bytes -> Task.Task Never Unit) -> Task.Task x Never
 attachListener =
   Gren.Kernel.Node.attachListener
 
 
 type Event
-    = FromStream Stream String
+    = FromStream Stream Bytes
 
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task.Task Never (State msg)
 onSelfMsg router event state =
     case event of
-        FromStream stream data ->
-            Dict.get (streamId stream) state.taggers
+        FromStream (Stream sid _) data ->
+            Dict.get sid state.taggers
                 |> Maybe.map .taggers
                 |> Maybe.withDefault []
                 |> Array.map (\tagger -> tagger data)

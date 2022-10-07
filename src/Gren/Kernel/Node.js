@@ -21,21 +21,15 @@ var _Node_initialize = __Scheduler_binding(function (callback) {
       __$env: _Node_objToDict(process.env),
       __$stdout: process.stdout,
       __$stderr: process.stderr,
-      __$stdin: process.stdin,
+      __$stdin: process.stdin
     })
   );
 });
 
-var _Node_streamId = function (stream) {
-  return stream.fd;
-};
-
-var _Node_attachListener = F2(function (stream, callback) {
-  return __Scheduler_binding(function (noUseCallback) {
-    stream.setEncoding('utf-8');
-
+var _Node_attachListener = F2(function (stream, sendToApp) {
+  return __Scheduler_binding(function (_callback) {
     var listener = function (data) {
-      __Scheduler_rawSpawn(callback(data));
+      __Scheduler_rawSpawn(sendToApp(new DataView(data.buffer)));
     };
 
     stream.on("data", listener);
@@ -47,10 +41,12 @@ var _Node_attachListener = F2(function (stream, callback) {
   });
 });
 
-var _Node_sendToStream = F2(function (stream, text) {
-  stream.write(text);
+var _Node_sendToStream = F2(function (stream, data) {
+  stream.write(new Uint8Array(data.buffer));
   return {};
 });
+
+// Helpers
 
 function _Node_objToDict(obj) {
   var dict = __Dict_empty;
