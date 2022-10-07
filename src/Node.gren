@@ -1,6 +1,6 @@
 module Node exposing
     ( InitResult
-    , initialize
+    , init
     )
 
 import Dict exposing (Dict)

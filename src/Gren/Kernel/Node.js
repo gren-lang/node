@@ -14,7 +14,7 @@ var _Node_log = F2(function (text, args) {
   return {};
 });
 
-var _Node_initialize = __Scheduler_binding(function (callback) {
+var _Node_init = __Scheduler_binding(function (callback) {
   return callback(
     __Scheduler_succeed({
       __$args: process.argv,

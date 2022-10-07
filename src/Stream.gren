@@ -30,8 +30,8 @@ cmdMap _ cmd =
             SendToStream stream payload
 
 
-sendToStream : Stream -> Bytes -> Cmd msg
-sendToStream stream bytes =
+send : Stream -> Bytes -> Cmd msg
+send stream bytes =
     command <| SendToStream stream bytes
 
 
@@ -125,7 +125,7 @@ onEffects router commands subs state =
 subToListener : StreamSub msg -> Dict Int (Tagger msg) -> Dict Int (Tagger msg)
 subToListener sub taggers =
     case sub of
-        Listen (Stream sid _ as stream) tagger ->
+        Listen ((Internal.Stream sid _) as stream) tagger ->
             case Dict.get sid taggers of
                 Just data ->
                     Dict.insert sid
@@ -146,7 +146,7 @@ spawnHelp router toSpawn processes =
     Nothing ->
       Task.succeed processes
 
-    Just ((Stream sid rawStream) as nextStream) ->
+    Just ((Internal.Stream sid rawStream) as nextStream) ->
       let
         spawnStream =
           Process.spawn <|
@@ -177,7 +177,7 @@ type Event
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task.Task Never (State msg)
 onSelfMsg router event state =
     case event of
-        FromStream (Stream sid _) data ->
+        FromStream (Internal.Stream sid _) data ->
             Dict.get sid state.taggers
                 |> Maybe.map .taggers
                 |> Maybe.withDefault []
@@ -188,7 +188,8 @@ onSelfMsg router event state =
                     )
                     (Task.succeed Unit)
                 |> Task.andThen (\_ -> Task.succeed state)
-        ToStream (Stream _ rawStream) bytes ->
+
+        ToStream (Internal.Stream _ rawStream) bytes ->
             let
                 _ =
                     Gren.Kernel.Stream.send rawStream bytes
