@@ -136,30 +136,23 @@ onEffects router commands subs state =
         existingProcesses =
             Dict.filter (\sid _ -> Dict.member sid newTaggers) state.processes
 
-        killTask =
+        killTasks =
             Dict.diff state.processes newTaggers
                 |> Dict.values
                 |> Array.foldl
                     (\id tasks -> Task.andThen (\Unit -> Process.kill id) tasks)
                     (Task.succeed Unit)
 
-        -- TODO: Should be turned into tasks
-        stateAfterCommands =
+        commandTasks =
             Array.foldl
-                (\cmd oldState ->
-                    case cmd of
-                        SendToStream (Stream _ rawStream) bytes ->
-                            let
-                                _ =
-                                    Gren.Kernel.Node.sendToStream rawStream bytes
-                            in
-                                oldState
+                (\(SendToStream stream bytes) tasks ->
+                    Task.andThen (\_ -> Platform.sendToSelf router (ToStream stream bytes)) tasks
                 )
-                state
+                (Task.succeed Unit)
                 commands
     in
-        Task.succeed stateAfterCommands
-            |> Task.andThen (\_ -> killTask)
+        commandTasks
+            |> Task.andThen (\_ -> killTasks)
             |> Task.andThen (\_ -> spawnHelp router toSpawn existingProcesses)
             |> Task.andThen (\newProcesses ->
                 Task.succeed
@@ -218,6 +211,7 @@ attachListener =
 
 type Event
     = FromStream Stream Bytes
+    | ToStream Stream Bytes
 
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task.Task Never (State msg)
@@ -234,3 +228,9 @@ onSelfMsg router event state =
                     )
                     (Task.succeed Unit)
                 |> Task.andThen (\_ -> Task.succeed state)
+        ToStream (Stream _ rawStream) bytes ->
+            let
+                _ =
+                    Gren.Kernel.Node.sendToStream rawStream bytes
+            in
+                Task.succeed state
