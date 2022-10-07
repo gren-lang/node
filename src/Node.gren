@@ -1,236 +1,41 @@
-effect module Node where { command = NodeCmd, subscription = NodeSub } exposing
-    ( Stream
-    , InitializationResult
+module Node exposing
+    ( InitResult
     , initialize
-    , sendToStream
-    , listen
     )
 
 import Dict exposing (Dict)
 import Gren.Kernel.Node
 import Task
-import Bytes exposing (Bytes)
-import Process
+import Internal.Stream as IStream
 
 
-type Stream
-    = Stream Int RawStream
-
-
--- Actual implementation resides in kernel code
-type RawStream
-    = RawStream
-
-
--- COMMANDS
-
-
-type NodeCmd a
-    = SendToStream Stream Bytes
-
-
-cmdMap : (a -> b) -> NodeCmd a -> NodeCmd b
-cmdMap _ cmd =
-    case cmd of
-        SendToStream stream payload ->
-            SendToStream stream payload
-
-
-sendToStream : Stream -> Bytes -> Cmd msg
-sendToStream stream bytes =
-    command <| SendToStream stream bytes
-
-
--- SUBSCRIPTION
-
-
-type NodeSub msg
-    = Listen Stream (Bytes -> msg)
-
-
-subMap : (a -> b) -> NodeSub a -> NodeSub b
-subMap mapFn sub =
-    case sub of
-        Listen stream msgMap ->
-            Listen stream (mapFn << msgMap)
-
-
-listen : Stream -> (Bytes -> msg) -> Sub msg
-listen stream msgMap =
-    subscription (Listen stream msgMap)
-
-
--- API
-
-
-type alias RawInitializationResult =
+type alias RawInitResult =
     { args : Array String
     , env : Dict String String
-    , stdout : RawStream
-    , stderr : RawStream
-    , stdin : RawStream
+    , stdout : IStream.RawStream
+    , stderr : IStream.RawStream
+    , stdin : IStream.RawStream
     }
 
 
-type alias InitializationResult =
+type alias InitResult =
     { args : Array String
     , env : Dict String String
-    , stdout : Stream
-    , stderr : Stream
-    , stdin : Stream
+    , stdout : IStream.Stream
+    , stderr : IStream.Stream
+    , stdin : IStream.Stream
     }
 
 
-initialize : Task.Task Never InitializationResult
-initialize =
-    Gren.Kernel.Node.initialize
+init : Task.Task Never InitResult
+init =
+    Gren.Kernel.Node.init
         |> Task.map (\rawResult ->
             { args = rawResult.args
             , env = rawResult.env
-            , stdout = Stream 0 rawResult.stdout
-            , stderr = Stream 1 rawResult.stderr
-            , stdin = Stream 2 rawResult.stdin
+            , stdout = IStream.Stream 0 rawResult.stdout
+            , stderr = IStream.Stream 1 rawResult.stderr
+            , stdin = IStream.Stream 2 rawResult.stdin
             }
         )
 
-
--- LOOP
-
-
-type alias State msg =
-    { taggers : Dict Int (Tagger msg)
-    , processes : Dict Int Process.Id
-    }
-
-
-type alias Tagger msg =
-    { stream : Stream
-    , taggers : Array (Bytes -> msg)
-    }
-
-
-init : Task.Task Never (State msg)
-init =
-    Task.succeed
-        { taggers = Dict.empty
-        , processes = Dict.empty
-        }
-
-
-onEffects
-    : Platform.Router msg Event
-    -> Array (NodeCmd msg)
-    -> Array (NodeSub msg)
-    -> State msg
-    -> Task.Task Never (State msg)
-onEffects router commands subs state =
-    let
-        newTaggers =
-            Array.foldl subToListener Dict.empty subs
-
-        toSpawn =
-            Dict.diff newTaggers state.taggers
-                |> Dict.values
-                |> Array.map .stream
-
-        existingProcesses =
-            Dict.filter (\sid _ -> Dict.member sid newTaggers) state.processes
-
-        killTasks =
-            Dict.diff state.processes newTaggers
-                |> Dict.values
-                |> Array.foldl
-                    (\id tasks -> Task.andThen (\Unit -> Process.kill id) tasks)
-                    (Task.succeed Unit)
-
-        commandTasks =
-            Array.foldl
-                (\(SendToStream stream bytes) tasks ->
-                    Task.andThen (\_ -> Platform.sendToSelf router (ToStream stream bytes)) tasks
-                )
-                (Task.succeed Unit)
-                commands
-    in
-        commandTasks
-            |> Task.andThen (\_ -> killTasks)
-            |> Task.andThen (\_ -> spawnHelp router toSpawn existingProcesses)
-            |> Task.andThen (\newProcesses ->
-                Task.succeed
-                    { taggers = newTaggers
-                    , processes = newProcesses
-                    }
-                )
-
-
-subToListener : NodeSub msg -> Dict Int (Tagger msg) -> Dict Int (Tagger msg)
-subToListener sub taggers =
-    case sub of
-        Listen (Stream sid _ as stream) tagger ->
-            case Dict.get sid taggers of
-                Just data ->
-                    Dict.insert sid
-                        { data | taggers = Array.pushLast tagger data.taggers }
-                        taggers
-
-                Nothing ->
-                    Dict.insert sid
-                        { stream = stream
-                        , taggers = [ tagger ]
-                        }
-                        taggers
-
-
-spawnHelp : Platform.Router msg Event -> Array Stream -> Dict Int Process.Id -> Task.Task Never (Dict Int Process.Id)
-spawnHelp router toSpawn processes =
-  case Array.first toSpawn of
-    Nothing ->
-      Task.succeed processes
-
-    Just ((Stream sid rawStream) as nextStream) ->
-      let
-        spawnStream =
-          Process.spawn <|
-            attachListener rawStream (\data ->
-                Platform.sendToSelf router (FromStream nextStream data)
-            )
-
-        rest =
-          Array.dropFirst 1 toSpawn
-
-        spawnRest processId =
-          spawnHelp router rest (Dict.insert sid processId processes)
-      in
-        spawnStream
-          |> Task.andThen spawnRest
-
-
-attachListener : RawStream -> (Bytes -> Task.Task Never Unit) -> Task.Task x Never
-attachListener =
-  Gren.Kernel.Node.attachListener
-
-
-type Event
-    = FromStream Stream Bytes
-    | ToStream Stream Bytes
-
-
-onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task.Task Never (State msg)
-onSelfMsg router event state =
-    case event of
-        FromStream (Stream sid _) data ->
-            Dict.get sid state.taggers
-                |> Maybe.map .taggers
-                |> Maybe.withDefault []
-                |> Array.map (\tagger -> tagger data)
-                |> Array.foldl
-                    (\msg tasks ->
-                        Task.andThen (\Unit -> Platform.sendToApp router msg) tasks
-                    )
-                    (Task.succeed Unit)
-                |> Task.andThen (\_ -> Task.succeed state)
-        ToStream (Stream _ rawStream) bytes ->
-            let
-                _ =
-                    Gren.Kernel.Node.sendToStream rawStream bytes
-            in
-                Task.succeed state

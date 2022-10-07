@@ -1,0 +1,14 @@
+module Internal.Stream exposing
+    ( Stream(..)
+    , RawStream
+    )
+
+
+type Stream
+    = Stream Int RawStream
+
+
+-- Actual implementation resides in kernel code
+type RawStream
+    = RawStream
+

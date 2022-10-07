@@ -1,0 +1,27 @@
+/*
+
+import Gren.Kernel.Scheduler exposing (binding, rawSpawn)
+
+*/
+
+var process = require("process");
+
+var _Stream_attachListener = F2(function (stream, sendToApp) {
+  return __Scheduler_binding(function (_callback) {
+    var listener = function (data) {
+      __Scheduler_rawSpawn(sendToApp(new DataView(data.buffer)));
+    };
+
+    stream.on("data", listener);
+
+    return function () {
+      stream.off("data", listener);
+      stream.pause();
+    };
+  });
+});
+
+var _Stream_send = F2(function (stream, data) {
+  stream.write(new Uint8Array(data.buffer));
+  return {};
+});
