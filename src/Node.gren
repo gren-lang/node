@@ -1,9 +1,9 @@
 module Node exposing
-    ( InitResult
+    ( Configuration
     , Platform
     , CpuArchitecture
     --
-    , init
+    , initialize
     --
     , getEnvironmentVariables
     --
@@ -17,7 +17,7 @@ import Task exposing (Task)
 import Internal.Stream as IStream
 
 
-type alias RawInitResult =
+type alias RawConfiguration =
     { platform : String
     , arch : String
     , args : Array String
@@ -28,7 +28,7 @@ type alias RawInitResult =
     }
 
 
-type alias InitResult =
+type alias Configuration =
     { platform : Platform
     , cpuArchitecture : CpuArchitecture
     , args : Array String
@@ -39,18 +39,18 @@ type alias InitResult =
     }
 
 
-init : Task Never InitResult
-init =
+initialize : Task Never Configuration
+initialize =
     Gren.Kernel.Node.init
         |> Task.map
-                (\rawResult ->
-                    { platform = platformFromString rawResult.platform
-                    , cpuArchitecture = archFromString rawResult.arch
-                    , args = rawResult.args
-                    , env = rawResult.env
-                    , stdout = IStream.Stream 0 rawResult.stdout
-                    , stderr = IStream.Stream 1 rawResult.stderr
-                    , stdin = IStream.Stream 2 rawResult.stdin
+                (\raw ->
+                    { platform = platformFromString raw.platform
+                    , cpuArchitecture = archFromString raw.arch
+                    , args = raw.args
+                    , env = raw.env
+                    , stdout = IStream.Stream 0 raw.stdout
+                    , stderr = IStream.Stream 1 raw.stderr
+                    , stdin = IStream.Stream 2 raw.stdin
                     }
                 )
 

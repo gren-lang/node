@@ -1,7 +1,7 @@
 effect module Terminal where { command = TerminalCmd, subscription = TerminalSub } exposing
-    ( TerminalConnection
-    , TerminalConfiguration
-    , TerminalSize
+    ( Connection
+    , Configuration
+    , Size
     --
     , initialize
     --
@@ -16,19 +16,19 @@ import Process
 import Gren.Kernel.Terminal
 
 
-type TerminalConnection
-    = TerminalConnection
+type Connection
+    = Connection
 
 
-type alias TerminalConfiguration =
-    { connection : TerminalConnection
+type alias Configuration =
+    { connection : Connection
     , colorDepth : Int
     , columns : Int
     , rows : Int
     }
 
 
-type alias TerminalSize =
+type alias Size =
     { columns : Int
     , rows : Int
     }
@@ -37,13 +37,13 @@ type alias TerminalSize =
 -- INIT
 
 
-initialize : Task Never (Maybe TerminalConfiguration)
+initialize : Task Never (Maybe Configuration)
 initialize =
     Gren.Kernel.Terminal.init
         |> Task.map (\raw ->
             if raw.isTTY then
                 Just
-                    { connection = TerminalConnection
+                    { connection = Connection
                     , colorDepth = raw.colorDepth
                     , columns = raw.columns
                     , rows = raw.rows
@@ -68,7 +68,7 @@ cmdMap _ cmd =
             SetStdInRawMode toggle
 
 
-setStdInRawMode : TerminalConnection -> Bool -> Cmd a
+setStdInRawMode : Connection -> Bool -> Cmd a
 setStdInRawMode _ toggle =
     command (SetStdInRawMode toggle)
 
@@ -77,7 +77,7 @@ setStdInRawMode _ toggle =
 
 
 type TerminalSub msg
-    = OnResize (TerminalSize -> msg)
+    = OnResize (Size -> msg)
 
 
 subMap : (a -> b) -> TerminalSub a -> TerminalSub b
@@ -87,7 +87,7 @@ subMap mapFn sub =
             OnResize (mapFn << msgMap)
 
 
-onResize : TerminalConnection -> (TerminalSize -> msg) -> Sub msg
+onResize : Connection -> (Size -> msg) -> Sub msg
 onResize _ toMsg =
     subscription (OnResize toMsg)
 
@@ -96,7 +96,7 @@ onResize _ toMsg =
 
 
 type alias State msg =
-    { taggers : Array (TerminalSize -> msg)
+    { taggers : Array (Size -> msg)
     , maybeProcessId : Maybe Process.Id
     }
 
@@ -164,7 +164,7 @@ onEffects router commands subs state =
 
 type Event
     = SelfToggleStdInRawMode Bool
-    | SelfOnResize TerminalSize
+    | SelfOnResize Size
 
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task Never (State msg)
