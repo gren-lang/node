@@ -1,0 +1,72 @@
+module FileSystem exposing
+    ( Configuration
+    , Connection
+    --
+    , initialize
+    --
+    , open
+    , close
+    , write
+    , writeFromOffset
+    , read
+    , readFromOffset
+    )
+
+
+import Gren.Kernel.FileSystem
+import Bytes exposing (Bytes)
+
+
+type alias Configuration =
+    { connection : Connection
+    }
+
+
+type Connection
+    = Connection
+
+
+initialize : Task Never Configuration
+initialize =
+    Task.succeed
+        { connection = Connection
+        }
+
+
+-- FILES
+
+
+-- Actual implementation in kernel code
+type FileHandle
+    = FileHandle
+
+
+open : Connection -> String -> Task Never FileHandle
+open _ path =
+    Gren.Kernel.FileSystem.open path
+
+
+close : FileHandle -> Task Never Unit
+close =
+    Gren.Kernel.FileSystem.close
+
+
+write : FileHandle -> Bytes -> Task Never Unit
+write fh bytes =
+    writeFromOffset 0 bytes
+
+
+writeFromOffset : FileHandle -> Int -> Bytes -> Task Never Unit
+writeFromOffset =
+    Gren.Kernel.FileSystem.writeFromOffset
+
+
+read : FileHandle -> Task Never Bytes
+read fh =
+    readFromOffset fh { offset = 0, length = -1 }
+
+
+readFromOffset : FileHandle -> { offset : Int, length : Int } -> Task Never Bytes
+readFromOffset =
+    Gren.Kernel.FileSystem.readFromOffset
+

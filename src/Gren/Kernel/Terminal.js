@@ -4,7 +4,7 @@ import Gren.Kernel.Scheduler exposing (binding, succeed, rawSpawn)
 
 */
 
-var process = require("process");
+var process = require("node:process");
 
 var _Terminal_init = __Scheduler_binding(function (callback) {
   callback(

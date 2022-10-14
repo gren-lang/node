@@ -6,7 +6,7 @@ import Gren.Kernel.Scheduler exposing (binding, succeed)
 
 */
 
-var process = require("process");
+var process = require("node:process");
 
 var _Node_log = F2(function (text, args) {
   // NOTE: this function needs __Platform_export available to work
