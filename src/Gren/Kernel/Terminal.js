@@ -10,7 +10,7 @@ var _Terminal_init = __Scheduler_binding(function (callback) {
   callback(
     __Scheduler_succeed({
       __$isTTY: process.stdout.isTTY,
-      __$colorDepth: process.stdout.getColorDepth(),
+      __$colorDepth: process.stdout.getColorDepth ? process.stdout.getColorDepth() : 0,
       __$columns: process.stdout.columns,
       __$rows: process.stdout.rows,
     })
