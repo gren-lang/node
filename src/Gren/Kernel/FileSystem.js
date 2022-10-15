@@ -8,7 +8,7 @@ var fs = require("node:fs");
 
 var _FileSystem_open = function (path) {
   return __Scheduler_binding(function (callback) {
-    fs.open(path, function (err, fd) {
+    fs.open(path, "r+", function (err, fd) {
       callback(__Scheduler_succeed(fd));
     });
   });
@@ -90,10 +90,10 @@ var _FileSystem_writeHelper = function (
 ) {
   fs.write(
     fh,
-    bytes,
-    0,
-    bytes.byteLength,
-    options.offset,
+    buffer,
+    bufferOffset,
+    length,
+    fileOffset,
     function (err, bytesWritten, buffer) {
       if (bytesWritten === length) {
         callback(__Scheduler_succeed({}));
@@ -105,9 +105,9 @@ var _FileSystem_writeHelper = function (
 
       _FileSystem_writeHelper(
         fh,
-        bytes,
-        newOffset,
-        bytes.byteLength - newOffset,
+        buffer,
+        newBufferOffset,
+        length - bytesWritten,
         newFileOffset,
         callback
       );
