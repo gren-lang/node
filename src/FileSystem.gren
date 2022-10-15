@@ -15,6 +15,7 @@ module FileSystem exposing
 
 import Gren.Kernel.FileSystem
 import Bytes exposing (Bytes)
+import Task exposing (Task)
 
 
 type alias Configuration =
@@ -53,7 +54,7 @@ close =
 
 write : FileHandle -> Bytes -> Task Never Unit
 write fh bytes =
-    writeFromOffset 0 bytes
+    writeFromOffset fh 0 bytes
 
 
 writeFromOffset : FileHandle -> Int -> Bytes -> Task Never Unit
