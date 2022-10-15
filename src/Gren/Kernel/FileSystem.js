@@ -24,11 +24,12 @@ var _FileSystem_close = function (fh) {
 
 var _FileSystem_readFromOffset = F2(function (fh, options) {
   return __Scheduler_binding(function (callback) {
-    var buffer = Buffer.allocUnsafe(16 * 1024);
-    var length =
-      options.length < 0 ? buffer.byteLength - options.offset : options.length;
+    var initialBufferSize = options.length < 0 ? 16 * 1024 : options.length;
+    var buffer = Buffer.allocUnsafe(initialBufferSize);
 
-    _FileSystem_readHelper(fh, buffer, 0, options.offset, length, callback);
+    var fileOffset = options.offset < 0 ? 0 : options.offset;
+
+    _FileSystem_readHelper(fh, buffer, 0, fileOffset, buffer.byteLength, callback);
   });
 });
 
@@ -37,27 +38,29 @@ var _FileSystem_readHelper = function (
   buffer,
   bufferOffset,
   fileOffset,
-  length,
+  maxReadLength,
   callback
 ) {
   fs.read(
     fh,
     buffer,
     bufferOffset,
-    length,
+    maxReadLength,
     fileOffset,
-    function (err, bytesRead, buff) {
+    function (err, bytesRead, _buff) {
       if (bytesRead === 0) {
         callback(__Scheduler_succeed(new DataView(buffer.buffer, 0, bufferOffset)));
         return;
       }
 
+      // TODO: Resize buffer if full
+
       _FileSystem_readHelper(
         fh,
         buffer,
         bufferOffset + bytesRead,
-        -1,
-        length - bytesRead,
+        maxReadLength - bytesRead,
+        fileOffset + bytesRead,
         callback
       );
     }
