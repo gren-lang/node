@@ -5,6 +5,7 @@ import Gren.Kernel.Scheduler exposing (binding, succeed)
 */
 
 var fs = require("node:fs");
+var bufferNs = require("node:buffer");
 
 var _FileSystem_open = function (path) {
   return __Scheduler_binding(function (callback) {
@@ -24,12 +25,16 @@ var _FileSystem_close = function (fh) {
 
 var _FileSystem_readFromOffset = F2(function (fh, options) {
   return __Scheduler_binding(function (callback) {
-    var initialBufferSize = options.length < 0 ? 16 * 1024 : options.length;
+    var requestedLength = options.length < 0 || options.length > bufferNs.constants.MAX_LENGTH
+          ? bufferNs.constants.MAX_LENGTH
+          : options.length;
+
+    var initialBufferSize = requestedLength === bufferNs.constants.MAX_LENGTH ? 16 * 1024 : requestedLength;
     var buffer = Buffer.allocUnsafe(initialBufferSize);
 
     var fileOffset = options.offset < 0 ? 0 : options.offset;
 
-    _FileSystem_readHelper(fh, buffer, 0, fileOffset, buffer.byteLength, callback);
+    _FileSystem_readHelper(fh, buffer, 0, fileOffset, buffer.byteLength, requestedLength, callback);
   });
 });
 
@@ -39,6 +44,7 @@ var _FileSystem_readHelper = function (
   bufferOffset,
   fileOffset,
   maxReadLength,
+  requestedReadLength,
   callback
 ) {
   fs.read(
@@ -48,19 +54,30 @@ var _FileSystem_readHelper = function (
     maxReadLength,
     fileOffset,
     function (err, bytesRead, _buff) {
-      if (bytesRead === 0) {
-        callback(__Scheduler_succeed(new DataView(buffer.buffer, 0, bufferOffset)));
+      var newBufferOffset = bufferOffset + bytesRead;
+
+      if (bytesRead === 0 || newBufferOffset >= requestedReadLength) {
+        callback(__Scheduler_succeed(new DataView(buffer.buffer, buffer.byteOffset, newBufferOffset)));
         return;
       }
 
-      // TODO: Resize buffer if full
+      var newMaxReadLength = maxReadLength - bytesRead;
+      if (newMaxReadLength <= 0) {
+        var oldBuffer = buffer;
+        buffer = Buffer.allocUnsafe(oldBuffer.byteLength * 1.5);
+        oldBuffer.copy(buffer);
+
+        newMaxReadLength = buffer.byteLength - oldBuffer.byteLength;
+      }
+
 
       _FileSystem_readHelper(
         fh,
         buffer,
-        bufferOffset + bytesRead,
-        maxReadLength - bytesRead,
+        newBufferOffset,
         fileOffset + bytesRead,
+        newMaxReadLength,
+        requestedReadLength,
         callback
       );
     }
