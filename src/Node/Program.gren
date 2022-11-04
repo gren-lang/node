@@ -1,0 +1,124 @@
+module Node.Program exposing
+    ( Program
+    , InitTask
+    --
+    , program
+    , await
+    , startProgram
+    )
+
+
+import Task exposing (Task)
+import Internal.InitTask
+
+
+type alias Program model msg =
+    Platform.Program Unit (Model model) (Msg model msg)
+
+
+type alias InitTask a =
+    Internal.InitTask.InitTask a
+
+
+-- TOP LEVEL PROGRAM
+
+
+type Model model
+    = Uninitialized
+    | Initialized model
+
+
+type Msg model msg
+    = InitDone { model : model, command : Cmd msg }
+    | MsgReceived msg
+
+
+type alias ProgramConfig model msg =
+    { init : InitTask { model : model, command : Cmd msg }
+    , update : msg -> model -> { model : model, command : Cmd msg }
+    , subscriptions : model -> Sub msg
+    }
+
+
+program : ProgramConfig model msg -> Program model msg
+program config =
+    Platform.worker
+        { init = init config.init
+        , update = update config.update
+        , subscriptions = subscriptions config.subscriptions
+        }
+
+
+init
+    : InitTask { model : model, command : Cmd msg }
+    -> Unit
+    -> { model : Model model, command : Cmd (Msg model msg) }
+init (Internal.InitTask.InitTask task) Unit =
+    { model = Uninitialized
+    , command = Task.perform InitDone task
+    }
+
+
+update
+    : (msg -> model -> { model : model, command : Cmd msg })
+    -> Msg model msg
+    -> Model model
+    -> { model : Model model, command : Cmd (Msg model msg) }
+update appUpdate msg model =
+    case model of
+        Uninitialized ->
+            case msg of
+                InitDone initResult ->
+                    { model = Initialized initResult.model
+                    , command = Cmd.map MsgReceived initResult.command
+                    }
+
+                MsgReceived _ ->
+                    -- Ignore
+                    { model = model, command = Cmd.none }
+
+        Initialized appModel ->
+            case msg of
+                InitDone _ ->
+                    -- Ignore
+                    { model = model, command = Cmd.none }
+
+                MsgReceived appMsg ->
+                    let
+                        updateResult =
+                            appUpdate appMsg appModel
+                    in
+                    { model = Initialized updateResult.model
+                    , command = Cmd.map MsgReceived updateResult.command
+                    }
+
+
+subscriptions
+    : (model -> Sub msg)
+    -> (Model model)
+    -> Sub (Msg model msg)
+subscriptions appSubs model =
+    case model of
+        Uninitialized ->
+            Sub.none
+
+        Initialized appModel ->
+            Sub.map MsgReceived (appSubs appModel)
+
+
+-- INIT TASK
+
+
+await : InitTask a -> (a -> InitTask b) -> InitTask b
+await (Internal.InitTask.InitTask task) fn =
+    Internal.InitTask.InitTask (Task.andThen (unwrap << fn) task)
+
+
+unwrap : InitTask a -> Task Never a
+unwrap (Internal.InitTask.InitTask task) =
+    task
+
+
+startProgram : { model : model, command : Cmd cmd } -> InitTask { model : model, command : Cmd cmd }
+startProgram initResult =
+    Internal.InitTask.InitTask (Task.succeed initResult)

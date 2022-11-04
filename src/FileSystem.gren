@@ -32,6 +32,8 @@ module FileSystem exposing
 import Gren.Kernel.FileSystem
 import Bytes exposing (Bytes)
 import Task exposing (Task)
+import Node.Program as Program
+import Internal.InitTask exposing (InitTask(..))
 
 
 type alias Configuration =
@@ -43,11 +45,12 @@ type Connection
     = Connection
 
 
-initialize : Task Never Configuration
+initialize : Program.InitTask Configuration
 initialize =
     Task.succeed
         { connection = Connection
         }
+    |> InitTask
 
 
 -- FILES

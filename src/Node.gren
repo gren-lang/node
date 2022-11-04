@@ -14,7 +14,9 @@ module Node exposing
 import Dict exposing ( Dict )
 import Gren.Kernel.Node
 import Task exposing (Task)
+import Node.Program as Program
 import Internal.Stream as IStream
+import Internal.InitTask exposing (InitTask(..))
 
 
 type alias RawConfiguration =
@@ -39,7 +41,7 @@ type alias Configuration =
     }
 
 
-initialize : Task Never Configuration
+initialize : Program.InitTask Configuration
 initialize =
     Gren.Kernel.Node.init
         |> Task.map
@@ -53,6 +55,7 @@ initialize =
                     , stdin = IStream.Stream 2 raw.stdin
                     }
                 )
+        |> InitTask
 
 
 -- PLATFORM

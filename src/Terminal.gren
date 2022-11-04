@@ -13,7 +13,9 @@ effect module Terminal where { command = TerminalCmd, subscription = TerminalSub
 
 import Task exposing (Task)
 import Process
+import Node.Program as Program
 import Gren.Kernel.Terminal
+import Internal.InitTask exposing (InitTask(..))
 
 
 type Connection
@@ -37,7 +39,7 @@ type alias Size =
 -- INIT
 
 
-initialize : Task Never (Maybe Configuration)
+initialize : Program.InitTask (Maybe Configuration)
 initialize =
     Gren.Kernel.Terminal.init
         |> Task.map (\raw ->
@@ -52,6 +54,7 @@ initialize =
             else
                 Nothing
         )
+        |> InitTask
 
 
 -- COMMANDS
