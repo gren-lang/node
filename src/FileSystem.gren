@@ -23,6 +23,9 @@ module FileSystem exposing
     , writeFromOffset
     --
     , remove
+    --
+    , makeDirectory
+    , listDirectoryContent
     )
 
 
@@ -157,3 +160,20 @@ remove : Connection -> String -> RemoveOptions -> Task Never Unit
 remove _ path options =
     Gren.Kernel.FileSystem.remove options path
 
+
+-- DIRECTORIES
+
+
+type alias MakeDirectoryOptions =
+    { recursive : Bool
+    }
+
+
+makeDirectory : Connection -> String -> MakeDirectoryOptions -> Task Never Unit
+makeDirectory _ path options =
+    Gren.Kernel.FileSystem.makeDirectory options path
+
+
+listDirectoryContent : Connection -> String -> Task Never (Array String)
+listDirectoryContent _ path =
+    Gren.Kernel.FileSystem.listDirectoryContent path

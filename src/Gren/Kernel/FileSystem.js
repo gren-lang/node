@@ -154,8 +154,24 @@ var _FileSystem_remove = F2(function (options, path) {
   };
 
   return __Scheduler_binding(function (callback) {
-    fs.rm(path, rmOpts, function (err, fd) {
-      callback(__Scheduler_succeed(fd));
+    fs.rm(path, rmOpts, function (err) {
+      callback(__Scheduler_succeed({}));
     });
   });
 });
+
+var _FileSystem_makeDirectory = F2(function (options, path) {
+  return __Scheduler_binding(function (callback) {
+    fs.mkdir(path, { recursive: options.__$recursive }, function (err) {
+      callback(__Scheduler_succeed({}));
+    });
+  });
+});
+
+var _FileSystem_listDirectoryContent = function (path) {
+  return __Scheduler_binding(function (callback) {
+    fs.readdir(path, function (err, content) {
+      callback(__Scheduler_succeed(content));
+    });
+  });
+};
