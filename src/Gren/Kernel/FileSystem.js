@@ -7,13 +7,13 @@ import Gren.Kernel.Scheduler exposing (binding, succeed)
 var fs = require("node:fs");
 var bufferNs = require("node:buffer");
 
-var _FileSystem_open = function (path) {
+var _FileSystem_open = F2(function (access, path) {
   return __Scheduler_binding(function (callback) {
-    fs.open(path, "r+", function (err, fd) {
+    fs.open(path, access, function (err, fd) {
       callback(__Scheduler_succeed(fd));
     });
   });
-};
+});
 
 var _FileSystem_close = function (fh) {
   return __Scheduler_binding(function (callback) {

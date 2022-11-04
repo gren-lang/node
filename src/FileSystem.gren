@@ -2,14 +2,24 @@ module FileSystem exposing
     ( Configuration
     , Connection
     --
+    , FileHandle
+    , ReadableFileHandle
+    , WriteableFileHandle
+    , ReadWriteableFileHandle
+    --
     , initialize
     --
-    , open
+    , openForRead
+    , openForWrite
+    , openForReadAndWrite
+    --
     , close
-    , write
-    , writeFromOffset
+    --
     , read
     , readFromOffset
+    --
+    , write
+    , writeFromOffset
     )
 
 
@@ -37,37 +47,76 @@ initialize =
 -- FILES
 
 
--- Actual implementation in kernel code
-type FileHandle
+-- Note: Actual implementation in kernel code
+type FileHandle readAccess writeAccess
     = FileHandle
 
 
-open : Connection -> String -> Task Never FileHandle
-open _ path =
-    Gren.Kernel.FileSystem.open path
+type ReadPermission = ReadPermission
+type NoReadPermission = NoReadPermission
+
+type WritePermission = WritePermission
+type NoWritePermission = NoWritePermission
 
 
-close : FileHandle -> Task Never Unit
+type alias ReadableFileHandle a = FileHandle ReadPermission a
+type alias WriteableFileHandle a = FileHandle a WritePermission
+type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
+
+
+-- OPEN
+
+
+openForRead : Connection -> String -> Task Never (ReadableFileHandle a)
+openForRead _ path =
+    openImpl "r" path
+
+
+openForWrite : Connection -> String -> Task Never (WriteableFileHandle a)
+openForWrite _ path =
+    openImpl "w" path
+
+
+openForReadAndWrite : Connection -> String -> Task Never ReadWriteableFileHandle
+openForReadAndWrite _ path =
+    openImpl "r+" path
+
+
+openImpl : String -> String -> Task Never (FileHandle a b)
+openImpl =
+    Gren.Kernel.FileSystem.open
+
+
+-- CLOSE
+
+
+close : FileHandle a b -> Task Never Unit
 close =
     Gren.Kernel.FileSystem.close
 
 
-write : FileHandle -> Bytes -> Task Never Unit
-write fh bytes =
-    writeFromOffset fh 0 bytes
+-- READING
 
 
-writeFromOffset : FileHandle -> Int -> Bytes -> Task Never Unit
-writeFromOffset =
-    Gren.Kernel.FileSystem.writeFromOffset
-
-
-read : FileHandle -> Task Never Bytes
+read : ReadableFileHandle a -> Task Never Bytes
 read fh =
     readFromOffset fh { offset = 0, length = -1 }
 
 
-readFromOffset : FileHandle -> { offset : Int, length : Int } -> Task Never Bytes
+readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task Never Bytes
 readFromOffset =
     Gren.Kernel.FileSystem.readFromOffset
+
+
+-- WRITING
+
+
+write : WriteableFileHandle a -> Bytes -> Task Never Unit
+write fh bytes =
+    writeFromOffset fh 0 bytes
+
+
+writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task Never Unit
+writeFromOffset =
+    Gren.Kernel.FileSystem.writeFromOffset
 
