@@ -21,6 +21,8 @@ module FileSystem exposing
     --
     , write
     , writeFromOffset
+    --
+    , remove
     )
 
 
@@ -140,4 +142,18 @@ write fh bytes =
 writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task Never Unit
 writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
+
+
+-- REMOVE
+
+
+type alias RemoveOptions =
+    { recursive : Bool
+    , ignoreErrors : Bool
+    }
+
+
+remove : Connection -> String -> RemoveOptions -> Task Never Unit
+remove _ path options =
+    Gren.Kernel.FileSystem.remove options path
 

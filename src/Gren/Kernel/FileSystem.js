@@ -146,3 +146,16 @@ var _FileSystem_writeHelper = function (
     }
   );
 };
+
+var _FileSystem_remove = F2(function (options, path) {
+  var rmOpts = {
+    force: options.__$ignoreErrors,
+    recursive: options.__$recursive,
+  };
+
+  return __Scheduler_binding(function (callback) {
+    fs.rm(path, rmOpts, function (err, fd) {
+      callback(__Scheduler_succeed(fd));
+    });
+  });
+});
