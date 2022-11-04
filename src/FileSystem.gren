@@ -9,6 +9,7 @@ module FileSystem exposing
     --
     , initialize
     --
+    , OpenForWriteBehaviour
     , openForRead
     , openForWrite
     , openForReadAndWrite
@@ -72,14 +73,34 @@ openForRead _ path =
     openImpl "r" path
 
 
-openForWrite : Connection -> String -> Task Never (WriteableFileHandle a)
-openForWrite _ path =
-    openImpl "w" path
+type OpenForWriteBehaviour
+    = EnsureEmpty
+    | ExpectExcisting
+    | ExpectNotExisting
 
 
-openForReadAndWrite : Connection -> String -> Task Never ReadWriteableFileHandle
-openForReadAndWrite _ path =
-    openImpl "r+" path
+openForWrite : Connection -> OpenForWriteBehaviour -> String -> Task Never (WriteableFileHandle a)
+openForWrite _ behaviour path =
+    let
+        access =
+            case behaviour of
+                EnsureEmpty -> "w"
+                ExpectExcisting -> "r+"
+                ExpectNotExisting -> "wx"
+    in
+    openImpl access path
+
+
+openForReadAndWrite : Connection -> OpenForWriteBehaviour -> String -> Task Never ReadWriteableFileHandle
+openForReadAndWrite _ behaviour path =
+    let
+        access =
+            case behaviour of
+                EnsureEmpty -> "w+"
+                ExpectExcisting -> "r+"
+                ExpectNotExisting -> "wx+"
+    in
+    openImpl access path
 
 
 openImpl : String -> String -> Task Never (FileHandle a b)
