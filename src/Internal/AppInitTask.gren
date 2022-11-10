@@ -1,0 +1,8 @@
+module Internal.AppInitTask exposing (AppInitTask(..))
+
+
+import Task exposing (Task)
+
+
+type AppInitTask a
+    = AppInitTask (Task Never a)

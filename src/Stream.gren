@@ -4,6 +4,13 @@ effect module Stream where { command = StreamCmd, subscription = StreamSub } exp
     , listen
     )
 
+{-| A `Stream` is an abstract flow of data from one point to another,
+like bytes flowing from a server to a client, or from a file to a program.
+
+@docs Stream, send, listen
+
+-}
+
 import Dict exposing (Dict)
 import Gren.Kernel.Stream
 import Task
@@ -12,6 +19,8 @@ import Process
 import Internal.Stream as Internal
 
 
+{-| A specific stream.
+-}
 type alias Stream
     = Internal.Stream
 
@@ -30,6 +39,8 @@ cmdMap _ cmd =
             SendToStream stream payload
 
 
+{-| This lets send bytes over a `Stream`.
+-}
 send : Stream -> Bytes -> Cmd msg
 send stream bytes =
     command <| SendToStream stream bytes
@@ -49,6 +60,8 @@ subMap mapFn sub =
             Listen stream (mapFn << msgMap)
 
 
+{-| This notifies your application every time bytes have arrived over the `Stream`.
+-}
 listen : Stream -> (Bytes -> msg) -> Sub msg
 listen stream msgMap =
     subscription (Listen stream msgMap)

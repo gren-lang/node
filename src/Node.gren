@@ -1,22 +1,39 @@
 module Node exposing
     ( Configuration
-    , Platform
-    , CpuArchitecture
-    --
     , initialize
     --
+    , Platform(..)
+    , CpuArchitecture(..)
     , getEnvironmentVariables
     --
     , exit
     , exitWithCode
     )
 
+{-| This module allows you to start your application with access to application arguments,
+environment variables and the standard input and output streams.
+
+To learn how to use this module's `initialize` function, take a closer look at the `Node.Program` module.
+
+## Initialization
+
+@docs Configuration, initialize
+
+## Info
+
+@docs Platform, CpuArchitecture, getEnvironmentVariables
+
+## Exit
+
+@docs exit, exitWithCode
+-}
+
 import Dict exposing ( Dict )
 import Gren.Kernel.Node
 import Task exposing (Task)
 import Node.Program as Program
 import Internal.Stream as IStream
-import Internal.InitTask exposing (InitTask(..))
+import Internal.AppInitTask exposing (AppInitTask(..))
 
 
 type alias RawConfiguration =
@@ -30,6 +47,14 @@ type alias RawConfiguration =
     }
 
 
+{-| Contains information about the context your application was initiated.
+
+* `platform` and `cpuArchitecture` tells you something about the operating system and machine your application is running on.
+* `args` is an `Array` of the arguments passed to your application.
+* `env` contains the environment variables as they where at initialization time. You can always refresh this `Dict` by using `getEnvironmentVariables`.
+* `stdout`, `stderr` and `stdin` are streams you can use to communicate with the outside world. Take a closer look at the `Stream` module for more information.
+
+-}
 type alias Configuration =
     { platform : Platform
     , cpuArchitecture : CpuArchitecture
@@ -41,7 +66,9 @@ type alias Configuration =
     }
 
 
-initialize : Program.InitTask Configuration
+{-| Initialize a NodeJS application. In return you're granted the `Configuration` record, which contains useful context.
+-}
+initialize : Program.AppInitTask Configuration
 initialize =
     Gren.Kernel.Node.init
         |> Task.map
@@ -55,12 +82,14 @@ initialize =
                     , stdin = IStream.Stream 2 raw.stdin
                     }
                 )
-        |> InitTask
+        |> AppInitTask
 
 
 -- PLATFORM
 
 
+{-| The platform, or operating system, that your application is running on.
+-}
 type Platform
     = Win32
     | Darwin
@@ -103,6 +132,8 @@ platformFromString platform =
 -- ARCH
 
 
+{-| The CPU architecture your application is running on.
+-}
 type CpuArchitecture
     = Arm
     | Arm64
@@ -156,17 +187,28 @@ archFromString arch =
 
 -- TASKS
 
+
+{-| Get a `Dict` of environment variables.
+You're already granted this at application initialization, so you should only need to run this
+if you need an updated set of values.
+-}
 getEnvironmentVariables : Task Never (Dict String String)
 getEnvironmentVariables =
     Gren.Kernel.Node.getEnvironmentVariables
 
 
+{-| Terminate the program.
+-}
 exit : Cmd msg
 exit =
     Gren.Kernel.Node.exit
         |> Task.perform never
 
 
+{-| Terminate the program with a specific error code.
+
+Useful as a way to communicate with other programs that something has gone wrong.
+-}
 exitWithCode : Int -> Cmd msg
 exitWithCode code =
     Gren.Kernel.Node.exitWithCode code

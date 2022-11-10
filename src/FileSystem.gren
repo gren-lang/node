@@ -1,19 +1,15 @@
 module FileSystem exposing
-    ( Configuration
-    , Connection
+    ( Permission
+    , initialize
     --
     , FileHandle
     , ReadableFileHandle
     , WriteableFileHandle
     , ReadWriteableFileHandle
-    --
-    , initialize
-    --
-    , OpenForWriteBehaviour
     , openForRead
+    , OpenForWriteBehaviour
     , openForWrite
     , openForReadAndWrite
-    --
     , close
     --
     , read
@@ -22,6 +18,7 @@ module FileSystem exposing
     , write
     , writeFromOffset
     --
+    , RemoveOptions
     , remove
     --
     , makeDirectory
@@ -29,35 +26,71 @@ module FileSystem exposing
     )
 
 
+{-| Let's you manipulate the file system.
+
+## Initialization
+
+@docs Permission, initialize
+
+## File open/close
+
+@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
+
+## Read from file
+
+@docs read, readFromOffset
+
+## Write to file
+
+@docs write, writeFromOffset
+
+## Remove files and directories
+
+@docs RemoveOptions, remove
+
+## Directories
+
+@docs makeDirectory, listDirectoryContent
+-}
+
+
 import Gren.Kernel.FileSystem
 import Bytes exposing (Bytes)
 import Task exposing (Task)
 import Node.Program as Program
-import Internal.InitTask exposing (InitTask(..))
+import Internal.AppInitTask exposing (AppInitTask(..))
 
 
-type alias Configuration =
-    { connection : Connection
-    }
+{-| This value represents the permission to perform file system operations.
+
+Only code you trust should have access to this value.
+-}
+type Permission
+    = Permission
 
 
-type Connection
-    = Connection
-
-
-initialize : Program.InitTask Configuration
+{-| Initialize the `FileSystem` subsystem, which gains you the permission to perform
+file system operations.
+-}
+initialize : Program.AppInitTask Permission
 initialize =
-    Task.succeed
-        { connection = Connection
-        }
-    |> InitTask
+    Task.succeed Permission
+        |> AppInitTask
 
 
 -- FILES
 
 
--- Note: Actual implementation in kernel code
+{-| A file handle is used to perform operations on a file, like reading and writing.
+
+Having a file handle gives you access to perform certain operations, so make sure you
+only pass a file handle to code you can trust.
+
+The `FileHandle` type also contains the read and write access permissions as part of it's
+type.
+-}
 type FileHandle readAccess writeAccess
+    -- Note: Actual implementation in kernel code
     = FileHandle
 
 
@@ -68,44 +101,66 @@ type WritePermission = WritePermission
 type NoWritePermission = NoWritePermission
 
 
+{-| A `FileHandle` that can be used in read operations.
+-}
 type alias ReadableFileHandle a = FileHandle ReadPermission a
+
+
+{-| A `FileHandle` that can be used in write operations.
+-}
 type alias WriteableFileHandle a = FileHandle a WritePermission
+
+
+{-| A `FileHandle` that can be used for both read and write operations.
+-}
 type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
 
 
 -- OPEN
 
 
-openForRead : Connection -> String -> Task Never (ReadableFileHandle a)
+{-| Open the file at the provided path with read permissions.
+-}
+openForRead : Permission -> String -> Task Never (ReadableFileHandle a)
 openForRead _ path =
     openImpl "r" path
 
 
+{-| There are several ways to open a file for writing.
+
+* `EnsureEmpty` will create an empty file if it doesn't exist, or remove all contents of a file if it does exist.
+* `ExpectExisting` will fail the task if it doesn't exist.
+* `ExpectNotExisting` will fail the task if the file does exist.
+-}
 type OpenForWriteBehaviour
     = EnsureEmpty
-    | ExpectExcisting
+    | ExpectExisting
     | ExpectNotExisting
 
 
-openForWrite : Connection -> OpenForWriteBehaviour -> String -> Task Never (WriteableFileHandle a)
+{-| Open a file at the provided path with write permissions.
+-}
+openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task Never (WriteableFileHandle a)
 openForWrite _ behaviour path =
     let
         access =
             case behaviour of
                 EnsureEmpty -> "w"
-                ExpectExcisting -> "r+"
+                ExpectExisting -> "r+"
                 ExpectNotExisting -> "wx"
     in
     openImpl access path
 
 
-openForReadAndWrite : Connection -> OpenForWriteBehaviour -> String -> Task Never ReadWriteableFileHandle
+{-| Open a file for at the provided path with both read and write permissions.
+-}
+openForReadAndWrite : Permission -> OpenForWriteBehaviour -> String -> Task Never ReadWriteableFileHandle
 openForReadAndWrite _ behaviour path =
     let
         access =
             case behaviour of
                 EnsureEmpty -> "w+"
-                ExpectExcisting -> "r+"
+                ExpectExisting -> "r+"
                 ExpectNotExisting -> "wx+"
     in
     openImpl access path
@@ -118,7 +173,8 @@ openImpl =
 
 -- CLOSE
 
-
+{-| Close a file. All operations performed against the given `FileHandle` will fail.
+-}
 close : FileHandle a b -> Task Never Unit
 close =
     Gren.Kernel.FileSystem.close
@@ -127,11 +183,15 @@ close =
 -- READING
 
 
+{-| Read all bytes in a file.
+-}
 read : ReadableFileHandle a -> Task Never Bytes
 read fh =
     readFromOffset fh { offset = 0, length = -1 }
 
 
+{-| Read `length` number of bytes from a file, starting at `offset` bytes.
+-}
 readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task Never Bytes
 readFromOffset =
     Gren.Kernel.FileSystem.readFromOffset
@@ -140,11 +200,15 @@ readFromOffset =
 -- WRITING
 
 
+{-| Write the provided bytes into the file. If the file is not empty, bytes will be overwritten.
+-}
 write : WriteableFileHandle a -> Bytes -> Task Never Unit
 write fh bytes =
     writeFromOffset fh 0 bytes
 
 
+{-| Write bytes into a specific location of a file.
+-}
 writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task Never Unit
 writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
@@ -153,13 +217,20 @@ writeFromOffset =
 -- REMOVE
 
 
+{-| This record allows you to customize the behaviour of `remove`.
+
+* `recursive` will delete everything inside a directory.
+* `ignoreErrors` will... ignore any errors related to a remove operation.
+-}
 type alias RemoveOptions =
     { recursive : Bool
     , ignoreErrors : Bool
     }
 
 
-remove : Connection -> String -> RemoveOptions -> Task Never Unit
+{-| Remove the file or directory at the given path.
+-}
+remove : Permission -> String -> RemoveOptions -> Task Never Unit
 remove _ path options =
     Gren.Kernel.FileSystem.remove options path
 
@@ -167,16 +238,19 @@ remove _ path options =
 -- DIRECTORIES
 
 
-type alias MakeDirectoryOptions =
-    { recursive : Bool
-    }
+{-| Create a new directory at the given path.
 
-
-makeDirectory : Connection -> String -> MakeDirectoryOptions -> Task Never Unit
+If `recursive` is `True`, then a directory will be created for every section of the
+given path.
+-}
+makeDirectory : Permission -> String -> { recursive : Bool } -> Task Never Unit
 makeDirectory _ path options =
     Gren.Kernel.FileSystem.makeDirectory options path
 
 
-listDirectoryContent : Connection -> String -> Task Never (Array String)
+{-| Returns an `Array` of `String` containing the content names of the directory at the
+given path.
+-}
+listDirectoryContent : Permission -> String -> Task Never (Array String)
 listDirectoryContent _ path =
     Gren.Kernel.FileSystem.listDirectoryContent path

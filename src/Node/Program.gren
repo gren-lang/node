@@ -1,23 +1,49 @@
 module Node.Program exposing
     ( Program
-    , InitTask
+    , ProgramConfiguration
+    , define
     --
-    , program
+    , AppInitTask
     , await
     , startProgram
     )
 
 
+{-| A NodeJS program is defined like most other Gren programs, except that
+there is more flexibility regarding how it is initialized.
+
+You can initialize any number of subsystems, like `FileSystem` or `Terminal`, before
+initializing your own program with the results of those initializations.
+
+As part of initializing a subsystem, you usually also get access to a value that permits
+you to contact said subsystem. Be careful what code you give these permissions to.
+
+## Program
+
+@docs Program, ProgramConfiguration, define
+
+## Initialization
+
+@docs AppInitTask, await, startProgram
+-}
+
+
 import Task exposing (Task)
-import Internal.InitTask
+import Internal.AppInitTask
 
 
+{-| The definition of a Gren program that runs on NodeJS.
+-}
 type alias Program model msg =
     Platform.Program Unit (Model model) (Msg model msg)
 
 
-type alias InitTask a =
-    Internal.InitTask.InitTask a
+{-| This is like a `Task`, but can only be run as part of initializing your
+program. This is usually used for values which should be provided to your program,
+and only your program, as opposed to third-party packages.
+-}
+type alias AppInitTask a =
+    Internal.AppInitTask.AppInitTask a
 
 
 -- TOP LEVEL PROGRAM
@@ -33,15 +59,19 @@ type Msg model msg
     | MsgReceived msg
 
 
-type alias ProgramConfig model msg =
-    { init : InitTask { model : model, command : Cmd msg }
+{-| The required functions that define a program.
+-}
+type alias ProgramConfiguration model msg =
+    { init : AppInitTask { model : model, command : Cmd msg }
     , update : msg -> model -> { model : model, command : Cmd msg }
     , subscriptions : model -> Sub msg
     }
 
 
-program : ProgramConfig model msg -> Program model msg
-program config =
+{-| Define your program. Every NodeJS-based application must define one of these.
+-}
+define : ProgramConfiguration model msg -> Program model msg
+define config =
     Platform.worker
         { init = init config.init
         , update = update config.update
@@ -50,10 +80,10 @@ program config =
 
 
 init
-    : InitTask { model : model, command : Cmd msg }
+    : AppInitTask { model : model, command : Cmd msg }
     -> Unit
     -> { model : Model model, command : Cmd (Msg model msg) }
-init (Internal.InitTask.InitTask task) Unit =
+init (Internal.AppInitTask.AppInitTask task) Unit =
     { model = Uninitialized
     , command = Task.perform InitDone task
     }
@@ -106,19 +136,33 @@ subscriptions appSubs model =
             Sub.map MsgReceived (appSubs appModel)
 
 
--- INIT TASK
+-- APP INIT TASK
 
 
-await : InitTask a -> (a -> InitTask b) -> InitTask b
-await (Internal.InitTask.InitTask task) fn =
-    Internal.InitTask.InitTask (Task.andThen (unwrap << fn) task)
+{-| This let's you wait for the completion of an `AppInitTask` before either starting
+your application, or begin initialization of another `AppInitTask`.
+
+    Program.await Node.initialize <| \nodeConfig ->
+    Program.await FileSystem.initialize <| \fileSystemConfig ->
+        -- Start your own program with the values from Node and FileSystem
+        Program.startProgram
+            { model = 1
+            , commands = Cmd.none
+            }
+-}
+await : AppInitTask a -> (a -> AppInitTask b) -> AppInitTask b
+await (Internal.AppInitTask.AppInitTask task) fn =
+    Internal.AppInitTask.AppInitTask (Task.andThen (unwrap << fn) task)
 
 
-unwrap : InitTask a -> Task Never a
-unwrap (Internal.InitTask.InitTask task) =
+unwrap : AppInitTask a -> Task Never a
+unwrap (Internal.AppInitTask.AppInitTask task) =
     task
 
 
-startProgram : { model : model, command : Cmd cmd } -> InitTask { model : model, command : Cmd cmd }
+{-| This lets the runtime know that you're done initializing other subsystems,
+and that your program is ready to start.
+-}
+startProgram : { model : model, command : Cmd cmd } -> AppInitTask { model : model, command : Cmd cmd }
 startProgram initResult =
-    Internal.InitTask.InitTask (Task.succeed initResult)
+    Internal.AppInitTask.AppInitTask (Task.succeed initResult)
