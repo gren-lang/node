@@ -106,7 +106,7 @@ var _FileSystem_writeFromOffset = F3(function (fh, options, bytes) {
       bytes,
       0,
       bytes.byteLength,
-      options.offset,
+      options.__$offset,
       callback
     );
   });
