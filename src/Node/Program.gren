@@ -35,7 +35,7 @@ import Internal.AppInitTask
 {-| The definition of a Gren program that runs on NodeJS.
 -}
 type alias Program model msg =
-    Platform.Program Unit (Model model) (Msg model msg)
+    Platform.Program {} (Model model) (Msg model msg)
 
 
 {-| This is like a `Task`, but can only be run as part of initializing your
@@ -81,9 +81,9 @@ define config =
 
 init
     : AppInitTask { model : model, command : Cmd msg }
-    -> Unit
+    -> {}
     -> { model : Model model, command : Cmd (Msg model msg) }
-init (Internal.AppInitTask.AppInitTask task) Unit =
+init (Internal.AppInitTask.AppInitTask task) {} =
     { model = Uninitialized
     , command = Task.perform InitDone task
     }

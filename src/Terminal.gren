@@ -188,7 +188,7 @@ onEffects router commands subs state =
                 (\(SetStdInRawMode toggle) tasks ->
                     Task.andThen (\_ -> Platform.sendToSelf router (SelfToggleStdInRawMode toggle)) tasks
                 )
-                (Task.succeed Unit)
+                (Task.succeed {})
                 commands
     in
         commandTasks
@@ -221,7 +221,7 @@ onSelfMsg router event state =
                 |> Array.map (\tagger -> tagger newSize)
                 |> Array.foldl
                     (\msg tasks ->
-                        Task.andThen (\Unit -> Platform.sendToApp router msg) tasks
+                        Task.andThen (\{} -> Platform.sendToApp router msg) tasks
                     )
-                    (Task.succeed Unit)
+                    (Task.succeed {})
                 |> Task.andThen (\_ -> Task.succeed state)

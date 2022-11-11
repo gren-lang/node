@@ -113,15 +113,15 @@ onEffects router commands subs state =
             Dict.diff state.processes newTaggers
                 |> Dict.values
                 |> Array.foldl
-                    (\id tasks -> Task.andThen (\Unit -> Process.kill id) tasks)
-                    (Task.succeed Unit)
+                    (\id tasks -> Task.andThen (\{} -> Process.kill id) tasks)
+                    (Task.succeed {})
 
         commandTasks =
             Array.foldl
                 (\(SendToStream stream bytes) tasks ->
                     Task.andThen (\_ -> Platform.sendToSelf router (ToStream stream bytes)) tasks
                 )
-                (Task.succeed Unit)
+                (Task.succeed {})
                 commands
     in
         commandTasks
@@ -177,7 +177,7 @@ spawnHelp router toSpawn processes =
           |> Task.andThen spawnRest
 
 
-attachListener : Internal.RawStream -> (Bytes -> Task.Task Never Unit) -> Task.Task x Never
+attachListener : Internal.RawStream -> (Bytes -> Task.Task Never {}) -> Task.Task x Never
 attachListener =
   Gren.Kernel.Stream.attachListener
 
@@ -197,9 +197,9 @@ onSelfMsg router event state =
                 |> Array.map (\tagger -> tagger data)
                 |> Array.foldl
                     (\msg tasks ->
-                        Task.andThen (\Unit -> Platform.sendToApp router msg) tasks
+                        Task.andThen (\{} -> Platform.sendToApp router msg) tasks
                     )
-                    (Task.succeed Unit)
+                    (Task.succeed {})
                 |> Task.andThen (\_ -> Task.succeed state)
 
         ToStream (Internal.Stream _ rawStream) bytes ->
