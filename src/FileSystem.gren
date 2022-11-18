@@ -6,6 +6,10 @@ module FileSystem exposing
     , ReadableFileHandle
     , WriteableFileHandle
     , ReadWriteableFileHandle
+    --
+    , UnknownFileSystemError(..)
+    , AccessError(..)
+    --
     , openForRead
     , OpenForWriteBehaviour
     , openForWrite
@@ -31,6 +35,10 @@ module FileSystem exposing
 ## Initialization
 
 @docs Permission, initialize
+
+## Errors
+
+@docs AccessError, UnknownFileSystemError
 
 ## File open/close
 
@@ -116,12 +124,30 @@ type alias WriteableFileHandle a = FileHandle a WritePermission
 type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
 
 
+-- ERRORS
+
+
+{-| The set of errors that can happen when accessing a file or directory.
+-}
+type AccessError
+    = AccessErrorNotFound
+    | AccessErrorNoAccess
+    | AccessErrorUnknown String
+
+
+{-| An error thrown by the OS, in situations where we don't expect errors to happen,
+or have been unable to reproduce such an error in development.
+-}
+type UnknownFileSystemError
+    = UnknownFileSystemError String
+
+
 -- OPEN
 
 
 {-| Open the file at the provided path with read permissions.
 -}
-openForRead : Permission -> String -> Task Never (ReadableFileHandle a)
+openForRead : Permission -> String -> Task AccessError (ReadableFileHandle a)
 openForRead _ path =
     openImpl "r" path
 
@@ -140,7 +166,7 @@ type OpenForWriteBehaviour
 
 {-| Open a file at the provided path with write permissions.
 -}
-openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task Never (WriteableFileHandle a)
+openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError (WriteableFileHandle a)
 openForWrite _ behaviour path =
     let
         access =
@@ -154,7 +180,7 @@ openForWrite _ behaviour path =
 
 {-| Open a file for at the provided path with both read and write permissions.
 -}
-openForReadAndWrite : Permission -> OpenForWriteBehaviour -> String -> Task Never ReadWriteableFileHandle
+openForReadAndWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError ReadWriteableFileHandle
 openForReadAndWrite _ behaviour path =
     let
         access =
@@ -166,7 +192,7 @@ openForReadAndWrite _ behaviour path =
     openImpl access path
 
 
-openImpl : String -> String -> Task Never (FileHandle a b)
+openImpl : String -> String -> Task AccessError (FileHandle a b)
 openImpl =
     Gren.Kernel.FileSystem.open
 
@@ -175,7 +201,7 @@ openImpl =
 
 {-| Close a file. All operations performed against the given `FileHandle` will fail.
 -}
-close : FileHandle a b -> Task Never {}
+close : FileHandle a b -> Task UnknownFileSystemError {}
 close =
     Gren.Kernel.FileSystem.close
 
@@ -185,14 +211,14 @@ close =
 
 {-| Read all bytes in a file.
 -}
-read : ReadableFileHandle a -> Task Never Bytes
+read : ReadableFileHandle a -> Task UnknownFileSystemError Bytes
 read fh =
     readFromOffset fh { offset = 0, length = -1 }
 
 
 {-| Read `length` number of bytes from a file, starting at `offset` bytes.
 -}
-readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task Never Bytes
+readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task UnknownFileSystemError Bytes
 readFromOffset =
     Gren.Kernel.FileSystem.readFromOffset
 
@@ -202,14 +228,14 @@ readFromOffset =
 
 {-| Write the provided bytes into the file. If the file is not empty, bytes will be overwritten.
 -}
-write : WriteableFileHandle a -> Bytes -> Task Never {}
+write : WriteableFileHandle a -> Bytes -> Task UnknownFileSystemError {}
 write fh bytes =
     writeFromOffset fh 0 bytes
 
 
 {-| Write bytes into a specific location of a file.
 -}
-writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task Never {}
+writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task UnknownFileSystemError {}
 writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
 
@@ -230,7 +256,7 @@ type alias RemoveOptions =
 
 {-| Remove the file or directory at the given path.
 -}
-remove : Permission -> String -> RemoveOptions -> Task Never {}
+remove : Permission -> String -> RemoveOptions -> Task AccessError {}
 remove _ path options =
     Gren.Kernel.FileSystem.remove options path
 
@@ -243,7 +269,7 @@ remove _ path options =
 If `recursive` is `True`, then a directory will be created for every section of the
 given path.
 -}
-makeDirectory : Permission -> String -> { recursive : Bool } -> Task Never {}
+makeDirectory : Permission -> String -> { recursive : Bool } -> Task AccessError {}
 makeDirectory _ path options =
     Gren.Kernel.FileSystem.makeDirectory options path
 
@@ -251,6 +277,6 @@ makeDirectory _ path options =
 {-| Returns an `Array` of `String` containing the content names of the directory at the
 given path.
 -}
-listDirectoryContent : Permission -> String -> Task Never (Array String)
+listDirectoryContent : Permission -> String -> Task AccessError (Array String)
 listDirectoryContent _ path =
     Gren.Kernel.FileSystem.listDirectoryContent path

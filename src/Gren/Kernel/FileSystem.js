@@ -1,6 +1,7 @@
 /*
 
-import Gren.Kernel.Scheduler exposing (binding, succeed)
+import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
+import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorUnknown, UnknownFileSystemError)
 
 */
 
@@ -10,15 +11,34 @@ var bufferNs = require("node:buffer");
 var _FileSystem_open = F2(function (access, path) {
   return __Scheduler_binding(function (callback) {
     fs.open(path, access, function (err, fd) {
-      callback(__Scheduler_succeed(fd));
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(fd));
+      }
     });
   });
 });
 
+var _FileSystem_constructAccessError = function (err) {
+  var errMsg = err.message;
+  if (errMsg.indexOf("ENOENT") >= 0) {
+    return __FileSystem_AccessErrorNotFound;
+  } else if (errMsg.indexOf("EACCES") >= 0) {
+    return __FileSystem_AccessErrorNoAccess;
+  } else {
+    return __FileSystem_AccessErrorUnknown(errMsg);
+  }
+};
+
 var _FileSystem_close = function (fh) {
   return __Scheduler_binding(function (callback) {
-    fs.close(fh, function () {
-      callback(__Scheduler_succeed({}));
+    fs.close(fh, function (err) {
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed({}));
+      }
     });
   });
 };
@@ -66,6 +86,11 @@ var _FileSystem_readHelper = function (
     maxReadLength,
     fileOffset,
     function (err, bytesRead, _buff) {
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_UnknownFileSystemError(err)));
+        return;
+      }
+
       var newBufferOffset = bufferOffset + bytesRead;
 
       if (bytesRead === 0 || newBufferOffset >= requestedReadLength) {
@@ -127,6 +152,11 @@ var _FileSystem_writeHelper = function (
     length,
     fileOffset,
     function (err, bytesWritten, buffer) {
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_UnknownFileSystemError(err)));
+        return;
+      }
+
       if (bytesWritten === length) {
         callback(__Scheduler_succeed({}));
         return;
@@ -155,7 +185,11 @@ var _FileSystem_remove = F2(function (options, path) {
 
   return __Scheduler_binding(function (callback) {
     fs.rm(path, rmOpts, function (err) {
-      callback(__Scheduler_succeed({}));
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed({}));
+      }
     });
   });
 });
@@ -163,7 +197,11 @@ var _FileSystem_remove = F2(function (options, path) {
 var _FileSystem_makeDirectory = F2(function (options, path) {
   return __Scheduler_binding(function (callback) {
     fs.mkdir(path, { recursive: options.__$recursive }, function (err) {
-      callback(__Scheduler_succeed({}));
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed({}));
+      }
     });
   });
 });
@@ -171,7 +209,11 @@ var _FileSystem_makeDirectory = F2(function (options, path) {
 var _FileSystem_listDirectoryContent = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.readdir(path, function (err, content) {
-      callback(__Scheduler_succeed(content));
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(content));
+      }
     });
   });
 };
