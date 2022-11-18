@@ -20,6 +20,6 @@ var _Stream_attachListener = F2(function (stream, sendToApp) {
 });
 
 var _Stream_send = F2(function (stream, data) {
-  stream.write(new Uint8Array(data.buffer));
+  stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
   return {};
 });
