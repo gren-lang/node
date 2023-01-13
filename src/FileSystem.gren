@@ -11,7 +11,7 @@ module FileSystem exposing
     , AccessError(..)
     --
     , openForRead
-    , OpenForWriteBehaviour
+    , OpenForWriteBehaviour (..)
     , openForWrite
     , openForReadAndWrite
     , close
