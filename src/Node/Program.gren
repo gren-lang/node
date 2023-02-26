@@ -5,6 +5,7 @@ module Node.Program exposing
     --
     , AppInitTask
     , await
+    , awaitTask
     , startProgram
     )
 
@@ -24,7 +25,7 @@ you to contact said subsystem. Be careful what code you give these permissions t
 
 ## Initialization
 
-@docs AppInitTask, await, startProgram
+@docs AppInitTask, await, awaitTask, startProgram
 -}
 
 
@@ -152,6 +153,22 @@ your application, or begin initialization of another `AppInitTask`.
 -}
 await : AppInitTask a -> (a -> AppInitTask b) -> AppInitTask b
 await (Internal.AppInitTask.AppInitTask task) fn =
+    Internal.AppInitTask.AppInitTask (Task.andThen (unwrap << fn) task)
+
+
+{-| This let's you wait for the completion of a `Task` before either starting
+your application, or begin initialization of another `AppInitTask`.
+
+    Program.await Node.initialize <| \nodeConfig ->
+    Program.awaitTask Task.now <| \time ->
+        -- Start your own program with the values from Node and FileSystem
+        Program.startProgram
+            { model = time
+            , commands = Cmd.none
+            }
+-}
+awaitTask : Task Never a -> (a -> AppInitTask b) -> AppInitTask b
+awaitTask task fn =
     Internal.AppInitTask.AppInitTask (Task.andThen (unwrap << fn) task)
 
 
