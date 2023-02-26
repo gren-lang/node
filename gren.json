@@ -4,7 +4,7 @@
     "name": "gren-lang/node",
     "summary": "Run Gren on NodeJS",
     "license": "BSD-3-Clause",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "exposed-modules": [
         "Node",
         "Node.Program",
