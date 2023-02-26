@@ -42,6 +42,12 @@ var _Node_exitWithCode = function (code) {
   });
 };
 
+var _Node_setExitCode = function (code) {
+  return __Scheduler_binding(function (callback) {
+    process.exitCode = code;
+  });
+};
+
 // Helpers
 
 function _Node_objToDict(obj) {

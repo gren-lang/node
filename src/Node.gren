@@ -8,6 +8,7 @@ module Node exposing
     --
     , exit
     , exitWithCode
+    , setExitCode
     )
 
 {-| This module allows you to start your application with access to application arguments,
@@ -25,7 +26,7 @@ To learn how to use this module's `initialize` function, take a closer look at t
 
 ## Exit
 
-@docs exit, exitWithCode
+@docs exit, exitWithCode, setExitCode
 -}
 
 import Dict exposing ( Dict )
@@ -197,7 +198,9 @@ getEnvironmentVariables =
     Gren.Kernel.Node.getEnvironmentVariables
 
 
-{-| Terminate the program.
+{-| Terminate the program immediatly. It will not wait for tasks like http calls
+or file system writes, so only use this if you've reached a state where it makes
+no sense to continue.
 -}
 exit : Cmd msg
 exit =
@@ -205,12 +208,26 @@ exit =
         |> Task.perform never
 
 
-{-| Terminate the program with a specific error code.
+{-| Terminate the program immediatly. It will not wait for tasks like http calls
+or file system writes, so only use this if you've reached a state where it makes
+no sense to continue.
 
-Useful as a way to communicate with other programs that something has gone wrong.
+The exit code can be read by other processes on your system. Any value other than
+0 is considered an error.
 -}
 exitWithCode : Int -> Cmd msg
 exitWithCode code =
     Gren.Kernel.Node.exitWithCode code
         |> Task.perform never
 
+
+{-| Set the error code that the program will return once it finishes.
+
+Note: This will not terminate your program, so things like http calls
+or writes to the filesystem will be allowed to complete. However,
+the program will only exit once there are no ongoing tasks.
+-}
+setExitCode : Int -> Cmd msg
+setExitCode code =
+    Gren.Kernel.Node.setExitCode code
+        |> Task.perform never
