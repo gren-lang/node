@@ -1,19 +1,22 @@
 effect module Stream where { command = StreamCmd, subscription = StreamSub } exposing
     ( Stream
     , send
+    , sendString
+    , sendLine
     , listen
     )
 
 {-| A `Stream` is an abstract flow of data from one point to another,
 like bytes flowing from a server to a client, or from a file to a program.
 
-@docs Stream, send, listen
+@docs Stream, send, sendString, sendLine, listen
 
 -}
 
 import Dict exposing (Dict)
 import Gren.Kernel.Stream
 import Task
+import Bytes.Encode as BE
 import Bytes exposing (Bytes)
 import Process
 import Internal.Stream as Internal
@@ -39,11 +42,26 @@ cmdMap _ cmd =
             SendToStream stream payload
 
 
-{-| This lets send bytes over a `Stream`.
+{-| This lets you send bytes over a `Stream`.
 -}
 send : Stream -> Bytes -> Cmd msg
 send stream bytes =
     command <| SendToStream stream bytes
+
+
+{-| This lets you send a string over a `Stream`.
+-}
+sendString : Stream -> String -> Cmd msg
+sendString stream string =
+    send stream <|
+        BE.encode <| BE.string string
+
+
+{-| This sends string and a newline over a `Stream`.
+-}
+sendLine : Stream -> String -> Cmd msg
+sendLine stream string =
+    sendString stream <| string ++ "\n"
 
 
 -- SUBSCRIPTION
