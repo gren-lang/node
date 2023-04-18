@@ -2,7 +2,7 @@
 
 This package allows you to create Gren programs that on desktops using the NodeJS runtime.
 
-**I highly recommend working through [gren-lang.org/learn][guide] to learn how to use Gren.**
+**I highly recommend working through [guide](https://gren-lang.org/learn) to learn how to use Gren.**
 
 ## Sub-systems and permissions
 
