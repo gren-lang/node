@@ -9,7 +9,7 @@ effect module Stream where { command = StreamCmd, subscription = StreamSub } exp
 {-| A `Stream` is an abstract flow of data from one point to another,
 like bytes flowing from a server to a client, or from a file to a program.
 
-@docs Stream, send, listen
+@docs Stream, send, sendString, sendLine, listen
 
 -}
 
