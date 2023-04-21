@@ -1,7 +1,6 @@
 module Node.Program exposing
     ( SimpleProgram
     , defineSimple
-    , endWithTask
     , endWithCmd
     --
     , Program
@@ -26,7 +25,7 @@ you to contact said subsystem. Be careful what code you give these permissions t
 
 ## Simple Program
 
-@docs SimpleProgram, defineSimple, endWithTask, endWithCmd
+@docs SimpleProgram, defineSimple, endWithCmd
 
 ## Program
 
@@ -223,14 +222,6 @@ and that your program is ready to start.
 startProgram : { model : model, command : Cmd cmd } -> AppInitTask { model : model, command : Cmd cmd }
 startProgram initResult =
     Internal.AppInitTask.AppInitTask (Task.succeed initResult)
-
-
-{-| When defining a program with `defineTask`, use this function to define the
-final task to execute.
--}
-endWithTask : Task Never a -> AppInitTask (Cmd a)
-endWithTask task =
-    Internal.AppInitTask.AppInitTask (Task.succeed (Task.perform identity task))
 
 
 {-| When defining a program with `defineTask`, use this function to define the
