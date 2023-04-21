@@ -27,6 +27,10 @@ module FileSystem exposing
     --
     , makeDirectory
     , listDirectoryContent
+    --
+    , buildPath
+    , normalizePath
+    , currentWorkingDirectory
     )
 
 
@@ -59,6 +63,10 @@ module FileSystem exposing
 ## Directories
 
 @docs makeDirectory, listDirectoryContent
+
+##
+
+@docs buildPath, normalizePath, currentWorkingDirectory
 -}
 
 
@@ -280,3 +288,36 @@ given path.
 listDirectoryContent : Permission -> String -> Task AccessError (Array String)
 listDirectoryContent _ path =
     Gren.Kernel.FileSystem.listDirectoryContent path
+
+
+-- PATHS
+
+
+{-| Joins an array of strings using the filesystem's path seperator, then normalizes the result.
+An empty array will result in ".", a path to the current working directory.
+
+    buildPath [] == "."
+    buildPath [ "one", "two", "three" ] == "one/two/three" -- On Unix based operating systems
+
+-}
+buildPath : Array String -> String
+buildPath =
+    Gren.Kernel.FileSystem.buildPath
+
+
+{-| Removes redundant symbols from the path.
+
+    normalizePath "one/two/.." == "one/two"
+
+-}
+normalizePath : String -> String
+normalizePath =
+    Gren.Kernel.FileSystem.normalizePath
+
+
+{-| Returns the current working directory of the program.
+This is the directory that all relative paths are relative to.
+-}
+currentWorkingDirectory : Task Never String
+currentWorkingDirectory =
+    Gren.Kernel.FileSystem.currentWorkingDirectory

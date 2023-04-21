@@ -7,6 +7,8 @@ import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErro
 
 var fs = require("node:fs");
 var bufferNs = require("node:buffer");
+var path = require("node:path");
+var process = require("node:process");
 
 var _FileSystem_open = F2(function (access, path) {
   return __Scheduler_binding(function (callback) {
@@ -216,4 +218,16 @@ var _FileSystem_listDirectoryContent = function (path) {
       }
     });
   });
+};
+
+var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(process.cwd()));
+});
+
+var _FileSystem_normalizePath = function (input) {
+  return path.normalize(input);
+};
+
+var _FileSystem_buildPath = function (paths) {
+  return path.join.apply(null, paths);
 };
