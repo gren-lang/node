@@ -1,12 +1,17 @@
 module Node.Program exposing
-    ( Program
+    ( SimpleProgram
+    , defineSimple
+    , endWithTask
+    , endWithCmd
+    --
+    , Program
     , ProgramConfiguration
     , define
+    , startProgram
     --
     , AppInitTask
     , await
     , awaitTask
-    , startProgram
     )
 
 
@@ -19,18 +24,28 @@ initializing your own program with the results of those initializations.
 As part of initializing a subsystem, you usually also get access to a value that permits
 you to contact said subsystem. Be careful what code you give these permissions to.
 
+## Simple Program
+
+@docs SimpleProgram, defineSimple, endWithTask, endWithCmd
+
 ## Program
 
-@docs Program, ProgramConfiguration, define
+@docs Program, ProgramConfiguration, define, startProgram
 
 ## Initialization
 
-@docs AppInitTask, await, awaitTask, startProgram
+@docs AppInitTask, await, awaitTask
 -}
 
 
 import Task exposing (Task)
 import Internal.AppInitTask
+
+
+{-| A simple program that executes a single task and then exits.
+-}
+type alias SimpleProgram a =
+    Program {} a
 
 
 {-| The definition of a Gren program that runs on NodeJS.
@@ -69,7 +84,9 @@ type alias ProgramConfiguration model msg =
     }
 
 
-{-| Define your program. Every NodeJS-based application must define one of these.
+{-| Define a program with access to long-lived state and the ability to respond to
+messages and listen to subscriptions. If you want to define a simple and short-lived
+program, chances are you're looking for `defineSimple` instead.
 -}
 define : ProgramConfiguration model msg -> Program model msg
 define config =
@@ -77,6 +94,29 @@ define config =
         { init = init config.init
         , update = update config.update
         , subscriptions = subscriptions config.subscriptions
+        }
+
+
+{-| Define a simple program that doesn't require long-lived state or the ability to respond
+to messages or subscriptions. Ideal for simple and short-lived programs.
+-}
+defineSimple : AppInitTask (Cmd a) -> SimpleProgram a
+defineSimple (Internal.AppInitTask.AppInitTask task) =
+    Platform.worker
+        { init = \_ ->
+            { model = Uninitialized
+            , command = 
+                Task.perform 
+                    (\cmd -> 
+                        InitDone
+                            { model = {}
+                            , command = cmd
+                            }
+                    )
+                    task
+            }
+        , update = update (\_ _ -> { model = {}, command = Cmd.none })
+        , subscriptions = always Sub.none
         }
 
 
@@ -183,3 +223,19 @@ and that your program is ready to start.
 startProgram : { model : model, command : Cmd cmd } -> AppInitTask { model : model, command : Cmd cmd }
 startProgram initResult =
     Internal.AppInitTask.AppInitTask (Task.succeed initResult)
+
+
+{-| When defining a program with `defineTask`, use this function to define the
+final task to execute.
+-}
+endWithTask : Task Never a -> AppInitTask (Cmd a)
+endWithTask task =
+    Internal.AppInitTask.AppInitTask (Task.succeed (Task.perform identity task))
+
+
+{-| When defining a program with `defineTask`, use this function to define the
+final command to execute.
+-}
+endWithCmd : Cmd a -> AppInitTask (Cmd a)
+endWithCmd cmd =
+    Internal.AppInitTask.AppInitTask (Task.succeed cmd)
