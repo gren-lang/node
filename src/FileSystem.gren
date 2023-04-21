@@ -318,6 +318,6 @@ normalizePath =
 {-| Returns the current working directory of the program.
 This is the directory that all relative paths are relative to.
 -}
-currentWorkingDirectory : Task Never String
-currentWorkingDirectory =
+currentWorkingDirectory : Permission -> Task Never String
+currentWorkingDirectory _ =
     Gren.Kernel.FileSystem.currentWorkingDirectory
