@@ -228,13 +228,13 @@ var _FileSystem_listDirectory = function (path) {
       if (err != null) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
-        callback(__Scheduler_succeed(content.map(toGrenDirEntry)));
+        callback(__Scheduler_succeed(content.map(_FileSystem_toGrenDirEntry)));
       }
     });
   });
 };
 
-var toGrenDirEntry = function (dirEnt) {
+var _FileSystem_toGrenDirEntry = function (dirEnt) {
   if (dirEnt.isFile()) {
     return __FileSystem_File(dirEnt.name);
   } else if (dirEnt.isDirectory()) {
