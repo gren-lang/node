@@ -6,6 +6,7 @@ module FileSystem exposing
     , ReadableFileHandle
     , WriteableFileHandle
     , ReadWriteableFileHandle
+    , DirEntry(..)
     --
     , UnknownFileSystemError(..)
     , AccessError(..)
@@ -27,6 +28,7 @@ module FileSystem exposing
     --
     , makeDirectory
     , listDirectoryContent
+    , listDirectory
     --
     , buildPath
     , normalizePath
@@ -62,7 +64,7 @@ module FileSystem exposing
 
 ## Directories
 
-@docs makeDirectory, listDirectoryContent
+@docs makeDirectory, listDirectoryContent, DirEntry, listDirectory
 
 ##
 
@@ -108,6 +110,21 @@ type.
 type FileHandle readAccess writeAccess
     -- Note: Actual implementation in kernel code
     = FileHandle
+
+
+{-| Represents entries in a directory.
+
+Variants for each type of entry, with a `String` representing the relative path.
+
+As returned by `FileSystem.listDirectory`.
+-}
+type DirEntry
+    = File String
+    | Directory String
+    | Socket String
+    | Symlink String
+    | Device String
+    | Pipe String
 
 
 type ReadPermission = ReadPermission
@@ -288,6 +305,14 @@ given path.
 listDirectoryContent : Permission -> String -> Task AccessError (Array String)
 listDirectoryContent _ path =
     Gren.Kernel.FileSystem.listDirectoryContent path
+
+
+{-| Returns an `Array` of `DirEntry` variants holding names of the files in the
+directory at the given path.
+-}
+listDirectory : Permission -> String -> Task AccessError (Array DirEntry)
+listDirectory _ path =
+    Gren.Kernel.FileSystem.listDirectory path
 
 
 -- PATHS
