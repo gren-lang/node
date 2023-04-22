@@ -112,9 +112,9 @@ type FileHandle readAccess writeAccess
     = FileHandle
 
 
-{-| Represents items in a directory.
+{-| Represents entries in a directory.
 
-Variants for each type of file, holding a `String` with the filename.
+Variants for each type of entry, with a `String` representing the relative path.
 
 As returned by `FileSystem.listDirectory`.
 -}
