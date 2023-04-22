@@ -1,7 +1,7 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
-import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorUnknown, UnknownFileSystemError)
+import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe)
 
 */
 
@@ -208,6 +208,7 @@ var _FileSystem_makeDirectory = F2(function (options, path) {
   });
 });
 
+// List of dir contents as filename strings
 var _FileSystem_listDirectoryContent = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.readdir(path, function (err, content) {
@@ -218,6 +219,35 @@ var _FileSystem_listDirectoryContent = function (path) {
       }
     });
   });
+};
+
+// List of dir contents as DirEntry values holding filename string
+var _FileSystem_listDirectory = function (path) {
+  return __Scheduler_binding(function (callback) {
+    fs.readdir(path, { withFileTypes: true }, function (err, content) {
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(content.map(toGrenDirEntry)));
+      }
+    });
+  });
+};
+
+var toGrenDirEntry = function (dirEnt) {
+  if (dirEnt.isFile()) {
+    return __FileSystem_File(dirEnt.name);
+  } else if (dirEnt.isDirectory()) {
+    return __FileSystem_Directory(dirEnt.name);
+  } else if (dirEnt.isFIFO()) {
+    return __FileSystem_Pipe(dirEnt.name);
+  } else if (dirEnt.isSocket()) {
+    return __FileSystem_Socket(dirEnt.name);
+  } else if (dirEnt.isSymbolicLink()) {
+    return __FileSystem_Symlink(dirEnt.name);
+  } else {
+    return __FileSystem_Device(dirEnt.name);
+  }
 };
 
 var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (callback) {
