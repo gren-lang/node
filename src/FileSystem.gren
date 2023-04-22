@@ -64,7 +64,7 @@ module FileSystem exposing
 
 ## Directories
 
-@docs makeDirectory, listDirectoryContent, listDirectory, DirEntry
+@docs makeDirectory, listDirectoryContent, DirEntry, listDirectory
 
 ##
 
