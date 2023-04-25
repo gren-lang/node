@@ -1,4 +1,14 @@
-module ChildProcess exposing (run)
+module ChildProcess exposing 
+    ( Permission
+    , initialize
+    --
+    , RunOptions
+    , Shell(..)
+    , Inheritable(..)
+    , MaximumBytes(..)
+    , RunDuration(..)
+    , run
+    )
 
 
 import Gren.Kernel.ChildProcess
