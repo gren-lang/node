@@ -64,6 +64,61 @@ type alias SuccessfulRun =
     }
 
 
-run : RunOptions -> Task FailedRun SuccessfulRun
-run =
+run : Permission -> RunOptions -> Task FailedRun SuccessfulRun
+run _ opts =
     Gren.Kernel.ChildProcess.run
+        { program = opts.program
+        , arguments = opts.arguments
+        , shell =
+            case opts.shell of
+                NoShell ->
+                    { choice = 0
+                    , value = ""
+                    }
+
+                DefaultShell ->
+                    { choice = 1
+                    , value = ""
+                    }
+
+                CustomShell value ->
+                    { choice = 2
+                    , value = value
+                    }
+        , workingDirectory =
+             case opts.workingDirectory of
+                 Inherit -> 
+                    { inherit = True
+                    , override = ""
+                    }
+
+                 Override value ->
+                    { inherit = False
+                    , override = value
+                    }
+        , environmentVariables =
+            case opts.environmentVariables of
+                Inherit -> 
+                    { inherit = True
+                    , override = Dict.empty
+                    }
+
+                Override value ->
+                    { inherit = False
+                    , override = value
+                    }
+        , maximumBytesWrittenToStreams =
+            case opts.maximumBytesWrittenToStreams of
+                DefaultMaximum ->
+                    1024 * 1024
+
+                CustomMaximum value ->
+                    value
+        , runDuration =
+            case opts.runDuration of
+                NoLimit ->
+                    0
+
+                Milliseconds ms -> 
+                    max 0 ms
+        }
