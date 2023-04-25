@@ -6,6 +6,7 @@
     "license": "BSD-3-Clause",
     "version": "2.0.0",
     "exposed-modules": [
+        "ChildProcess",
         "Node",
         "Node.Program",
         "Stream",

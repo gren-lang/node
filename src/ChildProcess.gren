@@ -1,0 +1,69 @@
+module ChildProcess exposing (run)
+
+
+import Gren.Kernel.ChildProcess
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
+import Task exposing (Task)
+import Node.Program as Program
+import Internal.AppInitTask exposing (AppInitTask(..))
+
+
+type Permission
+    = Permission
+
+
+initialize : Program.AppInitTask Permission
+initialize =
+    Task.succeed Permission
+        |> AppInitTask
+
+
+type alias RunOptions =
+    { program : String
+    , arguments : Array String
+    , shell : Shell
+    , workingDirectory : Inheritable String
+    , environmentVariables : Inheritable (Dict String String)
+    , maximumBytesWrittenToStreams : MaximumBytes
+    , runDuration : RunDuration
+    }
+
+
+type Shell
+    = NoShell
+    | DefaultShell
+    | CustomShell String
+
+
+type Inheritable value
+    = Inherit
+    | Override value
+
+
+type MaximumBytes
+    = DefaultMaximum
+    | CustomMaximum Int
+
+
+type RunDuration
+    = NoLimit
+    | Milliseconds Int
+
+
+type alias FailedRun =
+    { exitCode: Int
+    , stdout : Bytes
+    , stderr : Bytes
+    }
+
+
+type alias SuccessfulRun =
+    { stdout : Bytes
+    , stderr : Bytes
+    }
+
+
+run : RunOptions -> Task FailedRun SuccessfulRun
+run =
+    Gren.Kernel.ChildProcess.run
