@@ -239,7 +239,9 @@ var _FileSystem_toGrenDirEntry = function (dirEnt) {
   }
 };
 
-var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (callback) {
+var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (
+  callback
+) {
   callback(__Scheduler_succeed(process.cwd()));
 });
 
