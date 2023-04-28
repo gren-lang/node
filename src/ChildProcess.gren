@@ -4,7 +4,8 @@ module ChildProcess exposing
     --
     , RunOptions
     , Shell(..)
-    , Inheritable(..)
+    , WorkingDirectory(..)
+    , EnvironmentVariables(..)
     , MaximumBytes(..)
     , RunDuration(..)
     , run
@@ -33,8 +34,8 @@ type alias RunOptions =
     { program : String
     , arguments : Array String
     , shell : Shell
-    , workingDirectory : Inheritable String
-    , environmentVariables : Inheritable (Dict String String)
+    , workingDirectory : WorkingDirectory
+    , environmentVariables : EnvironmentVariables
     , maximumBytesWrittenToStreams : MaximumBytes
     , runDuration : RunDuration
     }
@@ -46,9 +47,15 @@ type Shell
     | CustomShell String
 
 
-type Inheritable value
-    = Inherit
-    | Override value
+type WorkingDirectory
+    = InheritWorkingDirectory
+    | SetWorkingDirectory String
+
+
+type EnvironmentVariables
+    = InheritEnvironmentVariables
+    | MergeWithEnvironmentVariables (Dict String String)
+    | ReplaceEnvironmentVariables (Dict String String)
 
 
 type MaximumBytes
@@ -97,25 +104,30 @@ run _ opts =
                     }
         , workingDirectory =
              case opts.workingDirectory of
-                 Inherit -> 
+                 InheritWorkingDirectory -> 
                     { inherit = True
                     , override = ""
                     }
 
-                 Override value ->
+                 SetWorkingDirectory value ->
                     { inherit = False
                     , override = value
                     }
         , environmentVariables =
             case opts.environmentVariables of
-                Inherit -> 
-                    { inherit = True
-                    , override = Dict.empty
+                InheritEnvironmentVariables -> 
+                    { option = 0
+                    , value = Dict.empty
+                    }
+                
+                MergeWithEnvironmentVariables value ->
+                    { option = 1
+                    , value = value
                     }
 
-                Override value ->
-                    { inherit = False
-                    , override = value
+                ReplaceEnvironmentVariables value ->
+                    { option = 2
+                    , value = value
                     }
         , maximumBytesWrittenToStreams =
             case opts.maximumBytesWrittenToStreams of
