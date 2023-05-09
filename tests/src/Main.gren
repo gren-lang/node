@@ -1,0 +1,13 @@
+module Main exposing (main)
+
+import Expect
+import Test exposing (describe, test)
+import Test.Runner.Node exposing (Program, run)
+import Tests.HttpServer as HttpServer
+
+main : Program
+main =
+    run <|
+        describe "All tests"
+            [ describe "HttpServer" HttpServer.tests
+            ]

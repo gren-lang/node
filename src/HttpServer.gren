@@ -1,0 +1,453 @@
+effect module HttpServer where { subscription = HttpSub } exposing
+    -- Init
+    ( Permission
+    , initialize
+
+    -- Server
+    , Server
+    , ServerError(..)
+    , createServer
+
+    -- Requests
+    , Request
+    , Method(..)
+    , bodyAsString
+    , bodyFromJson
+    , toRequest
+    , requestInfo
+    , onRequest
+    )
+
+{-| Create a server that can respond to HTTP requests.
+
+You write your server using The Elm Architecture by subscribing to request
+events and responding with commands in update.
+
+Minimal example:
+
+    module Main exposing (main)
+
+    import Node
+    import Stream exposing (Stream)
+    import Node exposing (Environment, Program)
+    import HttpServer as Http exposing (ServerError(..))
+    import HttpServer.Response as Response exposing (Response)
+    import Init
+    import Task
+    import Url
+
+    main : Program Model Msg
+    main =
+        Node.defineProgram
+            { init = init
+            , update = update
+            , subscriptions = subscriptions
+            }
+
+    type alias Model =
+        { stdout : Stream
+        , stderr : Stream
+        , server : Maybe Http.Server
+        }
+
+    type Msg
+        = CreateServerResult (Result Http.ServerError Http.Server)
+        | GotRequest Http.Request Response
+
+    init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+    init env =
+        Init.await Http.initialize <| \serverPermission ->
+            Node.startProgram
+                { model =
+                    { stdout = env.stdout
+                    , stderr = env.stderr
+                    , server = Nothing
+                    }
+                , command =
+                    Task.attempt CreateServerResult <|
+                        Http.createServer serverPermission
+                            { host = "localhost"
+                            , port_ = 3000
+                            }
+                }
+
+    update : Msg -> Model -> { model : Model, command : Cmd Msg }
+    update msg model =
+        case msg of
+            CreateServerResult result ->
+                case result of
+                    Ok server ->
+                        { model = { model | server = Just server }
+                        , command = Stream.sendLine model.stdout
+                            "Server started"
+                        }
+                    Err (ServerError code message) ->
+                        { model = model
+                        , command = Stream.sendLine model.stderr <|
+                            "Server failed to start: " ++ code ++ "\n" ++ message
+                        }
+        
+            GotRequest req res ->
+                let
+                    body = "You requested: " ++ Url.toString req.url
+                in
+                { model = model
+                , command =
+                    res
+                        |> Response.setHeader "Content-type" "text/html"
+                        |> Response.setBody ("<html>" ++ body ++ "</html>")
+                        |> Response.send
+                }
+
+    subscriptions : Model -> Sub Msg
+    subscriptions model =
+        case model.server of
+            Just server ->
+                Http.onRequest server GotRequest
+
+            Nothing ->
+                Sub.none
+
+See [examples/http-server](https://github.com/gren-lang/node/tree/main/examples/http-server) for more.
+
+## Initialization
+
+@docs Permission, Server, ServerError, initialize, createServer
+
+## Requests
+
+@docs Request, Method, bodyAsString, bodyFromJson, toRequest, requestInfo
+
+## Responding to requests
+
+@docs onRequest
+
+See [HttpServer.Response](HttpServer.Response) for more details on responding to requests.
+
+-}
+
+import Bytes exposing (Bytes)
+import Bytes.Decode as Decode
+import Dict exposing (Dict)
+import Init
+import Internal.Init
+import Json.Encode
+import Json.Decode
+import Node
+import Task exposing (Task)
+import Gren.Kernel.HttpServer
+import HttpServer.Response exposing (Response(..))
+import Url exposing (Url, Protocol(..))
+
+
+-- INITIALIZATION
+
+
+{-| The permission to start a [`Server`](HttpServer.Server).
+
+You get this from [`initialize`](HttpServer.initialize).
+-}
+type Permission
+    = Permission
+
+{-| The HTTP server.
+-}
+type Server
+    -- Note: Actual implementation in Kernel code
+    = Server
+
+
+{-| Error code and message from node.
+Most likely from a failed attempt to start the server (e.g. `EADDRINUSE`).
+Refer to the [node docs](https://nodejs.org/docs/latest-v18.x/api/errors.html) for details.
+-}
+type ServerError =
+    ServerError String String
+
+
+{-| Initialize the [`HttpServer`](HttpServer) module and get permission to create a server.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+
+{-| Task to initialize a [`Server`](HttpServer#Server).
+-}
+createServer : Permission -> { host : String, port_ : Int } -> Task ServerError Server
+createServer _ options =
+    Gren.Kernel.HttpServer.createServer options.host options.port_
+
+
+-- REQUESTS
+
+
+{-| An incoming HTTP reqest.
+-}
+type alias Request =
+    { headers : Dict String String
+    , method : Method
+    , body : Bytes
+    , url : Url
+    }
+
+
+{-| HTTP request methods.
+-}
+type Method
+    = GET
+    | HEAD
+    | POST
+    | PUT
+    | DELETE
+    | CONNECT
+    | TRACE
+    | PATCH
+    | UNKNOWN
+
+
+{-| Turn the pieces of a request into a [`Request`](HttpServer.Request) record.
+
+This is used internally, you shouldn't need it in your own code.
+-}
+toRequest :
+    { urlProtocol : String
+    , urlHost : String
+    , urlPort : String
+    , urlPath : String
+    , urlQuery : String
+    , urlFragment : String
+    , headers : Array String
+    , method : String
+    , body : Bytes
+    }
+    -> Request
+toRequest 
+    { urlProtocol
+    , urlHost
+    , urlPort
+    , urlPath
+    , urlQuery
+    , urlFragment
+    , headers
+    , method
+    , body 
+    } =
+    { method = toMethod method
+    , body = body
+    , headers =
+        headers
+            |> arrayPairs
+            |> dictFromPairs
+    , url =
+        { protocol = 
+            if urlProtocol == "https:" then
+                Https
+            else
+                Http
+        , host = urlHost
+        , path = urlPath
+        , port_ = String.toInt urlPort
+        , query = 
+            if urlQuery == "" then
+                Nothing
+            else
+                Just urlQuery
+        , fragment =
+            if urlFragment == "" then
+                Nothing
+            else
+                Just urlFragment
+        }
+    }
+
+
+{-| Get request body as a string.
+-}
+bodyAsString : Request -> Maybe String
+bodyAsString req =
+    Decode.decode
+        (Decode.string (Bytes.width req.body))
+        req.body
+
+
+{-| Get request body as json.
+-}
+bodyFromJson : Json.Decode.Decoder a -> Request -> Result Json.Decode.Error a
+bodyFromJson decoder req =
+    req
+        |> bodyAsString
+        |> Maybe.withDefault "" -- or better if result holds a maybe?
+        |> Json.Decode.decodeString decoder
+
+
+{-| Get a string representation of the request.
+
+Good for logging.
+-}
+requestInfo : Request -> String
+requestInfo req =
+    let
+        method
+            = case req.method of
+                GET ->
+                    "GET"
+
+                HEAD ->
+                    "HEAD"
+
+                POST ->
+                    "POST"
+
+                PUT ->
+                    "PUT"
+
+                DELETE ->
+                    "DELETE"
+
+                CONNECT ->
+                    "CONNECT"
+
+                TRACE ->
+                    "TRACE"
+
+                PATCH ->
+                    "PATCH"
+
+                UNKNOWN ->
+                    "UNKNOWN"
+    in
+    method ++ " " ++ req.url.path
+
+
+toMethod : String -> Method
+toMethod s =
+    case s of
+        "GET" ->
+            GET
+        
+        "HEAD" ->
+            HEAD
+
+        "POST" ->
+            POST
+        
+        "PUT" ->
+            PUT
+        
+        "DELETE" ->
+            DELETE
+        
+        "CONNECT" ->
+            CONNECT
+        
+        "TRACE" ->
+            TRACE
+        
+        "PATCH" ->
+            PATCH
+        
+        _ ->
+            UNKNOWN
+
+
+arrayPairs : Array String -> Array (Array String)
+arrayPairs a =
+    let
+        pair = 
+            Array.takeFirst 2 a
+        
+        rest =
+            Array.dropFirst 2 a
+        
+        allPairs =
+            [ pair ] ++ case rest of
+                [] ->
+                    []
+                
+                _ ->
+                    arrayPairs rest
+    in
+    allPairs
+
+
+dictFromPairs : Array (Array String) -> Dict String String
+dictFromPairs pairs =
+    let
+        mapper p =
+            case p of
+                [a, b] ->
+                    Just { key = a, value = b }
+                
+                _ ->
+                    Nothing
+        
+        array =
+            Array.filterMap mapper pairs
+    in
+    Dict.fromArray array
+
+
+-- EFFECT STUFF
+
+
+type HttpSub msg
+    = OnRequestSub Server (Request -> Response -> msg)
+
+
+subMap : (a -> b) -> HttpSub a -> HttpSub b
+subMap f sub =
+    case sub of
+        OnRequestSub server msg ->
+            OnRequestSub server (\req res -> f (msg req res))
+
+
+type alias State msg =
+    Array (HttpSub msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed []
+
+
+onEffects
+    : Platform.Router msg SelfMsg
+    -> Array (HttpSub msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router subs state =
+    let
+        _removeListeners =
+            state
+                |> Array.map
+                    (\(OnRequestSub server _) ->
+                        Gren.Kernel.HttpServer.removeAllListeners server
+                    )
+        
+        _addListeners =
+            subs
+                |> Array.map
+                    (\(OnRequestSub server msg) ->
+                        Gren.Kernel.HttpServer.addListener server router msg
+                    )
+    in
+    Task.succeed subs
+
+
+type SelfMsg =
+    Never
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> (State msg) -> Task Never (State msg)
+onSelfMsg _ _ state =
+    Task.succeed state
+
+
+{-| Subscribe to incoming HTTP requests.
+-}
+onRequest : Server -> (Request -> Response -> msg) -> Sub msg
+onRequest server tagger =
+    subscription (OnRequestSub server tagger)

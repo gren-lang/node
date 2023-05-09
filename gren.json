@@ -7,6 +7,8 @@
   "version": "2.0.0",
   "exposed-modules": [
     "ChildProcess",
+    "HttpServer",
+    "HttpServer.Response",
     "Init",
     "Node",
     "Stream",
@@ -15,6 +17,7 @@
   ],
   "gren-version": "0.3.0 <= v < 0.4.0",
   "dependencies": {
-    "gren-lang/core": "4.0.0 <= v < 5.0.0"
+    "gren-lang/core": "4.0.0 <= v < 5.0.0",
+    "gren-lang/url": "3.0.0 <= v < 4.0.0"
   }
 }

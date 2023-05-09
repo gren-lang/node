@@ -3,3 +3,4 @@
 artifacts.dat
 docs.json
 node_modules/
+tests/app
