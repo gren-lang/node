@@ -41,7 +41,6 @@ type alias RawConfiguration =
     { platform : String
     , arch : String
     , args : Array String
-    , env : Dict String String
     , stdout : IStream.RawStream
     , stderr : IStream.RawStream
     , stdin : IStream.RawStream
@@ -52,7 +51,6 @@ type alias RawConfiguration =
 
 * `platform` and `cpuArchitecture` tells you something about the operating system and machine your application is running on.
 * `args` is an `Array` of the arguments passed to your application.
-* `env` contains the environment variables as they where at initialization time. You can always refresh this `Dict` by using `getEnvironmentVariables`.
 * `stdout`, `stderr` and `stdin` are streams you can use to communicate with the outside world. Take a closer look at the `Stream` module for more information.
 
 -}
@@ -60,7 +58,6 @@ type alias Configuration =
     { platform : Platform
     , cpuArchitecture : CpuArchitecture
     , args : Array String
-    , env : Dict String String
     , stdout : IStream.Stream
     , stderr : IStream.Stream
     , stdin : IStream.Stream
@@ -77,7 +74,6 @@ initialize =
                     { platform = platformFromString raw.platform
                     , cpuArchitecture = archFromString raw.arch
                     , args = raw.args
-                    , env = raw.env
                     , stdout = IStream.Stream 0 raw.stdout
                     , stderr = IStream.Stream 1 raw.stderr
                     , stdin = IStream.Stream 2 raw.stdin
@@ -190,8 +186,6 @@ archFromString arch =
 
 
 {-| Get a `Dict` of environment variables.
-You're already granted this at application initialization, so you should only need to run this
-if you need an updated set of values.
 -}
 getEnvironmentVariables : Task Never (Dict String String)
 getEnvironmentVariables =

@@ -20,7 +20,6 @@ var _Node_init = __Scheduler_binding(function (callback) {
       __$platform: process.platform,
       __$arch: process.arch,
       __$args: process.argv,
-      __$env: _Node_objToDict(process.env),
       __$stdout: process.stdout,
       __$stderr: process.stderr,
       __$stdin: process.stdin,
