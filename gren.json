@@ -4,7 +4,7 @@
     "name": "gren-lang/node",
     "summary": "Run Gren on NodeJS",
     "license": "BSD-3-Clause",
-    "version": "1.2.0",
+    "version": "2.0.0",
     "exposed-modules": [
         "Node",
         "Node.Program",
@@ -12,8 +12,8 @@
         "Terminal",
         "FileSystem"
     ],
-    "gren-version": "0.2.0 <= v < 0.3.0",
+    "gren-version": "0.3.0 <= v < 0.4.0",
     "dependencies": {
-        "gren-lang/core": "3.0.0 <= v < 4.0.0"
+        "gren-lang/core": "4.0.0 <= v < 5.0.0"
     }
 }
