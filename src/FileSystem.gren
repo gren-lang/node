@@ -27,7 +27,6 @@ module FileSystem exposing
     , remove
     --
     , makeDirectory
-    , listDirectoryContent
     , listDirectory
     --
     , buildPath
@@ -64,7 +63,7 @@ module FileSystem exposing
 
 ## Directories
 
-@docs makeDirectory, listDirectoryContent, DirEntry, listDirectory
+@docs makeDirectory, DirEntry, listDirectory
 
 ##
 
@@ -157,6 +156,7 @@ type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
 type AccessError
     = AccessErrorNotFound
     | AccessErrorNoAccess
+    | AccessErrorNotADirectory
     | AccessErrorUnknown String
 
 
@@ -297,14 +297,6 @@ given path.
 makeDirectory : Permission -> String -> { recursive : Bool } -> Task AccessError {}
 makeDirectory _ path options =
     Gren.Kernel.FileSystem.makeDirectory options path
-
-
-{-| Returns an `Array` of `String` containing the content names of the directory at the
-given path.
--}
-listDirectoryContent : Permission -> String -> Task AccessError (Array String)
-listDirectoryContent _ path =
-    Gren.Kernel.FileSystem.listDirectoryContent path
 
 
 {-| Returns an `Array` of `DirEntry` variants holding names of the files in the

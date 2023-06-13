@@ -1,7 +1,7 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
-import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe)
+import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe)
 
 */
 
@@ -28,6 +28,8 @@ var _FileSystem_constructAccessError = function (err) {
     return __FileSystem_AccessErrorNotFound;
   } else if (errMsg.indexOf("EACCES") >= 0) {
     return __FileSystem_AccessErrorNoAccess;
+  } else if (errMsg.indexOf("ENOTDIR") >= 0) {
+    return __FileSystem_AccessErrorNotADirectory;
   } else {
     return __FileSystem_AccessErrorUnknown(errMsg);
   }
@@ -207,19 +209,6 @@ var _FileSystem_makeDirectory = F2(function (options, path) {
     });
   });
 });
-
-// List of dir contents as filename strings
-var _FileSystem_listDirectoryContent = function (path) {
-  return __Scheduler_binding(function (callback) {
-    fs.readdir(path, function (err, content) {
-      if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(content));
-      }
-    });
-  });
-};
 
 // List of dir contents as DirEntry values holding filename string
 var _FileSystem_listDirectory = function (path) {
