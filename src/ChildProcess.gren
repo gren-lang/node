@@ -8,6 +8,8 @@ module ChildProcess exposing
     , EnvironmentVariables(..)
     , MaximumBytes(..)
     , RunDuration(..)
+    , FailedRun
+    , SuccessfulRun
     , run
     )
 
