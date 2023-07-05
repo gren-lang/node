@@ -35,7 +35,7 @@ module FileSystem exposing
     )
 
 
-{-| Let's you manipulate the file system.
+{-| This module provides access to the file system. It allows you to read and write files or directories.
 
 ## Initialization
 

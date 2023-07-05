@@ -1,0 +1,224 @@
+module ChildProcess exposing 
+    ( Permission
+    , initialize
+    --
+    , RunOptions
+    , Shell(..)
+    , WorkingDirectory(..)
+    , EnvironmentVariables(..)
+    , MaximumBytes(..)
+    , RunDuration(..)
+    , FailedRun
+    , SuccessfulRun
+    , run
+    )
+
+
+{-| A running program is a process. A process spawned from another process is known as a child process. Child processes terminate along with their parent.
+
+This module allow you to spawn child processes.
+
+## Initialization
+
+@docs Permission, initialize
+
+## Options
+
+@docs RunOptions, Shell, WorkingDirectory, EnvironmentVariables, MaximumBytes, RunDuration
+
+## Spawning processes
+
+@docs FailedRun, SuccessfulRun, run
+-}
+
+
+import Gren.Kernel.ChildProcess
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
+import Task exposing (Task)
+import Node.Program as Program
+import Internal.AppInitTask exposing (AppInitTask(..))
+
+
+{-| This value represents the permission to spawn child processes.
+
+Only code you trust should have access to this value.
+-}
+type Permission
+    = Permission
+
+
+{-| Initialize the `ChildProcess` subsystem, which gains you the permission to
+spawn child processes.
+-}
+initialize : Program.AppInitTask Permission
+initialize =
+    Task.succeed Permission
+        |> AppInitTask
+
+
+-- OPTIONS
+
+
+{-| Options to tailor the execution of a child process.
+
+* `program` is the name of the process you wish to run
+* `arguments` is an array of arguments you pass to the process
+* `shell` is the shell to run the process in (if any)
+* `workingDirectory` specifies the working directory of the process
+* `environmentVariables` specifies the environment variables the process has access to
+* `maximumBytesWrittenToStreams` specifies an upper bound of bytes that can be returned from the process
+* `runDuration` specifies a maximum amount of time a process is allowed to run before exiting
+-}
+type alias RunOptions =
+    { program : String
+    , arguments : Array String
+    , shell : Shell
+    , workingDirectory : WorkingDirectory
+    , environmentVariables : EnvironmentVariables
+    , maximumBytesWrittenToStreams : MaximumBytes
+    , runDuration : RunDuration
+    }
+
+
+{-| Which shell should the child process run in?
+
+* `NoShell` executes the process directly, without any shell. A little bit more efficient, but you lose some convinience as shell behaviour (like glob patterns) isn't available for arguments
+* `DefaultShell` executes the process in the default shell for the currently running system
+* `CustomShell` executes the process in the specified shell.
+-}
+type Shell
+    = NoShell
+    | DefaultShell
+    | CustomShell String
+
+
+{-| What should be the working directory of the process?
+
+* `InheritWorkingDirectory` inherits the working directory from its parent
+* `SetWorkingDirectory` sets the working directory to the specified value (doesn't affect parent)
+-}
+type WorkingDirectory
+    = InheritWorkingDirectory
+    | SetWorkingDirectory String
+
+
+{-| What should be the environment variables of the process?
+
+* `InheritEnvironmentVariables` inherits the environment variables from its parent
+* `MergeWithEnvironmentVariables` inherits the environment variables from its parent, with the specified modifications
+* `ReplaceEnvironmentVariables` sets the environment variables to the specified dictionary
+-}
+type EnvironmentVariables
+    = InheritEnvironmentVariables
+    | MergeWithEnvironmentVariables (Dict String String)
+    | ReplaceEnvironmentVariables (Dict String String)
+
+
+{-| What is the maximum amount of bytes the process can return through its standard out and standard error streams?
+
+* `DefaultMaximum` is the same as 1Mb
+* `CustomMaximum` sets a limit in bytes
+-}
+type MaximumBytes
+    = DefaultMaximum
+    | CustomMaximum Int
+
+
+{-| How long is the process allowed to run before it's forcefully terminated?
+
+* `NoLimit` means it can run forever
+* `Milliseconds` sets the limit to the specified number of milliseconds
+-}
+type RunDuration
+    = NoLimit
+    | Milliseconds Int
+
+
+-- RUN
+
+
+{-| Return value when a process terminates due to an error
+
+The exit code provides some hint of what went wrong, but what it means depends on the program which was run.
+-}
+type alias FailedRun =
+    { exitCode: Int
+    , stdout : Bytes
+    , stderr : Bytes
+    }
+
+
+{-| Return value when a process terminates without error
+-}
+type alias SuccessfulRun =
+    { stdout : Bytes
+    , stderr : Bytes
+    }
+
+
+{-| Spawn a process according the provided options, and wait for it to terminate.
+-}
+run : Permission -> RunOptions -> Task FailedRun SuccessfulRun
+run _ opts =
+    Gren.Kernel.ChildProcess.run
+        { program = opts.program
+        , arguments = opts.arguments
+        , shell =
+            case opts.shell of
+                NoShell ->
+                    { choice = 0
+                    , value = ""
+                    }
+
+                DefaultShell ->
+                    { choice = 1
+                    , value = ""
+                    }
+
+                CustomShell value ->
+                    { choice = 2
+                    , value = value
+                    }
+        , workingDirectory =
+             case opts.workingDirectory of
+                 InheritWorkingDirectory -> 
+                    { inherit = True
+                    , override = ""
+                    }
+
+                 SetWorkingDirectory value ->
+                    { inherit = False
+                    , override = value
+                    }
+        , environmentVariables =
+            case opts.environmentVariables of
+                InheritEnvironmentVariables -> 
+                    { option = 0
+                    , value = Dict.empty
+                    }
+                
+                MergeWithEnvironmentVariables value ->
+                    { option = 1
+                    , value = value
+                    }
+
+                ReplaceEnvironmentVariables value ->
+                    { option = 2
+                    , value = value
+                    }
+        , maximumBytesWrittenToStreams =
+            case opts.maximumBytesWrittenToStreams of
+                DefaultMaximum ->
+                    1024 * 1024
+
+                CustomMaximum value ->
+                    value
+        , runDuration =
+            case opts.runDuration of
+                NoLimit ->
+                    0
+
+                Milliseconds ms -> 
+                    max 0 ms
+        }
