@@ -10,6 +10,10 @@ var bufferNs = require("node:buffer");
 var path = require("node:path");
 var process = require("node:process");
 
+var _FileSystem_coerce = function (fh) {
+  return fh;
+};
+
 var _FileSystem_open = F2(function (access, path) {
   return __Scheduler_binding(function (callback) {
     fs.open(path, access, function (err, fd) {

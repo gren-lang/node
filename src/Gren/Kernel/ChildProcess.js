@@ -48,7 +48,8 @@ var _ChildProcess_run = function (options) {
         } else {
           callback(
             __Scheduler_fail({
-              __$exitCode: typeof err.errno === 'undefined' ? err.code : err.errno,
+              __$exitCode:
+                typeof err.errno === "undefined" ? err.code : err.errno,
               __$stdout: new DataView(stdout.buffer, stdout.byteOffset),
               __$stderr: new DataView(stderr.buffer, stderr.byteOffset),
             })

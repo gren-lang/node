@@ -6,7 +6,10 @@ module FileSystem exposing
     , ReadableFileHandle
     , WriteableFileHandle
     , ReadWriteableFileHandle
-    , DirEntry(..)
+    , ReadPermission
+    , WritePermission
+    , makeReadOnly
+    , makeWriteOnly
     --
     , UnknownFileSystemError(..)
     , AccessError(..)
@@ -27,6 +30,7 @@ module FileSystem exposing
     , remove
     --
     , makeDirectory
+    , DirEntry(..)
     , listDirectory
     --
     , buildPath
@@ -47,7 +51,7 @@ module FileSystem exposing
 
 ## File open/close
 
-@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
+@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
 
 ## Read from file
 
@@ -65,7 +69,7 @@ module FileSystem exposing
 
 @docs makeDirectory, DirEntry, listDirectory
 
-##
+## Paths
 
 @docs buildPath, normalizePath, currentWorkingDirectory
 -}
@@ -111,26 +115,14 @@ type FileHandle readAccess writeAccess
     = FileHandle
 
 
-{-| Represents entries in a directory.
-
-Variants for each type of entry, with a `String` representing the relative path.
-
-As returned by `FileSystem.listDirectory`.
+{-| A type that represents the permission to read from a file.
 -}
-type DirEntry
-    = File String
-    | Directory String
-    | Socket String
-    | Symlink String
-    | Device String
-    | Pipe String
-
-
 type ReadPermission = ReadPermission
-type NoReadPermission = NoReadPermission
 
+
+{-| A type that represents the permission to write to a file.
+-}
 type WritePermission = WritePermission
-type NoWritePermission = NoWritePermission
 
 
 {-| A `FileHandle` that can be used in read operations.
@@ -146,6 +138,44 @@ type alias WriteableFileHandle a = FileHandle a WritePermission
 {-| A `FileHandle` that can be used for both read and write operations.
 -}
 type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
+
+
+{-| This let's you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has read permission.
+
+Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
+of your code.
+-}
+makeReadOnly : ReadWriteableFileHandle -> FileHandle ReadPermission Never
+makeReadOnly =
+    Gren.Kernel.FileSystem.coerce
+
+
+{-| This let's you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has write permission.
+
+Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
+of your code.
+-}
+makeWriteOnly : ReadWriteableFileHandle -> FileHandle Never WritePermission
+makeWriteOnly =
+    Gren.Kernel.FileSystem.coerce
+
+
+-- DIRECTORY
+
+
+{-| Represents entries in a directory.
+
+Variants for each type of entry, with a `String` representing the relative path.
+
+As returned by `FileSystem.listDirectory`.
+-}
+type DirEntry
+    = File String
+    | Directory String
+    | Socket String
+    | Symlink String
+    | Device String
+    | Pipe String
 
 
 -- ERRORS
@@ -172,7 +202,7 @@ type UnknownFileSystemError
 
 {-| Open the file at the provided path with read permissions.
 -}
-openForRead : Permission -> String -> Task AccessError (ReadableFileHandle a)
+openForRead : Permission -> String -> Task AccessError (FileHandle ReadPermission Never)
 openForRead _ path =
     openImpl "r" path
 
@@ -191,7 +221,7 @@ type OpenForWriteBehaviour
 
 {-| Open a file at the provided path with write permissions.
 -}
-openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError (WriteableFileHandle a)
+openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError (FileHandle Never WritePermission)
 openForWrite _ behaviour path =
     let
         access =
