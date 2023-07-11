@@ -3,14 +3,16 @@ module ChildProcess exposing
     , initialize
     --
     , RunOptions
+    , defaultRunOptions
     , Shell(..)
     , WorkingDirectory(..)
     , EnvironmentVariables(..)
-    , MaximumBytes(..)
     , RunDuration(..)
+    --
     , FailedRun
     , SuccessfulRun
     , run
+    , runWithDefaultOptions
     )
 
 
@@ -24,11 +26,11 @@ This module allow you to spawn child processes.
 
 ## Options
 
-@docs RunOptions, Shell, WorkingDirectory, EnvironmentVariables, MaximumBytes, RunDuration
+@docs RunOptions, defaultRunOptions, Shell, WorkingDirectory, EnvironmentVariables, RunDuration
 
 ## Spawning processes
 
-@docs FailedRun, SuccessfulRun, run
+@docs FailedRun, SuccessfulRun, run, runWithDefaultOptions
 -}
 
 
@@ -60,10 +62,8 @@ initialize =
 -- OPTIONS
 
 
-{-| Options to tailor the execution of a child process.
+{-| Options to customize the execution of a child process.
 
-* `program` is the name of the process you wish to run
-* `arguments` is an array of arguments you pass to the process
 * `shell` is the shell to run the process in (if any)
 * `workingDirectory` specifies the working directory of the process
 * `environmentVariables` specifies the environment variables the process has access to
@@ -71,13 +71,23 @@ initialize =
 * `runDuration` specifies a maximum amount of time a process is allowed to run before exiting
 -}
 type alias RunOptions =
-    { program : String
-    , arguments : Array String
-    , shell : Shell
+    { shell : Shell
     , workingDirectory : WorkingDirectory
     , environmentVariables : EnvironmentVariables
-    , maximumBytesWrittenToStreams : MaximumBytes
+    , maximumBytesWrittenToStreams : Int
     , runDuration : RunDuration
+    }
+
+
+{-| A nice default set of options for the `run` function
+-}
+defaultRunOptions : RunOptions
+defaultRunOptions =
+    { shell = DefaultShell
+    , workingDirectory = InheritWorkingDirectory
+    , environmentVariables = InheritEnvironmentVariables
+    , maximumBytesWrittenToStreams = 1024 * 1024 -- 1Mb
+    , runDuration = NoLimit
     }
 
 
@@ -115,16 +125,6 @@ type EnvironmentVariables
     | ReplaceEnvironmentVariables (Dict String String)
 
 
-{-| What is the maximum amount of bytes the process can return through its standard out and standard error streams?
-
-* `DefaultMaximum` is the same as 1Mb
-* `CustomMaximum` sets a limit in bytes
--}
-type MaximumBytes
-    = DefaultMaximum
-    | CustomMaximum Int
-
-
 {-| How long is the process allowed to run before it's forcefully terminated?
 
 * `NoLimit` means it can run forever
@@ -157,13 +157,16 @@ type alias SuccessfulRun =
     }
 
 
-{-| Spawn a process according the provided options, and wait for it to terminate.
+{-| Spawn a process with a given name, arguments and options, and wait for it to terminate.
+
+    run permission "cat" [ "my_file" ] defaultRunOptions
+
 -}
-run : Permission -> RunOptions -> Task FailedRun SuccessfulRun
-run _ opts =
+run : Permission -> String -> Array String -> RunOptions -> Task FailedRun SuccessfulRun
+run _ program arguments opts =
     Gren.Kernel.ChildProcess.run
-        { program = opts.program
-        , arguments = opts.arguments
+        { program = program
+        , arguments = arguments
         , shell =
             case opts.shell of
                 NoShell ->
@@ -207,13 +210,7 @@ run _ opts =
                     { option = 2
                     , value = value
                     }
-        , maximumBytesWrittenToStreams =
-            case opts.maximumBytesWrittenToStreams of
-                DefaultMaximum ->
-                    1024 * 1024
-
-                CustomMaximum value ->
-                    value
+        , maximumBytesWrittenToStreams = opts.maximumBytesWrittenToStreams
         , runDuration =
             case opts.runDuration of
                 NoLimit ->
@@ -222,3 +219,10 @@ run _ opts =
                 Milliseconds ms -> 
                     max 0 ms
         }
+
+
+{-| Same as `run`, but with `defaultRunOptions` passed in as options.
+-}
+runWithDefaultOptions : Permission -> String -> Array String -> Task FailedRun SuccessfulRun
+runWithDefaultOptions permission program arguments =
+    run permission program arguments defaultRunOptions
