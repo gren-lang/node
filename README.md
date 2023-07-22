@@ -13,12 +13,13 @@ A sub-system must be initialized before used. The result of initializing a sub-s
 Below is an example of initializing the `Terminal` and `FileSystem` sub-systems:
 
 ```gren
-init :
-    Init.Task
+init 
+    : Environment
+    -> Init.Task
         { model : Model
         , command : Cmd Msg
         }
-init =
+init _env =
     Init.await Terminal.initialize <| \termConfig ->
     Init.await FileSystem.initialize <| \fsPermission ->
         Node.Program.startProgram

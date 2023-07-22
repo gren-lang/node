@@ -27,9 +27,9 @@ type alias Task a =
 {-| This let's you wait for the completion of an `Task` before either starting
 your application, or begin initialization of another `Task`.
 
-    Init.await Node.initialize <| \nodeConfig ->
+    Init.await Terminal.initialize <| \termConfig ->
     Init.await FileSystem.initialize <| \fileSystemConfig ->
-        -- Start your own program with the values from Node and FileSystem
+        -- Start your own program with the values from Terminal and FileSystem
         Program.startProgram
             { model = 1
             , commands = Cmd.none
@@ -43,9 +43,9 @@ await (Internal.Init.Task task) fn =
 {-| This let's you wait for the completion of a `Task` before either starting
 your application, or begin initialization of another `Task`.
 
-    Init.await Node.initialize <| \nodeConfig ->
+    Init.await Terminal.initialize <| \termConfig ->
     Init.awaitTask Task.now <| \time ->
-        -- Start your own program with the values from Node and FileSystem
+        -- Start your own program with the values from Terminal and FileSystem
         Program.startProgram
             { model = time
             , commands = Cmd.none
