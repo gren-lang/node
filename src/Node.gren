@@ -34,7 +34,8 @@ import Gren.Kernel.Node
 import Task exposing (Task)
 import Node.Program as Program
 import Internal.Stream as IStream
-import Internal.AppInitTask exposing (AppInitTask(..))
+import Init
+import Internal.Init
 
 
 type alias RawConfiguration =
@@ -66,7 +67,7 @@ type alias Configuration =
 
 {-| Initialize a NodeJS application. In return you're granted the `Configuration` record, which contains useful context.
 -}
-initialize : Program.AppInitTask Configuration
+initialize : Init.Task Configuration
 initialize =
     Gren.Kernel.Node.init
         |> Task.map
@@ -79,7 +80,7 @@ initialize =
                     , stdin = IStream.Stream 2 raw.stdin
                     }
                 )
-        |> AppInitTask
+        |> Internal.Init.Task
 
 
 -- PLATFORM

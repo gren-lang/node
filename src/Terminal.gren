@@ -31,7 +31,8 @@ import Task exposing (Task)
 import Process
 import Node.Program as Program
 import Gren.Kernel.Terminal
-import Internal.AppInitTask exposing (AppInitTask(..))
+import Init
+import Internal.Init 
 
 
 {-| The permission for performing commands specified in this module.
@@ -66,7 +67,7 @@ type alias Size =
 `Nothing` is returned if this program isn't connected to an interactive terminal, which
 can happen in CI-setups or when used as part of a unix pipe.
 -}
-initialize : Program.AppInitTask (Maybe Configuration)
+initialize : Init.Task (Maybe Configuration)
 initialize =
     Gren.Kernel.Terminal.init
         |> Task.map (\raw ->
@@ -81,7 +82,7 @@ initialize =
             else
                 Nothing
         )
-        |> AppInitTask
+        |> Internal.Init.Task
 
 
 -- COMMANDS

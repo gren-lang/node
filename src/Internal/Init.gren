@@ -1,0 +1,8 @@
+module Internal.Init exposing (Task(..))
+
+
+import Task
+
+
+type Task a
+    = Task (Task.Task Never a)

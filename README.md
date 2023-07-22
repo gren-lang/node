@@ -14,13 +14,13 @@ Below is an example of initializing the `Terminal` and `FileSystem` sub-systems:
 
 ```gren
 init :
-    Node.Program.AppInitTask
+    Init.Task
         { model : Model
         , command : Cmd Msg
         }
 init =
-    Node.Program.await Terminal.initialize \termConfig ->
-    Node.Program.await FileSystem.initialize \fsPermission ->
+    Init.await Terminal.initialize <| \termConfig ->
+    Init.await FileSystem.initialize <| \fsPermission ->
         Node.Program.startProgram
             { model =
                 { terminalConnection = Maybe.map .permission termConfig

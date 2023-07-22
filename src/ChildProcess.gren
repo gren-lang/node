@@ -39,7 +39,8 @@ import Bytes exposing (Bytes)
 import Dict exposing (Dict)
 import Task exposing (Task)
 import Node.Program as Program
-import Internal.AppInitTask exposing (AppInitTask(..))
+import Init
+import Internal.Init
 
 
 {-| This value represents the permission to spawn child processes.
@@ -53,10 +54,10 @@ type Permission
 {-| Initialize the `ChildProcess` subsystem, which gains you the permission to
 spawn child processes.
 -}
-initialize : Program.AppInitTask Permission
+initialize : Init.Task Permission
 initialize =
     Task.succeed Permission
-        |> AppInitTask
+        |> Internal.Init.Task
 
 
 -- OPTIONS

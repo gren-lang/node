@@ -7,10 +7,6 @@ module Node.Program exposing
     , ProgramConfiguration
     , define
     , startProgram
-    --
-    , AppInitTask
-    , await
-    , awaitTask
     )
 
 
@@ -30,15 +26,12 @@ you to contact said subsystem. Be careful what code you give these permissions t
 ## Program
 
 @docs Program, ProgramConfiguration, define, startProgram
-
-## Initialization
-
-@docs AppInitTask, await, awaitTask
 -}
 
 
 import Task exposing (Task)
-import Internal.AppInitTask
+import Init
+import Internal.Init
 
 
 {-| A simple program that executes a single task and then exits.
@@ -51,14 +44,6 @@ type alias SimpleProgram a =
 -}
 type alias Program model msg =
     Platform.Program {} (Model model) (Msg model msg)
-
-
-{-| This is like a `Task`, but can only be run as part of initializing your
-program. This is usually used for values which should be provided to your program,
-and only your program, as opposed to third-party packages.
--}
-type alias AppInitTask a =
-    Internal.AppInitTask.AppInitTask a
 
 
 -- TOP LEVEL PROGRAM
@@ -77,7 +62,7 @@ type Msg model msg
 {-| The required functions that define a program.
 -}
 type alias ProgramConfiguration model msg =
-    { init : AppInitTask { model : model, command : Cmd msg }
+    { init : Init.Task { model : model, command : Cmd msg }
     , update : msg -> model -> { model : model, command : Cmd msg }
     , subscriptions : model -> Sub msg
     }
@@ -99,8 +84,8 @@ define config =
 {-| Define a simple program that doesn't require long-lived state or the ability to respond
 to messages or subscriptions. Ideal for simple and short-lived programs.
 -}
-defineSimple : AppInitTask (Cmd a) -> SimpleProgram a
-defineSimple (Internal.AppInitTask.AppInitTask task) =
+defineSimple : Init.Task (Cmd a) -> SimpleProgram a
+defineSimple (Internal.Init.Task task) =
     Platform.worker
         { init = \_ ->
             { model = Uninitialized
@@ -120,10 +105,10 @@ defineSimple (Internal.AppInitTask.AppInitTask task) =
 
 
 init
-    : AppInitTask { model : model, command : Cmd msg }
+    : Init.Task { model : model, command : Cmd msg }
     -> {}
     -> { model : Model model, command : Cmd (Msg model msg) }
-init (Internal.AppInitTask.AppInitTask task) {} =
+init (Internal.Init.Task task) {} =
     { model = Uninitialized
     , command = Task.perform InitDone task
     }
@@ -176,57 +161,17 @@ subscriptions appSubs model =
             Sub.map MsgReceived (appSubs appModel)
 
 
--- APP INIT TASK
-
-
-{-| This let's you wait for the completion of an `AppInitTask` before either starting
-your application, or begin initialization of another `AppInitTask`.
-
-    Program.await Node.initialize <| \nodeConfig ->
-    Program.await FileSystem.initialize <| \fileSystemConfig ->
-        -- Start your own program with the values from Node and FileSystem
-        Program.startProgram
-            { model = 1
-            , commands = Cmd.none
-            }
--}
-await : AppInitTask a -> (a -> AppInitTask b) -> AppInitTask b
-await (Internal.AppInitTask.AppInitTask task) fn =
-    Internal.AppInitTask.AppInitTask (Task.andThen (unwrap << fn) task)
-
-
-{-| This let's you wait for the completion of a `Task` before either starting
-your application, or begin initialization of another `AppInitTask`.
-
-    Program.await Node.initialize <| \nodeConfig ->
-    Program.awaitTask Task.now <| \time ->
-        -- Start your own program with the values from Node and FileSystem
-        Program.startProgram
-            { model = time
-            , commands = Cmd.none
-            }
--}
-awaitTask : Task Never a -> (a -> AppInitTask b) -> AppInitTask b
-awaitTask task fn =
-    Internal.AppInitTask.AppInitTask (Task.andThen (unwrap << fn) task)
-
-
-unwrap : AppInitTask a -> Task Never a
-unwrap (Internal.AppInitTask.AppInitTask task) =
-    task
-
-
 {-| This lets the runtime know that you're done initializing other subsystems,
 and that your program is ready to start.
 -}
-startProgram : { model : model, command : Cmd cmd } -> AppInitTask { model : model, command : Cmd cmd }
+startProgram : { model : model, command : Cmd cmd } -> Init.Task { model : model, command : Cmd cmd }
 startProgram initResult =
-    Internal.AppInitTask.AppInitTask (Task.succeed initResult)
+    Internal.Init.Task (Task.succeed initResult)
 
 
 {-| When defining a program with `defineTask`, use this function to define the
 final command to execute.
 -}
-endWithCmd : Cmd a -> AppInitTask (Cmd a)
+endWithCmd : Cmd a -> Init.Task (Cmd a)
 endWithCmd cmd =
-    Internal.AppInitTask.AppInitTask (Task.succeed cmd)
+    Internal.Init.Task (Task.succeed cmd)

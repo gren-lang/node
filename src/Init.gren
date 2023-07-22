@@ -1,0 +1,63 @@
+module Init exposing
+    ( Task
+    , await
+    , awaitTask
+    )
+
+{-| This module defines the app initialization task. This is a special kind of task
+that can only be passed as the result of an application initialization. You'll typically
+use this module in order to initialize sub-systems like `FileSystem` or `ChildProcess`.
+
+@docs Task, await, awaitTask
+-}
+
+
+import Task
+import Internal.Init
+
+
+{-| This is like a `Task`, but can only be run as part of initializing your
+program. This is usually used for values which should be provided to your program,
+and only your program, as opposed to third-party packages.
+-}
+type alias Task a =
+    Internal.Init.Task a
+
+
+{-| This let's you wait for the completion of an `Task` before either starting
+your application, or begin initialization of another `Task`.
+
+    Init.await Node.initialize <| \nodeConfig ->
+    Init.await FileSystem.initialize <| \fileSystemConfig ->
+        -- Start your own program with the values from Node and FileSystem
+        Program.startProgram
+            { model = 1
+            , commands = Cmd.none
+            }
+-}
+await : Task a -> (a -> Task b) -> Task b
+await (Internal.Init.Task task) fn =
+    Internal.Init.Task (Task.andThen (unwrap << fn) task)
+
+
+{-| This let's you wait for the completion of a `Task` before either starting
+your application, or begin initialization of another `Task`.
+
+    Init.await Node.initialize <| \nodeConfig ->
+    Init.awaitTask Task.now <| \time ->
+        -- Start your own program with the values from Node and FileSystem
+        Program.startProgram
+            { model = time
+            , commands = Cmd.none
+            }
+-}
+awaitTask : Task.Task Never a -> (a -> Task b) -> Task b
+awaitTask task fn =
+    Internal.Init.Task (Task.andThen (unwrap << fn) task)
+
+
+unwrap : Task a -> Task.Task Never a
+unwrap (Internal.Init.Task task) =
+    task
+
+

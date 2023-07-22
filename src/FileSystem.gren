@@ -79,7 +79,8 @@ import Gren.Kernel.FileSystem
 import Bytes exposing (Bytes)
 import Task exposing (Task)
 import Node.Program as Program
-import Internal.AppInitTask exposing (AppInitTask(..))
+import Init
+import Internal.Init
 
 
 {-| This value represents the permission to perform file system operations.
@@ -93,10 +94,10 @@ type Permission
 {-| Initialize the `FileSystem` subsystem, which gains you the permission to perform
 file system operations.
 -}
-initialize : Program.AppInitTask Permission
+initialize : Init.Task Permission
 initialize =
     Task.succeed Permission
-        |> AppInitTask
+        |> Internal.Init.Task
 
 
 -- FILES
