@@ -38,7 +38,6 @@ import Gren.Kernel.ChildProcess
 import Bytes exposing (Bytes)
 import Dict exposing (Dict)
 import Task exposing (Task)
-import Node.Program as Program
 import Init
 import Internal.Init
 

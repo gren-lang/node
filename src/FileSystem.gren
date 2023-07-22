@@ -78,7 +78,6 @@ module FileSystem exposing
 import Gren.Kernel.FileSystem
 import Bytes exposing (Bytes)
 import Task exposing (Task)
-import Node.Program as Program
 import Init
 import Internal.Init
 

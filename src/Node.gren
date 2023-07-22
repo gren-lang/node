@@ -1,61 +1,70 @@
 module Node exposing
-    ( Configuration
-    , initialize
-    --
+    ( Environment
     , Platform(..)
     , CpuArchitecture(..)
     , getEnvironmentVariables
+    --
+    , SimpleProgram
+    , defineSimpleProgram
+    , endWithCmd
+    --
+    , Program
+    , ProgramConfiguration
+    , defineProgram
+    , startProgram    
     --
     , exit
     , exitWithCode
     , setExitCode
     )
 
-{-| This module allows you to start your application with access to application arguments,
-environment variables and the standard input and output streams.
 
-To learn how to use this module's `initialize` function, take a closer look at the `Node.Program` module.
+{-| A NodeJS program is defined like a browser-based Gren program, except that
+there is more flexibility regarding how it is initialized.
+
+You can initialize any number of subsystems, like `FileSystem` or `Terminal`, before
+initializing your own program with the results of those initializations.
+
+As part of initializing a subsystem, you usually also get access to a value that permits
+you to contact said subsystem. Be careful what code you give these permissions to.
 
 ## Initialization
 
-@docs Configuration, initialize
+@docs Environment, Platform, CpuArchitecture, getEnvironmentVariables
 
-## Info
+## Simple Program
 
-@docs Platform, CpuArchitecture, getEnvironmentVariables
+@docs SimpleProgram, defineSimpleProgram, endWithCmd
+
+## Program
+
+@docs Program, ProgramConfiguration, defineProgram, startProgram
 
 ## Exit
 
 @docs exit, exitWithCode, setExitCode
 -}
 
+
 import Dict exposing ( Dict )
-import Gren.Kernel.Node
-import Task exposing (Task)
-import Node.Program as Program
-import Internal.Stream as IStream
 import Init
 import Internal.Init
+import Task exposing ( Task )
+import Gren.Kernel.Node
+import Internal.Stream as IStream
 
 
-type alias RawConfiguration =
-    { platform : String
-    , arch : String
-    , args : Array String
-    , stdout : IStream.RawStream
-    , stderr : IStream.RawStream
-    , stdin : IStream.RawStream
-    }
+-- ENVIRONMENT
 
 
-{-| Contains information about the context your application was initiated.
+{-| Contains information about the environment your application was initiated in.
 
 * `platform` and `cpuArchitecture` tells you something about the operating system and machine your application is running on.
 * `args` is an `Array` of the arguments passed to your application.
 * `stdout`, `stderr` and `stdin` are streams you can use to communicate with the outside world. Take a closer look at the `Stream` module for more information.
 
 -}
-type alias Configuration =
+type alias Environment =
     { platform : Platform
     , cpuArchitecture : CpuArchitecture
     , args : Array String
@@ -67,8 +76,8 @@ type alias Configuration =
 
 {-| Initialize a NodeJS application. In return you're granted the `Configuration` record, which contains useful context.
 -}
-initialize : Init.Task Configuration
-initialize =
+initializeEnvironment : Task Never Environment
+initializeEnvironment =
     Gren.Kernel.Node.init
         |> Task.map
                 (\raw ->
@@ -80,10 +89,6 @@ initialize =
                     , stdin = IStream.Stream 2 raw.stdin
                     }
                 )
-        |> Internal.Init.Task
-
-
--- PLATFORM
 
 
 {-| The platform, or operating system, that your application is running on.
@@ -125,9 +130,6 @@ platformFromString platform =
 
         _ ->
             UnknownPlatform
-
-
--- ARCH
 
 
 {-| The CPU architecture your application is running on.
@@ -183,14 +185,169 @@ archFromString arch =
             UnknownArchitecture
 
 
--- TASKS
-
-
 {-| Get a `Dict` of environment variables.
 -}
 getEnvironmentVariables : Task Never (Dict String String)
 getEnvironmentVariables =
     Gren.Kernel.Node.getEnvironmentVariables
+
+
+-- PROGRAMS
+
+
+{-| A simple program that executes a single task and then exits.
+-}
+type alias SimpleProgram a =
+    Program {} a
+
+
+{-| The definition of a Gren program that runs on NodeJS.
+-}
+type alias Program model msg =
+    Platform.Program {} (Model model) (Msg model msg)
+
+
+-- TOP LEVEL PROGRAM
+
+
+type Model model
+    = Uninitialized
+    | Initialized model
+
+
+type Msg model msg
+    = InitDone { model : model, command : Cmd msg }
+    | MsgReceived msg
+
+
+{-| The required functions that define a program.
+-}
+type alias ProgramConfiguration model msg =
+    { init : Environment -> Init.Task { model : model, command : Cmd msg }
+    , update : msg -> model -> { model : model, command : Cmd msg }
+    , subscriptions : model -> Sub msg
+    }
+
+
+{-| Define a program with access to long-lived state and the ability to respond to
+messages and listen to subscriptions. If you want to define a simple and short-lived
+program, chances are you're looking for `defineSimple` instead.
+-}
+defineProgram : ProgramConfiguration model msg -> Program model msg
+defineProgram config =
+    Platform.worker
+        { init = init config.init
+        , update = update config.update
+        , subscriptions = subscriptions config.subscriptions
+        }
+
+
+{-| Define a simple program that doesn't require long-lived state or the ability to respond
+to messages or subscriptions. Ideal for simple and short-lived programs.
+-}
+defineSimpleProgram : (Environment -> Init.Task (Cmd a)) -> SimpleProgram a
+defineSimpleProgram initTask =
+    Platform.worker
+        { init = \_ ->
+            { model = Uninitialized
+            , command =
+                initializeEnvironment
+                    |> Task.andThen (\env -> unwrap <| initTask env)
+                    |> Task.perform 
+                        (\cmd -> 
+                            InitDone
+                                { model = {}
+                                , command = cmd
+                                }
+                        )
+            }
+        , update = update (\_ _ -> { model = {}, command = Cmd.none })
+        , subscriptions = always Sub.none
+        }
+
+
+init
+    : (Environment -> Init.Task { model : model, command : Cmd msg })
+    -> {}
+    -> { model : Model model, command : Cmd (Msg model msg) }
+init initTask {} =
+    { model = Uninitialized
+    , command = 
+        initializeEnvironment
+            |> Task.andThen (\env -> unwrap <| initTask env)
+            |> Task.perform InitDone
+    }
+
+
+unwrap : Internal.Init.Task a -> Task Never a
+unwrap (Internal.Init.Task task) =
+    task
+
+
+update
+    : (msg -> model -> { model : model, command : Cmd msg })
+    -> Msg model msg
+    -> Model model
+    -> { model : Model model, command : Cmd (Msg model msg) }
+update appUpdate msg model =
+    case model of
+        Uninitialized ->
+            case msg of
+                InitDone initResult ->
+                    { model = Initialized initResult.model
+                    , command = Cmd.map MsgReceived initResult.command
+                    }
+
+                MsgReceived _ ->
+                    -- Ignore
+                    { model = model, command = Cmd.none }
+
+        Initialized appModel ->
+            case msg of
+                InitDone _ ->
+                    -- Ignore
+                    { model = model, command = Cmd.none }
+
+                MsgReceived appMsg ->
+                    let
+                        updateResult =
+                            appUpdate appMsg appModel
+                    in
+                    { model = Initialized updateResult.model
+                    , command = Cmd.map MsgReceived updateResult.command
+                    }
+
+
+subscriptions
+    : (model -> Sub msg)
+    -> (Model model)
+    -> Sub (Msg model msg)
+subscriptions appSubs model =
+    case model of
+        Uninitialized ->
+            Sub.none
+
+        Initialized appModel ->
+            Sub.map MsgReceived (appSubs appModel)
+
+
+{-| This lets the runtime know that you're done initializing other subsystems,
+and that your program is ready to start.
+-}
+startProgram : { model : model, command : Cmd cmd } -> Init.Task { model : model, command : Cmd cmd }
+startProgram initResult =
+    Internal.Init.Task (Task.succeed initResult)
+
+
+{-| When defining a program with `defineTask`, use this function to define the
+final command to execute.
+-}
+endWithCmd : Cmd a -> Init.Task (Cmd a)
+endWithCmd cmd =
+    Internal.Init.Task (Task.succeed cmd)
+
+
+-- EXIT
 
 
 {-| Terminate the program immediatly. It will not wait for tasks like http calls

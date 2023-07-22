@@ -9,7 +9,6 @@
     "ChildProcess",
     "Init",
     "Node",
-    "Node.Program",
     "Stream",
     "Terminal",
     "FileSystem"

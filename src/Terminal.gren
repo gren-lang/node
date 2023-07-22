@@ -29,7 +29,6 @@ terminal is connected to this application.
 
 import Task exposing (Task)
 import Process
-import Node.Program as Program
 import Gren.Kernel.Terminal
 import Init
 import Internal.Init 
