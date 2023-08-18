@@ -33,6 +33,14 @@ test("responding to non-GET requests", async ({ request }) => {
   await expect(await response.text()).toContain("PUT /howdy");
 });
 
+// Can't actually test this because node:http doesn't support custom methods.
+// See https://github.com/nodejs/node-v0.x-archive/issues/3192
+// and https://github.com/nodejs/http-parser/issues/309
+// test("unknown http method", async ({ request }) => {
+//   let response = await request.fetch("/hello", { method: "FAKE" });
+//   await expect(await response.text()).toContain("UNKNOWN(FAKE) /howdy");
+// });
+
 test("handling json", async ({ request }) => {
   let response = await request.post("/name", { data: { name: "Jane" } });
   await expect(await response.text()).toContain("Hello, Jane");

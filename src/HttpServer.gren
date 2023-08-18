@@ -119,7 +119,7 @@ type Method
     | CONNECT
     | TRACE
     | PATCH
-    | UNKNOWN
+    | UNKNOWN String
 
 
 {-| Turn the pieces of a request into a [`Request`](HttpServer.Request) record.
@@ -230,8 +230,8 @@ requestInfo req =
                 PATCH ->
                     "PATCH"
 
-                UNKNOWN ->
-                    "UNKNOWN"
+                UNKNOWN m ->
+                    "UNKNOWN(" ++ m ++ ")"
     in
     method ++ " " ++ req.url.path
 
@@ -264,7 +264,7 @@ toMethod s =
             PATCH
         
         _ ->
-            UNKNOWN
+            UNKNOWN s
 
 
 arrayPairs : Array String -> Array (Array String)
