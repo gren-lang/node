@@ -13,7 +13,6 @@ effect module HttpServer where { subscription = HttpSub } exposing
     , Method(..)
     , bodyAsString
     , bodyFromJson
-    , toRequest
     , requestInfo
     , onRequest
     )
@@ -31,7 +30,7 @@ See [examples/http-server](https://github.com/gren-lang/node/tree/main/examples/
 
 ## Requests
 
-@docs Request, Method, bodyAsString, bodyFromJson, toRequest, requestInfo
+@docs Request, Method, bodyAsString, bodyFromJson, requestInfo
 
 ## Responding to requests
 
@@ -125,7 +124,7 @@ type Method
 
 {-| Turn the pieces of a request into a [`Request`](HttpServer.Request) record.
 
-This is used internally, you shouldn't need it in your own code.
+This is only used internally.
 -}
 toRequest :
     { urlProtocol : String

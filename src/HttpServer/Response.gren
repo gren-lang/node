@@ -4,7 +4,6 @@ effect module HttpServer.Response where { command = ResponseCmd } exposing
     , setBody
     , setHeader
     , setStatus
-    , toResponse
     )
 
 {-| Build up a response as a command.
@@ -22,7 +21,7 @@ assuming you [subscribed](HttpServer.onRequest) with a `GotRequest` msg:
                 |> Response.send
         }
 
-@docs Response, send, setBody, setHeader, setStatus, toResponse
+@docs Response, send, setBody, setHeader, setStatus
 
 -}
 
