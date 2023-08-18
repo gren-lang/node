@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "prettier": "prettier -w ."
+    "prettier": "prettier -w .",
+    "test": "./test.sh"
   },
   "devDependencies": {
     "prettier": "2.7.1"

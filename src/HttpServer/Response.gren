@@ -1,0 +1,144 @@
+effect module HttpServer.Response where { command = ResponseCmd } exposing
+    ( Response
+    , send
+    , setBody
+    , setHeader
+    , setStatus
+    )
+
+{-| Build up a response as a command.
+
+Usually this will look something like this,
+in your `update` function,
+assuming you [subscribed](HttpServer.onRequest) with a `GotRequest` msg:
+
+    GotRequest req res ->
+        { model = model
+        , command =
+            res
+                |> Response.setHeader "Content-type" "text/html"
+                |> Response.setBody ("<html>Hello there!</html>")
+                |> Response.send
+        }
+
+@docs Response, send, setBody, setHeader, setStatus
+
+-}
+
+import Dict exposing (Dict)
+import Task exposing (Task)
+
+
+{-| An HTTP response.
+-}
+type Response =
+    Response ResponseKey
+        { status : Int
+        , headers : Dict String String
+        , body : String
+        }
+
+
+type ResponseKey =
+    NodeHttpResponse
+
+
+{-| Get a [`Response`](HttpServer.Response.Response) from the internal response key.
+
+This is only used internally.
+-}
+toResponse : ResponseKey -> Response
+toResponse key =
+    Response key
+        { status = 200
+        , body = ""
+        , headers = Dict.empty
+        }
+
+
+{-| Set the HTTP status code on a response.
+-}
+setStatus : Int -> Response -> Response
+setStatus statusCode (Response key response) =
+    Response key { response | status = statusCode }
+
+
+{-| Add a header key/value pair to a response.
+-}
+setHeader : String -> String -> Response -> Response
+setHeader key value (Response responseKey response) =
+    Response responseKey
+        { response 
+            | headers = Dict.insert key value response.headers
+        }
+
+
+{-| Set the body on a response.
+-}
+setBody : String -> Response -> Response
+setBody body (Response key response) =
+    Response key
+        { response | body = body }
+
+
+-- EFFECT STUFF
+
+
+type ResponseCmd a
+    = SendResponse Response
+
+
+type alias State =
+    {}
+
+
+type alias SelfMsg =
+    Never
+
+
+init : Task Never State
+init =
+    Task.succeed {}
+
+    
+onSelfMsg
+    : Platform.Router msg SelfMsg
+    -> SelfMsg
+    -> State
+    -> Task Never State
+onSelfMsg _ _ state =
+    Task.succeed state
+
+
+cmdMap : (a -> b) -> ResponseCmd a -> ResponseCmd b
+cmdMap _ cmd =
+    case cmd of
+        SendResponse r ->
+            SendResponse r
+
+
+onEffects
+    : Platform.Router msg SelfMsg
+    -> Array (ResponseCmd a)
+    -> State
+    -> Task Never State
+onEffects router cmds state =
+    let
+        _sendResponses =
+            cmds
+                |> Array.map
+                    (\(SendResponse (Response key response)) ->
+                        Gren.Kernel.HttpServer.setStatus response.status key
+                            |> Gren.Kernel.HttpServer.setHeaders (Dict.toArray response.headers)
+                            |> Gren.Kernel.HttpServer.setBody response.body
+                            |> Gren.Kernel.HttpServer.endResponse
+                    )
+    in
+    Task.succeed {}
+
+
+{-| Command to send an HTTP response.
+-}
+send : Response -> Cmd a
+send response =
+    command (SendResponse response)
