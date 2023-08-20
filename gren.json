@@ -1,23 +1,23 @@
 {
-  "type": "package",
-  "platform": "node",
-  "name": "gren-lang/node",
-  "summary": "Run Gren on NodeJS",
-  "license": "BSD-3-Clause",
-  "version": "2.0.0",
-  "exposed-modules": [
-    "ChildProcess",
-    "HttpServer",
-    "HttpServer.Response",
-    "Init",
-    "Node",
-    "Stream",
-    "Terminal",
-    "FileSystem"
-  ],
-  "gren-version": "0.3.0 <= v < 0.4.0",
-  "dependencies": {
-    "gren-lang/core": "4.0.0 <= v < 5.0.0",
-    "gren-lang/url": "3.0.0 <= v < 4.0.0"
-  }
+    "type": "package",
+    "platform": "node",
+    "name": "gren-lang/node",
+    "summary": "Run Gren on NodeJS",
+    "license": "BSD-3-Clause",
+    "version": "3.0.0",
+    "exposed-modules": [
+        "ChildProcess",
+        "HttpServer",
+        "HttpServer.Response",
+        "Init",
+        "Node",
+        "Stream",
+        "Terminal",
+        "FileSystem"
+    ],
+    "gren-version": "0.3.0 <= v < 0.4.0",
+    "dependencies": {
+        "gren-lang/core": "4.0.0 <= v < 5.0.0",
+        "gren-lang/url": "3.0.0 <= v < 4.0.0"
+    }
 }
