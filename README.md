@@ -13,7 +13,7 @@ A sub-system must be initialized before used. The result of initializing a sub-s
 Below is an example of initializing the `Terminal` and `FileSystem` sub-systems:
 
 ```gren
-init 
+init
     : Environment
     -> Init.Task
         { model : Model

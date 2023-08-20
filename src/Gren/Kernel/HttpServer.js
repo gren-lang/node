@@ -14,7 +14,7 @@ var _HttpServer_createServer = F2(function (host, port) {
     const server = http.createServer();
     server.on("error", function (e) {
       callback(
-        __Scheduler_fail(A2(__HttpServer_ServerError, e.code, e.message)),
+        __Scheduler_fail(A2(__HttpServer_ServerError, e.code, e.message))
       );
     });
     server.listen(port, host, function () {
@@ -51,14 +51,14 @@ var _HttpServer_addListener = F3(function (server, router, msg) {
           __$body: new DataView(
             buffer.buffer,
             buffer.byteOffset,
-            buffer.byteLength,
+            buffer.byteLength
           ),
         });
         let grenResponse = __Response_toResponse(response);
         __Scheduler_rawSpawn(
           // May want to send to self, self sends to app instead.
           // But effect handlers may be changing soon, so not bothering yet.
-          A2(__Platform_sendToApp, router, A2(msg, grenRequest, grenResponse)),
+          A2(__Platform_sendToApp, router, A2(msg, grenRequest, grenResponse))
         );
       });
   });
