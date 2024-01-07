@@ -95,7 +95,9 @@ var _FileSystem_readHelper = function (
     fileOffset,
     function (err, bytesRead, _buff) {
       if (err != null) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
         return;
       }
 
@@ -161,7 +163,9 @@ var _FileSystem_writeHelper = function (
     fileOffset,
     function (err, bytesWritten, buffer) {
       if (err != null) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
         return;
       }
 

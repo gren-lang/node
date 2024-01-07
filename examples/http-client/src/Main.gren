@@ -1,0 +1,16 @@
+module Main exposing (main)
+
+import Node
+import Init
+import Task
+import Stream
+
+
+main : Node.SimpleProgram {}
+main =
+    Node.defineSimpleProgram program
+
+program : Node.Environment -> Init.Task (Cmd a)
+program env =
+    Node.endWithCmd <|
+        Stream.sendLine env.stdout "Hello, world!"
