@@ -3,14 +3,48 @@ module Main exposing (main)
 import Node
 import Init
 import Task
-import Stream
+import HttpClient
+import Stream exposing (Stream)
 
+type alias Model =
+    { stdout : Stream 
+    , httpPermission : HttpClient.Permission
+    }
 
-main : Node.SimpleProgram {}
+type Msg = Response (Result HttpClient.Error String)
+
+main : Node.Program Model Msg
 main =
-    Node.defineSimpleProgram program
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
 
-program : Node.Environment -> Init.Task (Cmd a)
-program env =
-    Node.endWithCmd <|
-        Stream.sendLine env.stdout "Hello, world!"
+init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await HttpClient.initialize <| \httpPerm ->
+        Node.startProgram
+            { model = 
+                { stdout = env.stdout
+                , httpPermission = httpPerm
+                }
+            , command =
+                HttpClient.get httpPerm "http://localhost:8080/mocked-path"
+                    |> Task.attempt Response
+            }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    case msg of
+        Response (Ok data) ->
+            { model = model
+            , command = Stream.sendLine model.stdout ("200: " ++ data)
+            }
+
+        Response (Err (HttpClient.Error errorMsg)) ->
+            { model = model
+            , command = Stream.sendLine model.stdout errorMsg
+            }
+            

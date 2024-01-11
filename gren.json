@@ -9,6 +9,7 @@
         "ChildProcess",
         "HttpServer",
         "HttpServer.Response",
+        "HttpClient",
         "Init",
         "Node",
         "Stream",

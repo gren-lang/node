@@ -1,0 +1,25 @@
+module HttpClient exposing (..)
+
+import Init
+import Internal.Init
+import Task exposing (Task)
+import Gren.Kernel.HttpClient
+
+
+type Permission =
+    Permission
+
+
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+type Error = 
+    Error String
+
+
+get : Permission -> String -> Task Error String
+get _ url =
+    Gren.Kernel.HttpClient.get url
