@@ -8,7 +8,7 @@ describe("Requests", () => {
   beforeEach(() => server.start(8080));
   afterEach(() => server.stop());
 
-  it("Simple test", async () => {
+  it("Simple Get", async () => {
     await server.forGet("/mocked-path").thenReply(200, "A mocked response");
 
     const baseDir = path.resolve("bin");
@@ -16,5 +16,17 @@ describe("Requests", () => {
       .cwd(baseDir)
       .fork("app", [], {})
       .stdout("200: A mocked response");
+  });
+  
+  it("JSON Post Echo", async () => {
+    await server.forPost("/mocked-path")
+      .withJsonBody({ secret: "Hello, POST!" })
+      .thenReply(200, "Access Granted!");
+
+    const baseDir = path.resolve("bin");
+    await runner()
+      .cwd(baseDir)
+      .fork("app", [], {})
+      .stdout("200: Access Granted!");
   });
 });
