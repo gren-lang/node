@@ -2,6 +2,8 @@ module HttpClient exposing (..)
 
 import Init
 import Internal.Init
+import Json.Encode as Json
+import Json.Decode
 import Task exposing (Task)
 import Gren.Kernel.HttpClient
 
@@ -16,10 +18,119 @@ initialize =
         |> Internal.Init.Task
 
 
+-- REQUESTS
+
+
 type Error = 
     Error String
 
 
-get : Permission -> String -> Task Error String
-get _ url =
-    Gren.Kernel.HttpClient.get url
+type alias GetConfiguration =
+    { url : String
+    }
+
+
+get : Permission -> GetConfiguration -> Task Error String
+get _ config =
+    Gren.Kernel.HttpClient.request
+        { url = config.url
+        , bodyType = bodyTypeAsString BodyEmpty
+        , body = BodyEmpty
+        , expectType = expectTypeAsString ExpectString
+        , expect = ExpectString
+        }
+
+
+type alias PostConfiguration a =
+    { url : String
+    , body : Body
+    , expect : Expect a
+    }
+
+
+post : Permission -> PostConfiguration a -> Task Error a
+post _ config =
+    Gren.Kernel.HttpClient.request
+        { url = config.url
+        , bodyType = bodyTypeAsString config.body
+        , body = config.body
+        , expectType = expectTypeAsString config.expect
+        , expect = config.expect
+        }
+
+
+-- BODY
+
+
+type Body
+    = BodyEmpty
+    | BodyString String
+    | BodyJson Json.Value
+
+
+emptyBody : Body
+emptyBody = BodyEmpty
+
+
+stringBody : String -> Body
+stringBody = BodyString
+
+
+jsonBody : Json.Value -> Body
+jsonBody = BodyJson
+
+
+bodyTypeAsString : Body -> String
+bodyTypeAsString body =
+    case body of
+        BodyEmpty -> 
+            "EMPTY"
+
+        BodyString _ ->
+            "STRING"
+
+        BodyJson _ ->
+            "JSON"
+
+
+-- EXPECT
+
+
+type Expect a
+    = ExpectNothing
+    | ExpectAnything
+    | ExpectString
+    | ExpectJson (Json.Decode.Decoder a)
+
+
+expectNothing : Expect {}
+expectNothing = ExpectNothing
+
+
+expectAnything : Expect {}
+expectAnything = ExpectAnything
+
+
+expectString : Expect String
+expectString = ExpectString
+
+
+expectJson : Json.Decode.Decoder a -> Expect a
+expectJson = ExpectJson
+
+
+expectTypeAsString : Expect a -> String
+expectTypeAsString expect =
+    case expect of
+        ExpectNothing ->
+            "NOTHING"
+
+        ExpectAnything ->
+            "ANYTHING"
+
+        ExpectString ->
+            "STRING"
+
+        ExpectJson _ ->
+            "JSON"
+

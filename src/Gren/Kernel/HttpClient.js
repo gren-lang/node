@@ -7,9 +7,10 @@ import HttpClient exposing (Error)
 
 const http = require("http");
 
-var _HttpClient_get = function (url) {
+var _HttpClient_request = function (config) {
+  console.log(config)
   return __Scheduler_binding(function (callback) {
-    http.get(url, (res) => {
+    http.get(config.url, (res) => {
       if (res.statusCode !== 200) {
         return callback(
           __Scheduler_fail(__HttpClient_Error("bad status code"))

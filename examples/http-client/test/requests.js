@@ -14,7 +14,7 @@ describe("Requests", () => {
     const baseDir = path.resolve("bin");
     await runner()
       .cwd(baseDir)
-      .fork("app", [], {})
+      .fork("app", ["simple get"], {})
       .stdout("200: A mocked response");
   });
   
@@ -26,7 +26,7 @@ describe("Requests", () => {
     const baseDir = path.resolve("bin");
     await runner()
       .cwd(baseDir)
-      .fork("app", [], {})
+      .fork("app", ["post with body"], {})
       .stdout("200: Access Granted!");
   });
 });

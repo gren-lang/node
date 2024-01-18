@@ -5,13 +5,20 @@ import Init
 import Task
 import HttpClient
 import Stream exposing (Stream)
+import Json.Encode as Json
+import Json.Decode
+
 
 type alias Model =
     { stdout : Stream 
     , httpPermission : HttpClient.Permission
     }
 
-type Msg = Response (Result HttpClient.Error String)
+
+type Msg 
+    = Response (Result HttpClient.Error String)
+    | JsonResponse (Result HttpClient.Error { response : String })
+
 
 main : Node.Program Model Msg
 main =
@@ -20,6 +27,7 @@ main =
         , update = update
         , subscriptions = \_ -> Sub.none
         }
+
 
 init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
 init env =
@@ -30,8 +38,28 @@ init env =
                 , httpPermission = httpPerm
                 }
             , command =
-                HttpClient.get httpPerm "http://localhost:8080/mocked-path"
-                    |> Task.attempt Response
+                case Array.get 2 env.args of
+                    Just "simple get" ->
+                        HttpClient.get httpPerm 
+                            { url ="http://localhost:8080/mocked-path"
+                            }
+                            |> Task.attempt Response
+
+                    Just "post with body" ->
+                        HttpClient.post httpPerm 
+                            { url ="http://localhost:8080/mocked-path"
+                            , body = HttpClient.jsonBody <|
+                                Json.object
+                                    [ { key = "secret", value = Json.string "Hello, POST!" }]
+                            , expect = HttpClient.expectJson
+                                (Json.Decode.map (\s -> { response = s })
+                                    (Json.Decode.field "response" Json.Decode.string)
+                                )
+                            }
+                            |> Task.attempt JsonResponse
+
+                    _ ->
+                        Stream.sendLine env.stdout"Invalid start argument"
             }
 
 
@@ -44,6 +72,16 @@ update msg model =
             }
 
         Response (Err (HttpClient.Error errorMsg)) ->
+            { model = model
+            , command = Stream.sendLine model.stdout errorMsg
+            }
+        
+        JsonResponse (Ok data) ->
+            { model = model
+            , command = Stream.sendLine model.stdout ("200: " ++ data.response)
+            }
+
+        JsonResponse (Err (HttpClient.Error errorMsg)) ->
             { model = model
             , command = Stream.sendLine model.stdout errorMsg
             }
