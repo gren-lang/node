@@ -17,11 +17,12 @@ describe("Requests", () => {
       .fork("app", ["simple get"], {})
       .stdout("200: A mocked response");
   });
-  
+
   it("JSON Post Echo", async () => {
-    await server.forPost("/mocked-path")
+    await server
+      .forPost("/mocked-path")
       .withJsonBody({ secret: "Hello, POST!" })
-      .thenReply(200, "Access Granted!");
+      .thenJson(200, { response: "Access Granted!" });
 
     const baseDir = path.resolve("bin");
     await runner()
