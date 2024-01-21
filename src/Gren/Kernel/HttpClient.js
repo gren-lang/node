@@ -1,9 +1,10 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
-import HttpClient exposing (Error)
+import HttpClient exposing (Timeout, UnknownError)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
+import Maybe exposing (isJust)
 
 */
 
@@ -11,6 +12,9 @@ const http = require("http");
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
+    let timeoutHandle = 0;
+    let timeoutTriggered = false;
+
     const req = http.request(
       config.__$url,
       {
@@ -21,7 +25,7 @@ var _HttpClient_request = function (config) {
         if (statusCode < 200 || statusCode >= 300) {
           return callback(
             __Scheduler_fail(
-              __HttpClient_Error("bad status code: " + statusCode)
+              __HttpClient_UnknownError("bad status code: " + statusCode)
             )
           );
         }
@@ -35,6 +39,8 @@ var _HttpClient_request = function (config) {
         });
 
         res.on("end", () => {
+          clearTimeout(timeoutHandle);
+
           switch (config.__$expectType) {
             case "NOTHING":
               if (rawData === "") {
@@ -42,7 +48,7 @@ var _HttpClient_request = function (config) {
               } else {
                 return callback(
                   __Scheduler_fail(
-                    __HttpClient_Error(
+                    __HttpClient_UnknownError(
                       "Expected empty response, but got: " + rawData
                     )
                   )
@@ -66,7 +72,7 @@ var _HttpClient_request = function (config) {
               } else {
                 return callback(
                   __Scheduler_fail(
-                    __HttpClient_Error("Failed to decode json response")
+                    __HttpClient_UnknownError("Failed to decode json response")
                   )
                 );
               }
@@ -76,9 +82,13 @@ var _HttpClient_request = function (config) {
     );
 
     req.on("error", (e) => {
+      if (e.code === "ECONNRESET" && timeoutTriggered) {
+        return callback(__Scheduler_fail(__HttpClient_Timeout));
+      }
+
       return callback(
         __Scheduler_fail(
-          __HttpClient_Error("problem with request: " + e.message)
+          __HttpClient_UnknownError("problem with request: " + e.message)
         )
       );
     });
@@ -89,6 +99,13 @@ var _HttpClient_request = function (config) {
     }
 
     req.end();
+
+    if (__Maybe_isJust(config.__$timeout)) {
+      timeoutHandle = setTimeout(() => {
+        timeoutTriggered = true;
+        req.abort();
+      }, config.__$timeout.a);
+    }
   });
 };
 

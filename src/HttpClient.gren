@@ -19,17 +19,25 @@ initialize =
         |> Internal.Init.Task
 
 
+-- ERRORS
+
+
+type Error 
+    = Timeout
+    | UnknownError String
+
+
+errorToString : Error -> String
+errorToString err =
+    case err of
+        Timeout ->
+            "timeout"
+
+        UnknownError debugStr ->
+            "Unknown error: " ++ debugStr
+
+
 -- REQUESTS
-
-
-type Error = 
-    Error String
-
-
-type alias GetConfiguration a =
-    { url : String
-    , expect : Expect a
-    }
 
 
 get 

@@ -3,6 +3,7 @@ import { runner, KEYS } from "clet";
 import * as mockttp from "mockttp";
 
 const server = mockttp.getLocal();
+const baseDir = path.resolve("bin");
 
 describe("Requests", () => {
   beforeEach(() => server.start(8080));
@@ -11,7 +12,6 @@ describe("Requests", () => {
   it("Simple Get", async () => {
     await server.forGet("/mocked-path").thenReply(200, "A mocked response");
 
-    const baseDir = path.resolve("bin");
     await runner()
       .cwd(baseDir)
       .fork("app", ["simple get"], {})
@@ -24,10 +24,15 @@ describe("Requests", () => {
       .withJsonBody({ secret: "Hello, POST!" })
       .thenJson(200, { response: "Access Granted!" });
 
-    const baseDir = path.resolve("bin");
     await runner()
       .cwd(baseDir)
       .fork("app", ["post with body"], {})
       .stdout("200: Access Granted!");
+  });
+
+  it("Timeout", async () => {
+    await server.forGet("/mocked-path").thenTimeout();
+
+    await runner().cwd(baseDir).fork("app", ["timeout"], {}).stdout("timeout");
   });
 });

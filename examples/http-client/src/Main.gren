@@ -7,6 +7,7 @@ import HttpClient
 import Stream exposing (Stream)
 import Json.Encode as Json
 import Json.Decode
+import Dict
 
 
 type alias Model =
@@ -45,7 +46,7 @@ init env =
                             , expect = HttpClient.expectString
                             }
                             |> Task.attempt Response
-
+                    
                     Just "post with body" ->
                         HttpClient.post httpPerm 
                             { url ="http://localhost:8080/mocked-path"
@@ -58,7 +59,18 @@ init env =
                                 )
                             }
                             |> Task.attempt JsonResponse
-
+                    
+                    Just "timeout" ->
+                        HttpClient.request httpPerm 
+                            { method = "GET"
+                            , url = "http://localhost:8080/mocked-path"
+                            , headers = Dict.empty
+                            , body = HttpClient.emptyBody
+                            , expect = HttpClient.expectString
+                            , timeout = Just 50
+                            }
+                            |> Task.attempt Response
+                    
                     _ ->
                         Stream.sendLine env.stdout"Invalid start argument"
             }
@@ -72,9 +84,9 @@ update msg model =
             , command = Stream.sendLine model.stdout ("200: " ++ data)
             }
 
-        Response (Err (HttpClient.Error errorMsg)) ->
+        Response (Err err) ->
             { model = model
-            , command = Stream.sendLine model.stdout errorMsg
+            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
             }
         
         JsonResponse (Ok data) ->
@@ -82,8 +94,8 @@ update msg model =
             , command = Stream.sendLine model.stdout ("200: " ++ data.response)
             }
 
-        JsonResponse (Err (HttpClient.Error errorMsg)) ->
+        JsonResponse (Err err) ->
             { model = model
-            , command = Stream.sendLine model.stdout errorMsg
+            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
             }
             
