@@ -42,6 +42,7 @@ init env =
                     Just "simple get" ->
                         HttpClient.get httpPerm 
                             { url ="http://localhost:8080/mocked-path"
+                            , expect = HttpClient.expectString
                             }
                             |> Task.attempt Response
 

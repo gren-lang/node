@@ -25,20 +25,21 @@ type Error =
     Error String
 
 
-type alias GetConfiguration =
+type alias GetConfiguration a =
     { url : String
+    , expect : Expect a
     }
 
 
-get : Permission -> GetConfiguration -> Task Error String
+get : Permission -> GetConfiguration a -> Task Error String
 get _ config =
     Gren.Kernel.HttpClient.request
         { method = "GET"
         , url = config.url
         , bodyType = bodyTypeAsString BodyEmpty
         , body = BodyEmpty
-        , expectType = expectTypeAsString ExpectString
-        , expect = ExpectString
+        , expectType = expectTypeAsString config.expect
+        , expect = config.expect
         }
 
 
