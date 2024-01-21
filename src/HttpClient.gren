@@ -1,5 +1,6 @@
 module HttpClient exposing (..)
 
+import Dict exposing (Dict)
 import Init
 import Internal.Init
 import Json.Encode as Json
@@ -31,34 +32,70 @@ type alias GetConfiguration a =
     }
 
 
-get : Permission -> GetConfiguration a -> Task Error String
-get _ config =
-    Gren.Kernel.HttpClient.request
+get 
+    : Permission 
+    -> 
+        { url: String
+        , expect: Expect a
+        } 
+    -> Task Error a
+get permission config =
+    request permission
         { method = "GET"
         , url = config.url
-        , bodyType = bodyTypeAsString BodyEmpty
+        , headers = Dict.empty
         , body = BodyEmpty
-        , expectType = expectTypeAsString config.expect
         , expect = config.expect
+        , timeout = defaultTimeout
         }
 
 
-type alias PostConfiguration a =
-    { url : String
-    , body : Body
-    , expect : Expect a
-    }
+defaultTimeout : Maybe Int
+defaultTimeout =
+    -- 10 seconds
+    Just 10000
 
 
-post : Permission -> PostConfiguration a -> Task Error a
-post _ config =
-    Gren.Kernel.HttpClient.request
+post 
+    : Permission 
+    -> 
+        { url: String
+        , body: Body
+        , expect: Expect a
+        } 
+    -> Task Error a
+post permission config =
+    request permission
         { method = "POST"
         , url = config.url
+        , headers = Dict.empty
+        , body = config.body
+        , expect = config.expect
+        , timeout = defaultTimeout
+        }
+
+
+request 
+    : Permission 
+    -> 
+        { method: String
+        , url: String
+        , headers: Dict String String
+        , body: Body
+        , expect: Expect a
+        , timeout: Maybe Int
+        }
+    -> Task Error a
+request _ config =
+    Gren.Kernel.HttpClient.request
+        { method = config.method
+        , url = config.url
+        , headers = config.headers
         , bodyType = bodyTypeAsString config.body
         , body = config.body
         , expectType = expectTypeAsString config.expect
         , expect = config.expect
+        , timeout = config.timeout
         }
 
 
