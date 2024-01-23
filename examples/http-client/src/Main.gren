@@ -71,6 +71,23 @@ init env =
                             }
                             |> Task.attempt Response
                     
+                    Just "headers" ->
+                        HttpClient.request httpPerm 
+                            { method = "POST"
+                            , url = "http://localhost:8080/mocked-path"
+                            , headers = Dict.empty
+                                |> Dict.insert "Content-Type" "application/json"
+                                |> Dict.insert "X-Request-ID" "12345"
+                            , body = HttpClient.jsonBody <|
+                                Json.object
+                                    [ { key = "message", value = Json.string "Check out my headers" }]
+                            , expect = HttpClient.expectJson <|
+                                Json.Decode.map (\s -> { response = s })
+                                    (Json.Decode.field "response" Json.Decode.string)
+                            , timeout = Just 1000
+                            }
+                            |> Task.attempt JsonResponse
+                    
                     _ ->
                         Stream.sendLine env.stdout"Invalid start argument"
             }

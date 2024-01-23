@@ -5,10 +5,16 @@ import HttpClient exposing (Timeout, UnknownError)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
+import Dict exposing (foldl)
 
 */
 
 const http = require("http");
+
+var _HttpClient_dictToObject = F3(function (key, value, obj) {
+  obj[key] = value;
+  return obj;
+});
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
@@ -19,6 +25,12 @@ var _HttpClient_request = function (config) {
       config.__$url,
       {
         method: config.__$method,
+        headers: A3(
+          __Dict_foldl,
+          _HttpClient_dictToObject,
+          {},
+          config.__$headers
+        ),
       },
       (res) => {
         const statusCode = res.statusCode;

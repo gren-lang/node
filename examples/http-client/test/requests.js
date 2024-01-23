@@ -3,11 +3,18 @@ import { runner, KEYS } from "clet";
 import * as mockttp from "mockttp";
 
 const server = mockttp.getLocal();
+/* Enable for debugging
+server.on('request', (data) => {
+  console.log(data)
+})
+*/
+
 const baseDir = path.resolve("bin");
 
 describe("Requests", () => {
-  beforeEach(() => server.start(8080));
-  afterEach(() => server.stop());
+  before(() => server.start(8080));
+
+  after(() => server.stop());
 
   it("Simple Get", async () => {
     await server.forGet("/mocked-path").thenReply(200, "A mocked response");
@@ -34,5 +41,21 @@ describe("Requests", () => {
     await server.forGet("/mocked-path").thenTimeout();
 
     await runner().cwd(baseDir).fork("app", ["timeout"], {}).stdout("timeout");
+  });
+
+  it("Custom headers", async () => {
+    await server
+      .forPost("/mocked-path")
+      .withHeaders({
+        "Content-Type": "application/json",
+        "X-Request-ID": "12345",
+      })
+      .withJsonBody({ message: "Check out my headers" })
+      .thenJson(200, { response: "Nice headers" });
+
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["headers"])
+      .stdout("200: Nice headers");
   });
 });
