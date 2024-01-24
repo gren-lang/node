@@ -95,10 +95,29 @@ request
         }
     -> Task Error a
 request _ config =
+    let
+        updatedHeaders = 
+            case config.body of
+                BodyEmpty ->
+                    config.headers
+
+                BodyString contentType content ->
+                    Dict.update
+                        "content-type"
+                        (\maybeValue ->
+                            case maybeValue of
+                                Nothing ->
+                                    Just contentType
+
+                                Just _ ->
+                                    maybeValue
+                        )
+                        config.headers
+    in
     Gren.Kernel.HttpClient.request
         { method = config.method
         , url = config.url
-        , headers = config.headers
+        , headers = updatedHeaders
         , bodyType = bodyTypeAsString config.body
         , body = config.body
         , expectType = expectTypeAsString config.expect
@@ -112,20 +131,20 @@ request _ config =
 
 type Body
     = BodyEmpty
-    | BodyString String
+    | BodyString String String
 
 
 emptyBody : Body
 emptyBody = BodyEmpty
 
 
-stringBody : String -> Body
+stringBody : String -> String -> Body
 stringBody = BodyString
 
 
 jsonBody : Json.Value -> Body
 jsonBody value =
-    BodyString (Json.encode 0 value)
+    BodyString "application/json" (Json.encode 0 value)
 
 
 bodyTypeAsString : Body -> String
@@ -134,7 +153,7 @@ bodyTypeAsString body =
         BodyEmpty -> 
             "EMPTY"
 
-        BodyString _ ->
+        BodyString _ _ ->
             "STRING"
 
 

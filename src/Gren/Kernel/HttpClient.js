@@ -126,6 +126,6 @@ var _HttpClient_extractRequestBody = function (config) {
     case "EMPTY":
       return null;
     case "STRING":
-      return config.__$body.a;
+      return config.__$body.b;
   }
 };

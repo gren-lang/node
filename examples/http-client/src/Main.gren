@@ -76,7 +76,6 @@ init env =
                             { method = "POST"
                             , url = "http://localhost:8080/mocked-path"
                             , headers = Dict.empty
-                                |> Dict.insert "Content-Type" "application/json"
                                 |> Dict.insert "X-Request-ID" "12345"
                             , body = HttpClient.jsonBody <|
                                 Json.object
