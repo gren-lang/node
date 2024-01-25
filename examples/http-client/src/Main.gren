@@ -8,6 +8,7 @@ import Stream exposing (Stream)
 import Json.Encode as Json
 import Json.Decode
 import Dict
+import Bytes.Encode
 
 
 type alias Model =
@@ -50,9 +51,10 @@ init env =
                     Just "post with body" ->
                         HttpClient.post httpPerm 
                             { url ="http://localhost:8080/mocked-path"
-                            , body = HttpClient.jsonBody <|
-                                Json.object
-                                    [ { key = "secret", value = Json.string "Hello, POST!" }]
+                            , body = 
+                                -- Overly complicated, but it's for testing bytes support
+                                HttpClient.bytesBody "application/json" <|
+                                    (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
                             , expect = HttpClient.expectJson
                                 (Json.Decode.map (\s -> { response = s })
                                     (Json.Decode.field "response" Json.Decode.string)

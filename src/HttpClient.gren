@@ -5,6 +5,7 @@ import Init
 import Internal.Init
 import Json.Encode as Json
 import Json.Decode
+import Bytes exposing (Bytes)
 import Task exposing (Task)
 import Gren.Kernel.HttpClient
 
@@ -96,12 +97,15 @@ request
     -> Task Error a
 request _ config =
     let
+        maybeContentType = 
+            bodyContentType config.body
+        
         updatedHeaders = 
-            case config.body of
-                BodyEmpty ->
+            case maybeContentType of
+                Nothing ->
                     config.headers
 
-                BodyString contentType content ->
+                Just contentType ->
                     Dict.update
                         "content-type"
                         (\maybeValue ->
@@ -132,6 +136,7 @@ request _ config =
 type Body
     = BodyEmpty
     | BodyString String String
+    | BodyBytes String Bytes
 
 
 emptyBody : Body
@@ -140,6 +145,10 @@ emptyBody = BodyEmpty
 
 stringBody : String -> String -> Body
 stringBody = BodyString
+
+
+bytesBody : String -> Bytes -> Body
+bytesBody = BodyBytes
 
 
 jsonBody : Json.Value -> Body
@@ -155,6 +164,22 @@ bodyTypeAsString body =
 
         BodyString _ _ ->
             "STRING"
+
+        BodyBytes _ _ ->
+            "BYTES"
+
+
+bodyContentType : Body -> Maybe String
+bodyContentType body =
+    case body of
+        BodyEmpty ->
+            Nothing
+
+        BodyString contentType _ ->
+            Just contentType
+
+        BodyBytes contentType _ ->
+            Just contentType
 
 
 -- EXPECT

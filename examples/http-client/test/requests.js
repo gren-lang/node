@@ -28,6 +28,10 @@ describe("Requests", () => {
   it("JSON Post Echo", async () => {
     await server
       .forPost("/mocked-path")
+      .withHeaders({
+        "Content-Type": "application/json",
+        "Content-Length": "28",
+      })
       .withJsonBody({ secret: "Hello, POST!" })
       .thenJson(200, { response: "Access Granted!" });
 

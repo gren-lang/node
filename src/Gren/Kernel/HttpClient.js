@@ -106,11 +106,8 @@ var _HttpClient_request = function (config) {
     });
 
     const body = _HttpClient_extractRequestBody(config);
-    if (body !== null) {
-      req.write(body);
-    }
 
-    req.end();
+    req.end(body);
 
     if (__Maybe_isJust(config.__$timeout)) {
       timeoutHandle = setTimeout(() => {
@@ -127,5 +124,7 @@ var _HttpClient_extractRequestBody = function (config) {
       return null;
     case "STRING":
       return config.__$body.b;
+    case "BYTES":
+      return new Uint8Array(config.__$body.b.buffer);
   }
 };
