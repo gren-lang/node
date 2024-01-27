@@ -55,14 +55,8 @@ get permission config =
         , headers = Dict.empty
         , body = BodyEmpty
         , expect = config.expect
-        , timeout = defaultTimeout
+        , timeout = Nothing
         }
-
-
-defaultTimeout : Maybe Int
-defaultTimeout =
-    -- 10 seconds
-    Just 10000
 
 
 post 
@@ -80,7 +74,7 @@ post permission config =
         , headers = Dict.empty
         , body = config.body
         , expect = config.expect
-        , timeout = defaultTimeout
+        , timeout = Nothing
         }
 
 
@@ -126,8 +120,14 @@ request _ config =
         , body = config.body
         , expectType = expectTypeAsString config.expect
         , expect = config.expect
-        , timeout = config.timeout
+        , timeout = Maybe.withDefault defaultTimeout config.timeout
         }
+
+
+defaultTimeout : Int
+defaultTimeout =
+    -- 10 seconds
+    10 * 1000
 
 
 -- BODY

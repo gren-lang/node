@@ -19,7 +19,6 @@ var _HttpClient_dictToObject = F3(function (key, value, obj) {
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
     let timeoutHandle = 0;
-    let timeoutTriggered = false;
 
     const req = http.request(
       config.__$url,
@@ -94,7 +93,7 @@ var _HttpClient_request = function (config) {
     );
 
     req.on("error", (e) => {
-      if (e.code === "ECONNRESET" && timeoutTriggered) {
+      if (e === _HttpClient_CustomTimeoutError) {
         return callback(__Scheduler_fail(__HttpClient_Timeout));
       }
 
@@ -109,12 +108,9 @@ var _HttpClient_request = function (config) {
 
     req.end(body);
 
-    if (__Maybe_isJust(config.__$timeout)) {
-      timeoutHandle = setTimeout(() => {
-        timeoutTriggered = true;
-        req.abort();
-      }, config.__$timeout.a);
-    }
+    timeoutHandle = setTimeout(() => {
+      req.destroy(_HttpClient_CustomTimeoutError);
+    }, config.__$timeout);
   });
 };
 
@@ -128,3 +124,5 @@ var _HttpClient_extractRequestBody = function (config) {
       return new Uint8Array(config.__$body.b.buffer);
   }
 };
+
+var _HttpClient_CustomTimeoutError = new Error();
