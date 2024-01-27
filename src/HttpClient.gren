@@ -101,7 +101,7 @@ request _ config =
 
                 Just contentType ->
                     Dict.update
-                        "content-type"
+                        "Content-Type"
                         (\maybeValue ->
                             case maybeValue of
                                 Nothing ->
