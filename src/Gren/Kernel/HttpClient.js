@@ -1,20 +1,15 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
-import HttpClient exposing (Timeout, UnknownError)
+import HttpClient exposing (Timeout, BadStatus, UnknownError)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
-import Dict exposing (foldl)
+import Dict exposing (empty, insert, foldl)
 
 */
 
 const http = require("http");
-
-var _HttpClient_dictToObject = F3(function (key, value, obj) {
-  obj[key] = value;
-  return obj;
-});
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
@@ -32,19 +27,9 @@ var _HttpClient_request = function (config) {
         ),
       },
       (res) => {
-        const statusCode = res.statusCode;
-        if (statusCode < 200 || statusCode >= 300) {
-          return callback(
-            __Scheduler_fail(
-              __HttpClient_UnknownError("bad status code: " + statusCode)
-            )
-          );
-        }
-
         res.setEncoding("utf8");
 
         let rawData = "";
-
         res.on("data", (chunk) => {
           rawData += chunk;
         });
@@ -52,10 +37,20 @@ var _HttpClient_request = function (config) {
         res.on("end", () => {
           clearTimeout(timeoutHandle);
 
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return callback(
+              __Scheduler_fail(
+                __HttpClient_BadStatus(_HttpClient_formatResponse(res, rawData))
+              )
+            );
+          }
+
           switch (config.__$expectType) {
             case "NOTHING":
               if (rawData === "") {
-                return callback(__Scheduler_succeed({}));
+                return callback(
+                  __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
+                );
               } else {
                 return callback(
                   __Scheduler_fail(
@@ -67,10 +62,14 @@ var _HttpClient_request = function (config) {
               }
 
             case "ANYTHING":
-              return callback(__Scheduler_succeed({}));
+              return callback(
+                __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
+              );
 
             case "STRING":
-              return callback(__Scheduler_succeed(rawData));
+              return callback(
+                __Scheduler_succeed(_HttpClient_formatResponse(res, rawData))
+              );
 
             case "JSON":
               const jsonResult = A2(
@@ -79,7 +78,11 @@ var _HttpClient_request = function (config) {
                 rawData
               );
               if (__Result_isOk(jsonResult)) {
-                return callback(__Scheduler_succeed(jsonResult.a));
+                return callback(
+                  __Scheduler_succeed(
+                    _HttpClient_formatResponse(res, jsonResult.a)
+                  )
+                );
               } else {
                 return callback(
                   __Scheduler_fail(
@@ -114,6 +117,11 @@ var _HttpClient_request = function (config) {
   });
 };
 
+var _HttpClient_dictToObject = F3(function (key, value, obj) {
+  obj[key] = value;
+  return obj;
+});
+
 var _HttpClient_extractRequestBody = function (config) {
   switch (config.__$bodyType) {
     case "EMPTY":
@@ -126,3 +134,17 @@ var _HttpClient_extractRequestBody = function (config) {
 };
 
 var _HttpClient_CustomTimeoutError = new Error();
+
+var _HttpClient_formatResponse = function (res, data) {
+  let headerDict = __Dict_empty;
+  for (const [key, value] of Object.entries(res.headersDistinct)) {
+    headerDict = A3(__Dict_insert, key, value, headerDict);
+  }
+
+  return {
+    __$statusCode: res.statusCode,
+    __$statusText: res.statusMessage,
+    __$headers: headerDict,
+    __$data: data,
+  };
+};

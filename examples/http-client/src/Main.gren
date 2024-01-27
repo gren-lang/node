@@ -18,8 +18,8 @@ type alias Model =
 
 
 type Msg 
-    = Response (Result HttpClient.Error String)
-    | JsonResponse (Result HttpClient.Error { response : String })
+    = Response (Result HttpClient.Error (HttpClient.Response String))
+    | JsonResponse (Result HttpClient.Error (HttpClient.Response { response : String }))
 
 
 main : Node.Program Model Msg
@@ -97,9 +97,9 @@ init env =
 update : Msg -> Model -> { model : Model, command : Cmd Msg }
 update msg model =
     case msg of
-        Response (Ok data) ->
+        Response (Ok response) ->
             { model = model
-            , command = Stream.sendLine model.stdout ("200: " ++ data)
+            , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data)
             }
 
         Response (Err err) ->
@@ -107,9 +107,9 @@ update msg model =
             , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
             }
         
-        JsonResponse (Ok data) ->
+        JsonResponse (Ok response) ->
             { model = model
-            , command = Stream.sendLine model.stdout ("200: " ++ data.response)
+            , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data.response)
             }
 
         JsonResponse (Err err) ->

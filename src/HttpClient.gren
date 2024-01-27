@@ -20,11 +20,23 @@ initialize =
         |> Internal.Init.Task
 
 
+-- RESPONSE
+
+
+type alias Response a =
+    { statusCode : Int
+    , statusText : String
+    , headers : Dict String (Array String)
+    , data : a
+    }
+
+
 -- ERRORS
 
 
 type Error 
     = Timeout
+    | BadStatus (Response String)
     | UnknownError String
 
 
@@ -32,7 +44,10 @@ errorToString : Error -> String
 errorToString err =
     case err of
         Timeout ->
-            "timeout"
+            "Timeout"
+
+        BadStatus res ->
+            "Bad status: " ++ String.fromInt res.statusCode
 
         UnknownError debugStr ->
             "Unknown error: " ++ debugStr
@@ -47,7 +62,7 @@ get
         { url: String
         , expect: Expect a
         } 
-    -> Task Error a
+    -> Task Error (Response a)
 get permission config =
     request permission
         { method = "GET"
@@ -66,7 +81,7 @@ post
         , body: Body
         , expect: Expect a
         } 
-    -> Task Error a
+    -> Task Error (Response a)
 post permission config =
     request permission
         { method = "POST"
@@ -88,7 +103,7 @@ request
         , expect: Expect a
         , timeout: Maybe Int
         }
-    -> Task Error a
+    -> Task Error (Response a)
 request _ config =
     let
         maybeContentType = 

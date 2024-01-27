@@ -4,9 +4,9 @@ import * as mockttp from "mockttp";
 
 const server = mockttp.getLocal();
 /* Enable for debugging
-server.on('request', (data) => {
-  console.log(data)
-})
+server.on("request", (data) => {
+  console.log(data);
+});
 */
 
 const baseDir = path.resolve("bin");
@@ -44,7 +44,7 @@ describe("Requests", () => {
   it("Timeout", async () => {
     await server.forGet("/mocked-path").thenTimeout();
 
-    await runner().cwd(baseDir).fork("app", ["timeout"], {}).stdout("timeout");
+    await runner().cwd(baseDir).fork("app", ["timeout"], {}).stdout("Timeout");
   });
 
   it("Custom headers", async () => {
