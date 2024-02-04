@@ -27,11 +27,19 @@ var _HttpClient_request = function (config) {
         ),
       },
       (res) => {
-        res.setEncoding("utf8");
+        const expectType = config.__$expectType;
 
-        let rawData = "";
+        if (expectType === "STRING" || expectType === "JSON") {
+          res.setEncoding("utf8");
+        }
+
+        let rawData = null;
         res.on("data", (chunk) => {
-          rawData += chunk;
+          if (rawData === null) {
+            rawData = chunk;
+          } else {
+            rawData += chunk;
+          }
         });
 
         res.on("end", () => {
@@ -45,9 +53,9 @@ var _HttpClient_request = function (config) {
             );
           }
 
-          switch (config.__$expectType) {
+          switch (expectType) {
             case "NOTHING":
-              if (rawData === "") {
+              if (rawData === null) {
                 return callback(
                   __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
                 );
@@ -90,6 +98,13 @@ var _HttpClient_request = function (config) {
                   )
                 );
               }
+
+            case "BYTES":
+              return callback(
+                __Scheduler_succeed(
+                  _HttpClient_formatResponse(res, new DataView(rawData.buffer))
+                )
+              );
           }
         });
       }

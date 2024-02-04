@@ -205,6 +205,7 @@ type Expect a
     | ExpectAnything
     | ExpectString
     | ExpectJson (Json.Decode.Decoder a)
+    | ExpectBytes
 
 
 expectNothing : Expect {}
@@ -223,6 +224,10 @@ expectJson : Json.Decode.Decoder a -> Expect a
 expectJson = ExpectJson
 
 
+expectBytes : Expect Bytes
+expectBytes = ExpectBytes
+
+
 expectTypeAsString : Expect a -> String
 expectTypeAsString expect =
     case expect of
@@ -237,4 +242,7 @@ expectTypeAsString expect =
 
         ExpectJson _ ->
             "JSON"
+
+        ExpectBytes ->
+            "BYTES"
 

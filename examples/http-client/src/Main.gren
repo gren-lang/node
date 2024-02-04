@@ -8,7 +8,9 @@ import Stream exposing (Stream)
 import Json.Encode as Json
 import Json.Decode
 import Dict
+import Bytes exposing (Bytes)
 import Bytes.Encode
+import Bytes.Decode
 
 
 type alias Model =
@@ -20,6 +22,7 @@ type alias Model =
 type Msg 
     = Response (Result HttpClient.Error (HttpClient.Response String))
     | JsonResponse (Result HttpClient.Error (HttpClient.Response { response : String }))
+    | BytesResponse (Result HttpClient.Error (HttpClient.Response Bytes))
 
 
 main : Node.Program Model Msg
@@ -85,9 +88,20 @@ init env =
                             , expect = HttpClient.expectJson <|
                                 Json.Decode.map (\s -> { response = s })
                                     (Json.Decode.field "response" Json.Decode.string)
-                            , timeout = Just 1000
+                            , timeout = Nothing
                             }
                             |> Task.attempt JsonResponse
+
+                    Just "bytes" ->
+                        HttpClient.request httpPerm 
+                            { method = "GET"
+                            , url = "http://localhost:8080/mocked-path"
+                            , headers = Dict.empty
+                            , body = HttpClient.emptyBody
+                            , expect = HttpClient.expectBytes
+                            , timeout = Nothing
+                            }
+                            |> Task.attempt BytesResponse
                     
                     _ ->
                         Stream.sendLine env.stdout"Invalid start argument"
@@ -113,6 +127,30 @@ update msg model =
             }
 
         JsonResponse (Err err) ->
+            { model = model
+            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            }
+        
+        BytesResponse (Ok response) ->
+            let
+                decoder =
+                    Bytes.Decode.map2 (\i1 i2 -> { i1 = i1, i2 = i2})
+                        (Bytes.Decode.unsignedInt32 Bytes.BE)
+                        (Bytes.Decode.unsignedInt32 Bytes.BE)
+            in
+            case Bytes.Decode.decode decoder response.data of
+                Just { i1, i2 } ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ String.fromInt i1 ++ " & " ++ String.fromInt i2)
+                    }
+
+                Nothing ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Failed to decode byte sequence"
+                    }
+                    
+
+        BytesResponse (Err err) ->
             { model = model
             , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
             }

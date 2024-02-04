@@ -62,4 +62,19 @@ describe("Requests", () => {
       .fork("app", ["headers"])
       .stdout("200: Nice headers");
   });
+
+  it("Byte response", async () => {
+    const dataView = new DataView(new ArrayBuffer(8));
+    dataView.setUint32(0, 42);
+    dataView.setUint32(4, 24);
+
+    await server
+      .forGet("/mocked-path")
+      .thenReply(200, new Uint8Array(dataView.buffer));
+
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["bytes"], {})
+      .stdout("200: 42 & 24");
+  });
 });
