@@ -77,4 +77,19 @@ describe("Requests", () => {
       .fork("app", ["bytes"], {})
       .stdout("200: 42 & 24");
   });
+
+  it("Streaming request", async () => {
+    await server
+      .forPost("/mocked-path")
+      .withHeaders({
+        "Content-Type": "application/octet-stream",
+      })
+      .withJsonBody({ message: "Was chunked as bytes" })
+      .thenJson(200, { response: "Nice headers" });
+
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["stream"])
+      .stdout("200: Nice headers");
+  });
 });

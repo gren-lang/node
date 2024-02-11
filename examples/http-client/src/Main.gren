@@ -23,6 +23,7 @@ type Msg
     = Response (Result HttpClient.Error (HttpClient.Response String))
     | JsonResponse (Result HttpClient.Error (HttpClient.Response { response : String }))
     | BytesResponse (Result HttpClient.Error (HttpClient.Response Bytes))
+    | StreamResponse HttpClient.Progress
 
 
 main : Node.Program Model Msg
@@ -88,6 +89,13 @@ init env =
                             |> HttpClient.expectBytes
                             |> HttpClient.send httpPerm
                             |> Task.attempt BytesResponse
+
+                    Just "stream" ->
+                        HttpClient.post "http://localhost:8080/mocked-path"
+                            |> HttpClient.withBytesBody "application/json"
+                                (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
+                            |> HttpClient.expectBytes
+                            |> HttpClient.stream httpPerm StreamResponse
                     
                     _ ->
                         Stream.sendLine env.stdout"Invalid start argument"
@@ -140,4 +148,26 @@ update msg model =
             { model = model
             , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
             }
+
+        StreamResponse progress ->
+            case progress of
+                HttpClient.SentChunk _ _ ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Sent"
+                    }
+                
+                HttpClient.ReceivedChunk _ _ ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Received"
+                    }
+                
+                HttpClient.Error _ ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Error"
+                    }
+                
+                HttpClient.Done _ ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Done"
+                    }
             

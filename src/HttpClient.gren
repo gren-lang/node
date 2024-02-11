@@ -304,6 +304,10 @@ sendChunk : Bytes -> StreamingRequest -> Cmd msg
 sendChunk bytes req =
     command <| SendChunk bytes req
 
+startReceive : StreamingRequest -> Cmd msg
+startReceive req =
+    command <| StartReceive req
+
 
 abort : StreamingRequest -> Cmd a
 abort req =
@@ -320,6 +324,7 @@ type alias RequestsState =
 type MyCmd msg
     = Start (Progress -> msg) (Request Bytes)
     | SendChunk Bytes StreamingRequest
+    | StartReceive StreamingRequest
     | Abort StreamingRequest
 
 
@@ -331,6 +336,9 @@ cmdMap func cmd =
 
         SendChunk bytes req ->
             SendChunk bytes req
+        
+        StartReceive req ->
+            StartReceive req
 
         Abort req ->
             Abort req
@@ -356,6 +364,11 @@ onEffects router commands state =
                     (Task.succeed state)
 
             SendChunk bytes req ->
+                Task.andThen
+                    (\_ -> onEffects router rest state)
+                    (Task.succeed state)
+            
+            StartReceive req ->
                 Task.andThen
                     (\_ -> onEffects router rest state)
                     (Task.succeed state)
