@@ -1,4 +1,4 @@
-module HttpClient exposing (..)
+effect module HttpClient where { command = MyCmd } exposing (..)
 
 import Dict exposing (Dict)
 import Init
@@ -7,6 +7,7 @@ import Json.Encode as Json
 import Json.Decode
 import Bytes exposing (Bytes)
 import Task exposing (Task)
+import Platform
 import Gren.Kernel.HttpClient
 
 
@@ -171,59 +172,6 @@ withTimeout ms req =
         { req | timeout = ms }
 
 
--- RESPONSE
-
-
-type alias Response a =
-    { statusCode : Int
-    , statusText : String
-    , headers : Dict String (Array String)
-    , data : a
-    }
-
-
--- ERRORS
-
-
-type Error 
-    = Timeout
-    | BadStatus (Response String)
-    | UnknownError String
-
-
-errorToString : Error -> String
-errorToString err =
-    case err of
-        Timeout ->
-            "Timeout"
-
-        BadStatus res ->
-            "Bad status: " ++ String.fromInt res.statusCode
-
-        UnknownError debugStr ->
-            "Unknown error: " ++ debugStr
-
-
--- SENDING
-
-
-send
-    : Permission 
-    -> Request a
-    -> Task Error (Response a)
-send _ config =
-    Gren.Kernel.HttpClient.request
-        { method = config.method
-        , url = config.url
-        , headers = config.headers
-        , bodyType = bodyTypeAsString config.body
-        , body = config.body
-        , expectType = expectTypeAsString config.expect
-        , expect = config.expect
-        , timeout = config.timeout
-        }
-
-
 -- BODY
 
 
@@ -236,7 +184,7 @@ type Body
 bodyTypeAsString : Body -> String
 bodyTypeAsString body =
     case body of
-        BodyEmpty -> 
+        BodyEmpty ->
             "EMPTY"
 
         BodyString _ ->
@@ -275,3 +223,155 @@ expectTypeAsString expect =
         ExpectBytes ->
             "BYTES"
 
+
+-- RESPONSE
+
+
+type alias Response a =
+    { statusCode : Int
+    , statusText : String
+    , headers : Dict String (Array String)
+    , data : a
+    }
+
+
+-- ERRORS
+
+
+type Error 
+    = Timeout
+    | BadStatus (Response String)
+    | UnknownError String
+
+
+errorToString : Error -> String
+errorToString err =
+    case err of
+        Timeout ->
+            "Timeout"
+
+        BadStatus res ->
+            "Bad status: " ++ String.fromInt res.statusCode
+
+        UnknownError debugStr ->
+            "Unknown error: " ++ debugStr
+
+
+-- SIMPLE SEND
+
+
+send
+    : Permission 
+    -> Request a
+    -> Task Error (Response a)
+send _ config =
+    Gren.Kernel.HttpClient.request
+        { method = config.method
+        , url = config.url
+        , headers = config.headers
+        , bodyType = bodyTypeAsString config.body
+        , body = config.body
+        , expectType = expectTypeAsString config.expect
+        , expect = config.expect
+        , timeout = config.timeout
+        }
+
+
+-- STREAM
+
+
+type StreamingRequest =
+    StreamingRequest
+
+
+type Progress
+    = SentChunk StreamingRequest Int
+    | ReceivedChunk StreamingRequest Int
+    | Error StreamError
+    | Done Int
+
+
+type StreamError
+    = StreamError
+
+
+stream : Permission -> (Progress -> msg) -> Request Bytes -> Cmd msg
+stream _ toMsg config =
+    command <| Start toMsg config
+
+
+sendChunk : Bytes -> StreamingRequest -> Cmd msg
+sendChunk bytes req =
+    command <| SendChunk bytes req
+
+
+abort : StreamingRequest -> Cmd a
+abort req =
+    command <| Abort req
+
+
+-- COMMANDS
+
+
+type alias RequestsState =
+    {}
+
+
+type MyCmd msg
+    = Start (Progress -> msg) (Request Bytes)
+    | SendChunk Bytes StreamingRequest
+    | Abort StreamingRequest
+
+
+cmdMap : (a -> b) -> MyCmd a -> MyCmd b
+cmdMap func cmd =
+    case cmd of
+        Start toMsg req ->
+            Start (toMsg >> func) req
+
+        SendChunk bytes req ->
+            SendChunk bytes req
+
+        Abort req ->
+            Abort req
+
+
+init : Task Never RequestsState
+init =
+  Task.succeed
+    {}
+
+
+onEffects : Platform.Router msg Never -> Array (MyCmd msg) -> RequestsState -> Task Never RequestsState
+onEffects router commands state =
+  case Array.popFirst commands of
+    Nothing ->
+      Task.succeed state
+
+    Just { first, rest } ->
+        case first of
+            Start toMsg config ->
+                Task.andThen
+                    (\_ -> onEffects router rest state)
+                    (Task.succeed state)
+
+            SendChunk bytes req ->
+                Task.andThen
+                    (\_ -> onEffects router rest state)
+                    (Task.succeed state)
+
+            Abort req ->
+                Task.andThen
+                    (\_ -> onEffects router rest state)
+                    (Task.succeed state)
+                
+{-
+Task.andThen
+    (\_ -> onEffects router rest newSeed)
+    (Platform.sendToApp router value)
+-}
+
+
+onSelfMsg : Platform.Router msg Never -> Never -> RequestsState -> Task Never RequestsState
+onSelfMsg _ _ state =
+  Task.succeed state
