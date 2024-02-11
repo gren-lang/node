@@ -45,62 +45,48 @@ init env =
             , command =
                 case Array.get 2 env.args of
                     Just "simple get" ->
-                        HttpClient.get httpPerm 
-                            { url ="http://localhost:8080/mocked-path"
-                            , expect = HttpClient.expectString
-                            }
+                        HttpClient.get "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectString
+                            |> HttpClient.send httpPerm
                             |> Task.attempt Response
                     
                     Just "post with body" ->
-                        HttpClient.post httpPerm 
-                            { url ="http://localhost:8080/mocked-path"
-                            , body = 
+                        HttpClient.post "http://localhost:8080/mocked-path"
+                            |> HttpClient.withBytesBody "application/json"
                                 -- Overly complicated, but it's for testing bytes support
-                                HttpClient.bytesBody "application/json" <|
-                                    (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
-                            , expect = HttpClient.expectJson
-                                (Json.Decode.map (\s -> { response = s })
+                                (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
+                            |> HttpClient.expectJson
+                                ( Json.Decode.map (\s -> { response = s })
                                     (Json.Decode.field "response" Json.Decode.string)
                                 )
-                            }
+                            |> HttpClient.send httpPerm
                             |> Task.attempt JsonResponse
                     
                     Just "timeout" ->
-                        HttpClient.request httpPerm 
-                            { method = "GET"
-                            , url = "http://localhost:8080/mocked-path"
-                            , headers = Dict.empty
-                            , body = HttpClient.emptyBody
-                            , expect = HttpClient.expectString
-                            , timeout = Just 50
-                            }
+                        HttpClient.get "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectString
+                            |> HttpClient.withTimeout 50
+                            |> HttpClient.send httpPerm
                             |> Task.attempt Response
                     
                     Just "headers" ->
-                        HttpClient.request httpPerm 
-                            { method = "POST"
-                            , url = "http://localhost:8080/mocked-path"
-                            , headers = Dict.empty
-                                |> Dict.insert "X-Request-ID" "12345"
-                            , body = HttpClient.jsonBody <|
-                                Json.object
-                                    [ { key = "message", value = Json.string "Check out my headers" }]
-                            , expect = HttpClient.expectJson <|
-                                Json.Decode.map (\s -> { response = s })
+                        HttpClient.post "http://localhost:8080/mocked-path"
+                            |> HttpClient.withHeader "X-Request-ID" "12345"
+                            |> HttpClient.withJsonBody
+                                ( Json.object
+                                    [ { key = "message", value = Json.string "Check out my headers" } ]
+                                )
+                            |> HttpClient.expectJson
+                                ( Json.Decode.map (\s -> { response = s })
                                     (Json.Decode.field "response" Json.Decode.string)
-                            , timeout = Nothing
-                            }
+                                )
+                            |> HttpClient.send httpPerm
                             |> Task.attempt JsonResponse
 
                     Just "bytes" ->
-                        HttpClient.request httpPerm 
-                            { method = "GET"
-                            , url = "http://localhost:8080/mocked-path"
-                            , headers = Dict.empty
-                            , body = HttpClient.emptyBody
-                            , expect = HttpClient.expectBytes
-                            , timeout = Nothing
-                            }
+                        HttpClient.get "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectBytes
+                            |> HttpClient.send httpPerm
                             |> Task.attempt BytesResponse
                     
                     _ ->

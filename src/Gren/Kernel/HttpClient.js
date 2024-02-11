@@ -142,9 +142,9 @@ var _HttpClient_extractRequestBody = function (config) {
     case "EMPTY":
       return null;
     case "STRING":
-      return config.__$body.b;
+      return config.__$body.a;
     case "BYTES":
-      return new Uint8Array(config.__$body.b.buffer);
+      return new Uint8Array(config.__$body.a.buffer);
   }
 };
 
