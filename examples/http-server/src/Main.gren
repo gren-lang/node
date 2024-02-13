@@ -104,7 +104,7 @@ update msg model =
                 response
                     |> Response.setHeader "Content-Type" "image/jpeg"
                     |> Response.setStatus 200
-                    |> Response.setBodyToBytes bytes
+                    |> Response.setBodyAsBytes bytes
                     |> Response.send
             }
 

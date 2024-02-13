@@ -2,8 +2,8 @@ effect module HttpServer.Response where { command = ResponseCmd } exposing
     ( Response
     , send
     , setBody
-    , setBodyToBytes
-    , setBodyToString
+    , setBodyAsBytes
+    , setBodyAsString
     , setHeader
     , setStatus
     )
@@ -23,7 +23,7 @@ assuming you [subscribed](HttpServer.onRequest) with a `GotRequest` msg:
                 |> Response.send
         }
 
-@docs Response, send, setBody, setBodyToBytes, setBodyToString, setHeader, setStatus
+@docs Response, send, setBody, setBodyAsBytes, setBodyAsString, setHeader, setStatus
 
 -}
 
@@ -81,24 +81,24 @@ setHeader key value (Response responseKey response) =
         }
 
 
-{-| Alias for [`setBodyToString`](HttpServer#setBodyToString).
+{-| Alias for [`setBodyAsString`](HttpServer#setBodyAsString).
 -}
 setBody : String -> Response -> Response
-setBody = setBodyToString
+setBody = setBodyAsString
 
 
 {-| Set the body of the response to a string.
 -}
-setBodyToString : String -> Response -> Response
-setBodyToString body (Response key response) =
+setBodyAsString : String -> Response -> Response
+setBodyAsString body (Response key response) =
     Response key
         { response | body = StringBody body }
 
 
 {-| Set the body of the response to some bytes.
 -}
-setBodyToBytes : Bytes -> Response -> Response
-setBodyToBytes body (Response key response) =
+setBodyAsBytes : Bytes -> Response -> Response
+setBodyAsBytes body (Response key response) =
     Response key
         { response | body = BytesBody body }
 
@@ -157,7 +157,7 @@ onEffects router cmds state =
                                      Gren.Kernel.HttpServer.setBody body
 
                                  BytesBody body ->
-                                    Gren.Kernel.HttpServer.setBodyToBytes body
+                                    Gren.Kernel.HttpServer.setBodyAsBytes body
                                 )
                             |> Gren.Kernel.HttpServer.endResponse
                     )
