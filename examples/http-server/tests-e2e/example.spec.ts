@@ -67,3 +67,9 @@ test("handling unicode", async ({ request }) => {
   await expect(response.headers()["content-type"]).toBe("text/html");
   await expect(await response.text()).toContain("You posted: snow ❄ flake");
 });
+
+test("responding with bytes", async ({ page }) => {
+  let response = await page.goto("/george.jpeg");
+  await expect(response?.status()).toBe(200);
+  await expect(response?.headers()["content-type"]).toBe("image/jpeg");
+});

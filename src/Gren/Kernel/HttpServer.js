@@ -85,6 +85,12 @@ var _HttpServer_setBody = F2(function (body, res) {
   return res;
 });
 
+var _HttpServer_setBodyAsBytes = F2(function (data, res) {
+  let body = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  res.write(body);
+  return res;
+});
+
 var _HttpServer_endResponse = function (res) {
   res.end();
   return {};
