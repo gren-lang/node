@@ -1,14 +1,16 @@
 module Main exposing (main)
 
 import Node
+import Bytes exposing (Bytes)
 import Dict
 import Stream exposing (Stream)
 import Node exposing (Environment, Program)
+import FileSystem
 import HttpServer as Http exposing (ServerError(..), Method(..))
 import HttpServer.Response as Response exposing (Response)
 import Init
 import Json.Decode as Decode
-import Task
+import Task exposing (Task)
 
 
 main : Program Model Msg
@@ -20,34 +22,54 @@ main =
         }
 
 
+type ReadFileError
+    = AccessError FileSystem.AccessError
+    | UnknownFileSystemError FileSystem.UnknownFileSystemError
+
+
 type alias Model =
     { stdout : Stream
     , stderr : Stream
     , server : Maybe Http.Server
+    , fsPermission : FileSystem.Permission
     }
 
 
 type Msg
     = CreateServerResult (Result Http.ServerError Http.Server)
     | GotRequest Http.Request Response
+    | GotJpeg Response (Result ReadFileError Bytes)
+
+
+readFileAsBytes : FileSystem.Permission -> String -> Task ReadFileError Bytes
+readFileAsBytes fsPermission fileName =
+    FileSystem.openForRead fsPermission fileName
+        |> Task.mapError AccessError
+        |> Task.andThen
+                (\permission ->
+                    FileSystem.read permission
+                        |> Task.mapError UnknownFileSystemError
+                )
 
 
 init : Environment -> Init.Task { model : Model, command : Cmd Msg }
 init env =
-    Init.await Http.initialize <| \serverPermission ->
-        Node.startProgram
-            { model =
-                { stdout = env.stdout
-                , stderr = env.stderr
-                , server = Nothing
+    Init.await FileSystem.initialize <| \fileSystemPermission ->
+        Init.await Http.initialize <| \serverPermission ->
+            Node.startProgram
+                { model =
+                    { stdout = env.stdout
+                    , stderr = env.stderr
+                    , server = Nothing
+                    , fsPermission = fileSystemPermission
+                    }
+                , command =
+                    Task.attempt CreateServerResult <|
+                        Http.createServer serverPermission
+                            { host = "0.0.0.0"
+                            , port_ = 3000
+                            }
                 }
-            , command =
-                Task.attempt CreateServerResult <|
-                    Http.createServer serverPermission
-                        { host = "0.0.0.0"
-                        , port_ = 3000
-                        }
-            }
 
 
 update : Msg -> Model -> { model : Model, command : Cmd Msg }
@@ -67,52 +89,81 @@ update msg model =
                     }
         
         GotRequest req res ->
-            let
-                { body, status } = case { method = req.method, path = req.url.path } of
-                    { method = GET, path = "/" } ->
-                        { body = "Welcome!"
-                        , status = 200
-                        }
-
-                    { method = GET, path = "/hello" } ->
-                        { body = "Hello to you too!"
-                        , status = 200
-                        }
-
-                    { method = POST, path = "/name" } ->
-                        { body = "Hello, " ++
-                            ( req
-                                |> Http.bodyFromJson (Decode.dict Decode.string)
-                                |> Result.withDefault Dict.empty
-                                |> Dict.get "name"
-                                |> Maybe.withDefault "Oops! Can't decode body."
-                            )
-                        , status = 200
-                        }
-                    
-                    { method = POST } ->
-                        { body = "You posted: " ++
-                            ( req
-                                |> Http.bodyAsString
-                                |> Maybe.withDefault "Oops! Can't decode body."
-                            )
-                        , status = 200
-                        }
-                    
-                    _ ->
-                        { body = "Not found: " ++ (Http.requestInfo req)
-                        , status = 404
-                        }
-            in
+            { model = model
+            , command = 
+                if req.url.path == "/george.jpeg" then
+                    readFileAsBytes model.fsPermission "./public/george.jpeg"
+                        |> Task.attempt (GotJpeg res)
+                else
+                    htmlResponse req res
+            }
+        
+        GotJpeg response (Ok bytes) ->
             { model = model
             , command =
-                res
-                    |> Response.setStatus status
-                    |> Response.setHeader "Content-type" "text/html"
-                    |> Response.setHeader "X-Custom-Header" "hey there"
-                    |> Response.setBody ("<html>" ++ body ++ "</html>")
+                response
+                    |> Response.setHeader "Content-Type" "image/jpeg"
+                    |> Response.setStatus 200
+                    |> Response.setBodyToBytes bytes
                     |> Response.send
             }
+
+        GotJpeg response (Err _) ->
+            { model = model
+            , command =
+                response
+                    |> Response.setHeader "Content-Type" "text/plain"
+                    |> Response.setStatus 404
+                    |> Response.setBody "Not found"
+                    |> Response.send
+            }
+
+
+htmlResponse : Http.Request -> Response -> Cmd Msg
+htmlResponse req res =
+    let
+        { body, status } = case { method = req.method, path = req.url.path } of
+            { method = GET, path = "/" } ->
+                { body = "Welcome!"
+                , status = 200
+                }
+
+            { method = GET, path = "/hello" } ->
+                { body = "Hello to you too!"
+                , status = 200
+                }
+
+            { method = POST, path = "/name" } ->
+                { body = "Hello, " ++
+                    ( req
+                        |> Http.bodyFromJson (Decode.dict Decode.string)
+                        |> Result.withDefault Dict.empty
+                        |> Dict.get "name"
+                        |> Maybe.withDefault "Oops! Can't decode body."
+                    )
+                , status = 200
+                }
+            
+            { method = POST } ->
+                { body = "You posted: " ++
+                    ( req
+                        |> Http.bodyAsString
+                        |> Maybe.withDefault "Oops! Can't decode body."
+                    )
+                , status = 200
+                }
+
+            _ ->
+                { body = "Not found: " ++ (Http.requestInfo req)
+                , status = 404
+                }
+    in
+    res
+        |> Response.setStatus status
+        |> Response.setHeader "Content-type" "text/html"
+        |> Response.setHeader "X-Custom-Header" "hey there"
+        |> Response.setBody ("<html>" ++ body ++ "</html>")
+        |> Response.send
 
 
 subscriptions : Model -> Sub Msg

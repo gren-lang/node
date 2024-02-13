@@ -2,6 +2,8 @@ effect module HttpServer.Response where { command = ResponseCmd } exposing
     ( Response
     , send
     , setBody
+    , setBodyToBytes
+    , setBodyToString
     , setHeader
     , setStatus
     )
@@ -21,10 +23,11 @@ assuming you [subscribed](HttpServer.onRequest) with a `GotRequest` msg:
                 |> Response.send
         }
 
-@docs Response, send, setBody, setHeader, setStatus
+@docs Response, send, setBody, setBodyToBytes, setBodyToString, setHeader, setStatus
 
 -}
 
+import Bytes exposing (Bytes)
 import Dict exposing (Dict)
 import Task exposing (Task)
 
@@ -35,8 +38,13 @@ type Response =
     Response ResponseKey
         { status : Int
         , headers : Dict String String
-        , body : String
+        , body : Body
         }
+
+
+type Body
+    = StringBody String
+    | BytesBody Bytes
 
 
 type ResponseKey =
@@ -51,7 +59,7 @@ toResponse : ResponseKey -> Response
 toResponse key =
     Response key
         { status = 200
-        , body = ""
+        , body = StringBody ""
         , headers = Dict.empty
         }
 
@@ -73,12 +81,26 @@ setHeader key value (Response responseKey response) =
         }
 
 
-{-| Set the body on a response.
+{-| Alias for [`setBodyToString`](HttpServer#setBodyToString).
 -}
 setBody : String -> Response -> Response
-setBody body (Response key response) =
+setBody = setBodyToString
+
+
+{-| Set the body of the response to a string.
+-}
+setBodyToString : String -> Response -> Response
+setBodyToString body (Response key response) =
     Response key
-        { response | body = body }
+        { response | body = StringBody body }
+
+
+{-| Set the body of the response to some bytes.
+-}
+setBodyToBytes : Bytes -> Response -> Response
+setBodyToBytes body (Response key response) =
+    Response key
+        { response | body = BytesBody body }
 
 
 -- EFFECT STUFF
@@ -130,7 +152,13 @@ onEffects router cmds state =
                     (\(SendResponse (Response key response)) ->
                         Gren.Kernel.HttpServer.setStatus response.status key
                             |> Gren.Kernel.HttpServer.setHeaders (Dict.toArray response.headers)
-                            |> Gren.Kernel.HttpServer.setBody response.body
+                            |> ( case response.body of
+                                 StringBody body ->
+                                     Gren.Kernel.HttpServer.setBody body
+
+                                 BytesBody body ->
+                                    Gren.Kernel.HttpServer.setBodyToBytes body
+                                )
                             |> Gren.Kernel.HttpServer.endResponse
                     )
     in
