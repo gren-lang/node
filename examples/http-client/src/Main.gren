@@ -16,6 +16,7 @@ import Bytes.Decode
 type alias Model =
     { stdout : Stream 
     , httpPermission : HttpClient.Permission
+    , streamReqChunks : Array Bytes
     }
 
 
@@ -38,10 +39,20 @@ main =
 init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
 init env =
     Init.await HttpClient.initialize <| \httpPerm ->
+        let
+            reqChunks =
+                [ "{ "
+                , "\"secret\": "
+                , "\"Hello, POST!\""
+                , " }"
+                ]
+                |> Array.map (Bytes.Encode.encode << Bytes.Encode.string)
+        in
         Node.startProgram
             { model = 
                 { stdout = env.stdout
                 , httpPermission = httpPerm
+                , streamReqChunks = reqChunks
                 }
             , command =
                 case Array.get 2 env.args of
@@ -92,8 +103,8 @@ init env =
 
                     Just "stream" ->
                         HttpClient.post "http://localhost:8080/mocked-path"
-                            |> HttpClient.withBytesBody "application/json"
-                                (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
+                            |> HttpClient.withBytesBody "application/json" 
+                                (Maybe.withDefault (Bytes.Encode.encode (Bytes.Encode.string "")) <| Array.first reqChunks)
                             |> HttpClient.expectBytes
                             |> HttpClient.stream httpPerm StreamResponse
                     
@@ -151,10 +162,21 @@ update msg model =
 
         StreamResponse progress ->
             case progress of
-                HttpClient.SentChunk _ _ ->
-                    { model = model
-                    , command = Stream.sendLine model.stdout "Sent"
-                    }
+                HttpClient.SentChunk req ->
+                    case Array.popFirst model.streamReqChunks of
+                        Nothing ->
+                            -- We are done sending stuff
+                            { model = model
+                            , command = HttpClient.startReceive req
+                            }
+
+                        Just { first = nextChunk, rest = remainingChunks } ->
+                            { model = { model | streamReqChunks = remainingChunks }
+                            , command = Cmd.batch
+                                [ Stream.sendLine model.stdout "Sent chunk"
+                                , HttpClient.sendChunk req nextChunk
+                                ]
+                            }
                 
                 HttpClient.ReceivedChunk _ _ ->
                     { model = model

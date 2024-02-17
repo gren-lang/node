@@ -1,11 +1,12 @@
 /*
 
-import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
-import HttpClient exposing (Timeout, BadStatus, UnknownError)
+import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
+import HttpClient exposing (Timeout, BadStatus, UnknownError, SentChunk, ReceivedChunk, Error, Done)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
 import Dict exposing (empty, insert, foldl)
+import Platform exposing (sendToApp)
 
 */
 
@@ -132,6 +133,67 @@ var _HttpClient_request = function (config) {
   });
 };
 
+var _HttpClient_stream = F3(function (sendToApp, request, config) {
+  return __Scheduler_binding(function (callback) {
+    function send(msg) {
+      return __Scheduler_rawSpawn(sendToApp(msg));
+    }
+
+    const req = http.request(config.__$url, {
+      method: config.__$method,
+      headers: A3(
+        __Dict_foldl,
+        _HttpClient_dictToObject,
+        {},
+        config.__$headers
+      ),
+    });
+
+    const timeoutHandle = setTimeout(() => {
+      req.destroy(_HttpClient_CustomTimeoutError);
+    }, config.__$timeout);
+
+    req.on("error", (e) => {
+      clearInterval(timeoutHandle);
+
+      let err = __HttpClient_UnknownError("problem with request: " + e.message);
+
+      if (e === _HttpClient_CustomTimeoutError) {
+        err = __Scheduler_fail(__HttpClient_Timeout);
+      }
+
+      send(__HttpClient_Error(err));
+    });
+
+    const body = _HttpClient_extractRequestBody(config);
+
+    req.write(body, () => {
+      send(__HttpClient_SentChunk(request));
+    });
+
+    return callback(__Scheduler_succeed(req));
+  });
+});
+
+var _HttpClient_sendChunk = F4(function (
+  sendToApp,
+  kernelRequest,
+  request,
+  bytes
+) {
+  return __Scheduler_binding(function (callback) {
+    const chunk = _HttpClient_prepBytes(bytes);
+
+    kernelRequest.write(chunk, () => {
+      return __Scheduler_rawSpawn(sendToApp(__HttpClient_SentChunk(request)));
+    });
+
+    return callback(__Scheduler_succeed({}));
+  });
+});
+
+// HELPERS
+
 var _HttpClient_dictToObject = F3(function (key, value, obj) {
   obj[key] = value;
   return obj;
@@ -144,8 +206,12 @@ var _HttpClient_extractRequestBody = function (config) {
     case "STRING":
       return config.__$body.a;
     case "BYTES":
-      return new Uint8Array(config.__$body.a.buffer);
+      return _HttpClient_prepBytes(config.__$body.a);
   }
+};
+
+var _HttpClient_prepBytes = function (bytes) {
+  return new Uint8Array(bytes.buffer);
 };
 
 var _HttpClient_CustomTimeoutError = new Error();

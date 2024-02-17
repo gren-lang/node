@@ -265,43 +265,55 @@ send
     -> Request a
     -> Task Error (Response a)
 send _ config =
-    Gren.Kernel.HttpClient.request
-        { method = config.method
-        , url = config.url
-        , headers = config.headers
-        , bodyType = bodyTypeAsString config.body
-        , body = config.body
-        , expectType = expectTypeAsString config.expect
-        , expect = config.expect
-        , timeout = config.timeout
-        }
+    Gren.Kernel.HttpClient.request <| kernelRequestConfig config
+
+
+type alias KernelRequestConfig a =
+    { method : String
+    , url : String
+    , headers : Dict String (Array String)
+    , bodyType : String
+    , body : Body
+    , expectType : String
+    , expect : Expect a
+    , timeout : Int
+    }
+
+
+kernelRequestConfig : Request a -> KernelRequestConfig a
+kernelRequestConfig config =
+    { method = config.method
+    , url = config.url
+    , headers = config.headers
+    , bodyType = bodyTypeAsString config.body
+    , body = config.body
+    , expectType = expectTypeAsString config.expect
+    , expect = config.expect
+    , timeout = config.timeout
+    }
 
 
 -- STREAM
 
 
 type StreamingRequest =
-    StreamingRequest
+    StreamingRequest Int
 
 
 type Progress
-    = SentChunk StreamingRequest Int
-    | ReceivedChunk StreamingRequest Int
-    | Error StreamError
-    | Done Int
-
-
-type StreamError
-    = StreamError
+    = SentChunk StreamingRequest
+    | ReceivedChunk StreamingRequest Bytes
+    | Error Error
+    | Done Bytes
 
 
 stream : Permission -> (Progress -> msg) -> Request Bytes -> Cmd msg
 stream _ toMsg config =
-    command <| Start toMsg config
+    command <| Start toMsg <| kernelRequestConfig config
 
 
-sendChunk : Bytes -> StreamingRequest -> Cmd msg
-sendChunk bytes req =
+sendChunk : StreamingRequest -> Bytes -> Cmd msg
+sendChunk req bytes =
     command <| SendChunk bytes req
 
 startReceive : StreamingRequest -> Cmd msg
@@ -317,12 +329,8 @@ abort req =
 -- COMMANDS
 
 
-type alias RequestsState =
-    {}
-
-
 type MyCmd msg
-    = Start (Progress -> msg) (Request Bytes)
+    = Start (Progress -> msg) (KernelRequestConfig Bytes)
     | SendChunk Bytes StreamingRequest
     | StartReceive StreamingRequest
     | Abort StreamingRequest
@@ -344,13 +352,27 @@ cmdMap func cmd =
             Abort req
 
 
-init : Task Never RequestsState
+type alias RequestsState msg =
+    { nextId : Int 
+    , msgHandlers : Dict Int { toMsg : (Progress -> msg), kernelRequest : KernelRequest }
+    }
+
+
+type KernelRequest = 
+    -- Actual implementation provided by kernel code
+    KernelRequest
+
+
+init : Task Never (RequestsState msg)
 init =
   Task.succeed
-    {}
+    { nextId = 0
+    -- TODO: Remove msgHandler when requests succeeds or fails
+    , msgHandlers = Dict.empty
+    }
 
 
-onEffects : Platform.Router msg Never -> Array (MyCmd msg) -> RequestsState -> Task Never RequestsState
+onEffects : Platform.Router msg Never -> Array (MyCmd msg) -> RequestsState msg -> Task Never (RequestsState msg)
 onEffects router commands state =
   case Array.popFirst commands of
     Nothing ->
@@ -359,14 +381,38 @@ onEffects router commands state =
     Just { first, rest } ->
         case first of
             Start toMsg config ->
-                Task.andThen
-                    (\_ -> onEffects router rest state)
-                    (Task.succeed state)
+                let
+                    streamingReq =
+                        StreamingRequest state.nextId
+                in
+                Gren.Kernel.HttpClient.stream (Platform.sendToApp router << toMsg) streamingReq config
+                    |> Task.map 
+                        (\kernelRequest -> 
+                            { state 
+                                | nextId = state.nextId + 1
+                                , msgHandlers = 
+                                    Dict.insert 
+                                        state.nextId
+                                        { toMsg = toMsg
+                                        , kernelRequest = kernelRequest
+                                        }
+                                        state.msgHandlers
+                            }
+                        )
+                    |> Task.andThen (\updatedState -> onEffects router rest updatedState)
 
-            SendChunk bytes req ->
-                Task.andThen
-                    (\_ -> onEffects router rest state)
-                    (Task.succeed state)
+            SendChunk bytes ((StreamingRequest reqId) as req) ->
+                case Dict.get reqId state.msgHandlers of
+                    Just msgHandler ->
+                        Gren.Kernel.HttpClient.sendChunk 
+                            (Platform.sendToApp router << msgHandler.toMsg) 
+                            msgHandler.kernelRequest
+                            req 
+                            bytes
+                            |> Task.andThen (\_ -> onEffects router rest state)
+                    
+                    Nothing ->
+                        onEffects router rest state
             
             StartReceive req ->
                 Task.andThen
@@ -378,13 +424,7 @@ onEffects router commands state =
                     (\_ -> onEffects router rest state)
                     (Task.succeed state)
                 
-{-
-Task.andThen
-    (\_ -> onEffects router rest newSeed)
-    (Platform.sendToApp router value)
--}
 
-
-onSelfMsg : Platform.Router msg Never -> Never -> RequestsState -> Task Never RequestsState
+onSelfMsg : Platform.Router msg Never -> Never -> RequestsState msg -> Task Never (RequestsState msg)
 onSelfMsg _ _ state =
   Task.succeed state
