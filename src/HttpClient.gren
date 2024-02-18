@@ -304,7 +304,7 @@ type Progress
     = SentChunk StreamingRequest
     | ReceivedChunk StreamingRequest Bytes
     | Error Error
-    | Done Bytes
+    | Done
 
 
 stream : Permission -> (Progress -> msg) -> Request Bytes -> Cmd msg
@@ -414,10 +414,17 @@ onEffects router commands state =
                     Nothing ->
                         onEffects router rest state
             
-            StartReceive req ->
-                Task.andThen
-                    (\_ -> onEffects router rest state)
-                    (Task.succeed state)
+            StartReceive ((StreamingRequest reqId) as req)->
+                case Dict.get reqId state.msgHandlers of
+                    Just msgHandler ->
+                        Gren.Kernel.HttpClient.startReceive
+                            (Platform.sendToApp router << msgHandler.toMsg) 
+                            msgHandler.kernelRequest
+                            req 
+                            |> Task.andThen (\_ -> onEffects router rest state)
+                    
+                    Nothing ->
+                        onEffects router rest state
 
             Abort req ->
                 Task.andThen

@@ -192,6 +192,31 @@ var _HttpClient_sendChunk = F4(function (
   });
 });
 
+var _HttpClient_startReceive = F3(function (sendToApp, kernelRequest, request) {
+  return __Scheduler_binding(function (callback) {
+    kernelRequest.on("response", (res) => {
+      res.on("data", (bytes) => {
+        return __Scheduler_rawSpawn(
+          sendToApp(
+            A2(__HttpClient_ReceivedChunk, request, new DataView(bytes.buffer))
+          )
+        );
+      });
+
+      res.on("end", () => {
+        // TODO: How to fix this?
+        //clearInterval(timeoutHandle)
+
+        __Scheduler_rawSpawn(sendToApp(__HttpClient_Done));
+      });
+    });
+
+    kernelRequest.end(() => {
+      return callback(__Scheduler_succeed({}));
+    });
+  });
+});
+
 // HELPERS
 
 var _HttpClient_dictToObject = F3(function (key, value, obj) {
