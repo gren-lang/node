@@ -107,7 +107,7 @@ initialize =
 Having a file handle gives you access to perform certain operations, so make sure you
 only pass a file handle to code you can trust.
 
-The `FileHandle` type also contains the read and write access permissions as part of it's
+The `FileHandle` type also contains the read and write access permissions as part of its
 type.
 -}
 type FileHandle readAccess writeAccess
@@ -140,7 +140,7 @@ type alias WriteableFileHandle a = FileHandle a WritePermission
 type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
 
 
-{-| This let's you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has read permission.
+{-| This lets you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has read permission.
 
 Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
 of your code.
