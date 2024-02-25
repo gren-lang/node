@@ -411,9 +411,9 @@ type alias Response a =
 {-|
 -}
 type Error 
-    = Timeout
-    | BadUrl String
+    = BadUrl String
     | BadStatus (Response String)
+    | Timeout
     | UnknownError String
 
 
@@ -450,6 +450,7 @@ type Progress
     = SentChunk StreamingRequest
     | ReceivedChunk StreamingRequest Bytes
     | Error Error
+    | Aborted
     | Done
 
 
@@ -585,10 +586,14 @@ onEffects router commands state =
                     Nothing ->
                         onEffects router rest state
 
-            Abort req ->
-                Task.andThen
-                    (\_ -> onEffects router rest state)
-                    (Task.succeed state)
+            Abort (StreamingRequest reqId)->
+                case Dict.get reqId state.msgHandlers of
+                    Just msgHandler ->
+                        Gren.Kernel.HttpClient.abort msgHandler.kernelRequest
+                            |> Task.andThen (\_ -> onEffects router rest state)
+                    
+                    Nothing ->
+                        onEffects router rest state
                 
 
 type SelfMsg

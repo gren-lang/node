@@ -186,6 +186,11 @@ update msg model =
                     , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
                     }
                 
+                HttpClient.Aborted ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Aborted"
+                    }
+                
                 HttpClient.Done ->
                     { model = model
                     , command = Stream.sendLine model.stdout "Streaming done!"

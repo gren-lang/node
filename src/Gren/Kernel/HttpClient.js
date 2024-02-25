@@ -1,7 +1,7 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
-import HttpClient exposing (BadUrl, Timeout, BadStatus, UnknownError, SentChunk, ReceivedChunk, Error, Done)
+import HttpClient exposing (BadUrl, Timeout, BadStatus, UnknownError, SentChunk, ReceivedChunk, Error, Aborted, Done)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
@@ -170,15 +170,13 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
     req.on("error", (e) => {
       __Scheduler_rawSpawn(cleanup(request));
 
-      let err = null;
-
       if (e === _HttpClient_CustomTimeoutError) {
-        err = __Scheduler_fail(__HttpClient_Timeout);
+        send(__HttpClient_Timeout);
+      } else if (e === _HttpClient_CustomAbortError) {
+        send(__HttpClient_Aborted);
       } else {
-        err = __HttpClient_UnknownError("problem with request: " + e.message);
+        send(__HttpClient_UnknownError("problem with request: " + e.message));
       }
-
-      send(__HttpClient_Error(err));
     });
 
     const body = _HttpClient_extractRequestBody(config);
@@ -236,6 +234,13 @@ var _HttpClient_startReceive = F4(function (
   });
 });
 
+var _HttpClient_abort = function (kernelRequest) {
+  return __Scheduler_binding(function (callback) {
+    kernelRequest.destroy(_HttpClient_CustomAbortError);
+    return callback(__Scheduler_succeed({}));
+  });
+};
+
 // HELPERS
 
 var _HttpClient_dictToObject = F3(function (key, value, obj) {
@@ -257,6 +262,8 @@ var _HttpClient_extractRequestBody = function (config) {
 var _HttpClient_prepBytes = function (bytes) {
   return new Uint8Array(bytes.buffer);
 };
+
+var _HttpClient_CustomAbortError = new Error();
 
 var _HttpClient_CustomTimeoutError = new Error();
 
