@@ -167,23 +167,18 @@ update msg model =
                         Nothing ->
                             -- We are done sending stuff
                             { model = model
-                            , command = Cmd.batch
-                                [ Stream.sendLine model.stdout "Finished sending"
-                                , HttpClient.startReceive req
-                                ]
+                            , command = HttpClient.startReceive req
                             }
 
                         Just { first = nextChunk, rest = remainingChunks } ->
                             { model = { model | streamReqChunks = remainingChunks }
-                            , command = Cmd.batch
-                                [ Stream.sendLine model.stdout "Sent chunk"
-                                , HttpClient.sendChunk req nextChunk
-                                ]
+                            , command = HttpClient.sendChunk req nextChunk
                             }
                 
                 HttpClient.ReceivedChunk _ _ ->
+                    -- We received some data, but we're not interested in the result
                     { model = model
-                    , command = Stream.sendLine model.stdout "Received"
+                    , command = Cmd.none
                     }
                 
                 HttpClient.Error _ ->
@@ -193,6 +188,6 @@ update msg model =
                 
                 HttpClient.Done ->
                     { model = model
-                    , command = Stream.sendLine model.stdout "Done"
+                    , command = Stream.sendLine model.stdout "Streaming done!"
                     }
             

@@ -14,8 +14,6 @@ const http = require("http");
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
-    let timeoutHandle = 0;
-
     const req = http.request(
       config.__$url,
       {
@@ -26,6 +24,7 @@ var _HttpClient_request = function (config) {
           {},
           config.__$headers
         ),
+        timeout: config.__$timeout,
       },
       (res) => {
         const expectType = config.__$expectType;
@@ -44,8 +43,6 @@ var _HttpClient_request = function (config) {
         });
 
         res.on("end", () => {
-          clearTimeout(timeoutHandle);
-
           if (res.statusCode < 200 || res.statusCode >= 300) {
             return callback(
               __Scheduler_fail(
@@ -111,6 +108,10 @@ var _HttpClient_request = function (config) {
       }
     );
 
+    req.on("timeout", () => {
+      req.destroy(_HttpClient_CustomTimeoutError);
+    });
+
     req.on("error", (e) => {
       if (e === _HttpClient_CustomTimeoutError) {
         return callback(__Scheduler_fail(__HttpClient_Timeout));
@@ -126,10 +127,6 @@ var _HttpClient_request = function (config) {
     const body = _HttpClient_extractRequestBody(config);
 
     req.end(body);
-
-    timeoutHandle = setTimeout(() => {
-      req.destroy(_HttpClient_CustomTimeoutError);
-    }, config.__$timeout);
   });
 };
 
@@ -147,22 +144,23 @@ var _HttpClient_stream = F3(function (sendToApp, request, config) {
         {},
         config.__$headers
       ),
+      timeout: config.__$timeout,
     });
 
-    const timeoutHandle = setTimeout(() => {
+    req.on("timeout", () => {
       req.destroy(_HttpClient_CustomTimeoutError);
-    }, config.__$timeout);
+    });
 
     req.on("error", (e) => {
-      clearInterval(timeoutHandle);
-
-      let err = __HttpClient_UnknownError("problem with request: " + e.message);
-
       if (e === _HttpClient_CustomTimeoutError) {
-        err = __Scheduler_fail(__HttpClient_Timeout);
+        let err = __Scheduler_fail(__HttpClient_Timeout);
+        send(__HttpClient_Error(err));
+      } else {
+        let err = __HttpClient_UnknownError(
+          "problem with request: " + e.message
+        );
+        send(__HttpClient_Error(err));
       }
-
-      send(__HttpClient_Error(err));
     });
 
     const body = _HttpClient_extractRequestBody(config);
@@ -204,9 +202,6 @@ var _HttpClient_startReceive = F3(function (sendToApp, kernelRequest, request) {
       });
 
       res.on("end", () => {
-        // TODO: How to fix this?
-        //clearInterval(timeoutHandle)
-
         __Scheduler_rawSpawn(sendToApp(__HttpClient_Done));
       });
     });

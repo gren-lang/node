@@ -90,6 +90,6 @@ describe("Requests", () => {
     await runner()
       .cwd(baseDir)
       .fork("app", ["stream"])
-      .stdout("200: Nice headers");
+      .stdout("Streaming done!");
   });
 });
