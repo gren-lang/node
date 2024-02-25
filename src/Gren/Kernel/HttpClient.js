@@ -1,7 +1,7 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
-import HttpClient exposing (Timeout, BadStatus, UnknownError, SentChunk, ReceivedChunk, Error, Done)
+import HttpClient exposing (BadUrl, Timeout, BadStatus, UnknownError, SentChunk, ReceivedChunk, Error, Done)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
@@ -14,8 +14,15 @@ const http = require("http");
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
+    let url = null;
+    try {
+      url = new URL(config.__$url);
+    } catch (e) {
+      return callback(__Scheduler_fail(__HttpClient_BadUrl(config.__$url)));
+    }
+
     const req = http.request(
-      config.__$url,
+      url,
       {
         method: config.__$method,
         headers: A3(
@@ -136,6 +143,15 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
       return __Scheduler_rawSpawn(sendToApp(msg));
     }
 
+    let url = null;
+    try {
+      url = new URL(config.__$url);
+    } catch (e) {
+      callback(__Scheduler_succeed(request));
+      send(__HttpClient_Error(__HttpClient_BadUrl(config.__$url)));
+      return __Scheduler_rawSpawn(cleanup(request));
+    }
+
     const req = http.request(config.__$url, {
       method: config.__$method,
       headers: A3(
@@ -154,16 +170,15 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
     req.on("error", (e) => {
       __Scheduler_rawSpawn(cleanup(request));
 
-      if (e === _HttpClient_CustomTimeoutError) {
-        let err = __Scheduler_fail(__HttpClient_Timeout);
-        send(__HttpClient_Error(err));
-      } else {
-        let err = __HttpClient_UnknownError(
-          "problem with request: " + e.message
-        );
+      let err = null;
 
-        send(__HttpClient_Error(err));
+      if (e === _HttpClient_CustomTimeoutError) {
+        err = __Scheduler_fail(__HttpClient_Timeout);
+      } else {
+        err = __HttpClient_UnknownError("problem with request: " + e.message);
       }
+
+      send(__HttpClient_Error(err));
     });
 
     const body = _HttpClient_extractRequestBody(config);

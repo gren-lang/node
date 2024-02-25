@@ -240,6 +240,7 @@ type alias Response a =
 
 type Error 
     = Timeout
+    | BadUrl String
     | BadStatus (Response String)
     | UnknownError String
 
@@ -249,6 +250,9 @@ errorToString err =
     case err of
         Timeout ->
             "Timeout"
+
+        BadUrl url ->
+            "Bad URL: " ++ url
 
         BadStatus res ->
             "Bad status: " ++ String.fromInt res.statusCode

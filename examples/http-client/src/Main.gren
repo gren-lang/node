@@ -181,9 +181,9 @@ update msg model =
                     , command = Cmd.none
                     }
                 
-                HttpClient.Error _ ->
+                HttpClient.Error err ->
                     { model = model
-                    , command = Stream.sendLine model.stdout "Error"
+                    , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
                     }
                 
                 HttpClient.Done ->
