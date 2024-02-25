@@ -1,4 +1,92 @@
-effect module HttpClient where { command = MyCmd } exposing (..)
+effect module HttpClient where { command = MyCmd } exposing
+    ( Permission
+    , initialize
+    , Request, get, post, request
+    , defaultTimeout, withTimeout
+    , withHeader, withHeaderAppended
+    , Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
+    , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+    , send
+    , Response
+    , Error(..), errorToString
+    , StreamingRequest, Progress(..), stream, sendChunk, startReceive, abort
+    )
+
+
+{-|
+
+A module for communicating over Http.
+
+You start by creating and modifying a `Request` type, which represents the request you'll make to a server. Once done,
+you can either do a `send`, which represents the response as a `Task`, or `stream` which will allow you to perform
+actions while the request is sending and while the response is coming in. A typical example of why you'd use `stream`
+is to show a progress bar to the user, or decode the response incrementally as opposed to all at once.
+
+See [examples/http-client](https://github.com/gren-lang/node/tree/main/examples/http-client) for a working example.
+
+## Initialization
+
+Code that wishes to perform http requests require a permission to do so. Make sure you only grant this permission
+to code that you trust.
+
+@docs Permission, initialize
+
+## Request config
+
+Before sending something over http, you need to configure your request type.
+
+@docs Request, get, post, request
+
+## Timeouts
+
+A timeout represents how long you're willing to wait before giving up on receiving
+a response from the server. Servers might not respond for any number of reasons, like bugs or huge amounts of traffic,
+so it can be a good idea to return an error to the user instead of waiting "forever" for a response.
+
+@docs defaultTimeout, withTimeout
+
+## Headers
+
+Every http request can have arbitrary metadata attached, called headers. Headers allow you to attach things like
+authorization information, how the body is encoded or the name of the client making the request.
+
+@docs withHeader, withHeaderAppended
+
+## Request body
+
+The request body is the actual data that you wish to send to a server.
+
+@docs Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
+
+## Expected response body
+
+Once a request has been sent, you usually get a response. The `Expect` type represents
+what we expect the response body to be.
+
+@docs Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+
+## Send
+
+Once your `Response` is configured, you want to actually send the request.
+
+@docs send
+
+@docs Response
+
+## Errors
+
+@docs Error, errorToString
+
+## Streaming
+
+Streaming is the more advanced way to perform a http request. This requires that you follow the Elm
+architecture, as you'll receive messages for every chunk of data sent and received. The benefit of this
+extra complexity, is that you can perform actions while the request is being performed.
+
+@docs StreamingRequest, Progress, stream, sendChunk, startReceive, abort
+
+-}
+
 
 import Dict exposing (Dict)
 import Init
@@ -11,10 +99,14 @@ import Platform
 import Gren.Kernel.HttpClient
 
 
+{-|
+-}
 type Permission =
     Permission
 
 
+{-|
+-}
 initialize : Init.Task Permission
 initialize =
     Task.succeed Permission
@@ -24,6 +116,8 @@ initialize =
 -- REQUEST CONFIG
 
 
+{-|
+-}
 type alias Request a =
     { method : String
     , url : String
@@ -34,16 +128,22 @@ type alias Request a =
     }
 
 
+{-|
+-}
 get : String -> Request {}
 get url =
     request "GET" url
 
 
+{-|
+-}
 post : String -> Request {}
 post url =
     request "POST" url
 
 
+{-|
+-}
 request : String -> String -> Request {}
 request method url =
     { method = method
@@ -55,12 +155,27 @@ request method url =
     }
 
 
+{-|
+-}
 defaultTimeout : Int
 defaultTimeout =
     -- 10 seconds
     10 * 1000
 
 
+{-|
+-}
+withTimeout : Int -> Request a -> Request a
+withTimeout ms req =
+    if ms < 0 then
+        req
+
+    else
+        { req | timeout = ms }
+
+
+{-|
+-}
 withHeader : String -> String -> Request a -> Request a
 withHeader key value req =
     { req
@@ -68,6 +183,8 @@ withHeader key value req =
     }
 
 
+{-|
+-}
 withHeaderAppended : String -> String -> Request a -> Request a
 withHeaderAppended key value req =
     { req
@@ -78,103 +195,11 @@ withHeaderAppended key value req =
     }
 
 
-withEmptyBody : String -> Request a -> Request a
-withEmptyBody value req = 
-    { req
-        | headers = Dict.remove "Content-Type" req.headers
-        , body = BodyEmpty
-    }
-
-
-withStringBody : String -> String -> Request a -> Request a
-withStringBody mimeType value req = 
-    { req
-        | headers = Dict.insert "Content-Type" [mimeType] req.headers
-        , body = BodyString value
-    }
-
-
-withJsonBody : Json.Value -> Request a -> Request a
-withJsonBody value req = 
-    withStringBody "application/json" (Json.encode 0 value) req
-
-
-withBytesBody : String -> Bytes -> Request a -> Request a
-withBytesBody mimeType value req = 
-    { req
-        | headers = Dict.insert "Content-Type" [mimeType] req.headers
-        , body = BodyBytes value
-    }
-
-
-expectAnything : Request a -> Request {}
-expectAnything req =
-    -- Need to create a new record for type checking to pass
-    { method = req.method
-    , url = req.url
-    , headers = req.headers
-    , body = req.body
-    , expect = ExpectAnything
-    , timeout = req.timeout
-    }
-
-
-expectNothing : Request a -> Request {}
-expectNothing req =
-    { method = req.method
-    , url = req.url
-    , headers = req.headers
-    , body = req.body
-    , expect = ExpectNothing
-    , timeout = req.timeout
-    }
-
-
-expectString : Request a -> Request String
-expectString req =
-    { method = req.method
-    , url = req.url
-    , headers = req.headers
-    , body = req.body
-    , expect = ExpectString
-    , timeout = req.timeout
-    }
-
-
-expectJson : Json.Decode.Decoder a -> Request x -> Request a
-expectJson decoder req = 
-    { method = req.method
-    , url = req.url
-    , headers = req.headers
-    , body = req.body
-    , expect = ExpectJson decoder
-    , timeout = req.timeout
-    }
-
-
-expectBytes : Request a -> Request Bytes
-expectBytes req =
-    { method = req.method
-    , url = req.url
-    , headers = req.headers
-    , body = req.body
-    , expect = ExpectBytes
-    , timeout = req.timeout
-    }
-
-
-withTimeout : Int -> Request a -> Request a
-withTimeout ms req =
-    if ms < 0 then
-        req
-
-    else
-        { req | timeout = ms }
-
-
 -- BODY
 
 
+{-|
+-}
 type Body
     = BodyEmpty
     | BodyString String
@@ -194,9 +219,48 @@ bodyTypeAsString body =
             "BYTES"
 
 
+{-|
+-}
+withEmptyBody : String -> Request a -> Request a
+withEmptyBody value req = 
+    { req
+        | headers = Dict.remove "Content-Type" req.headers
+        , body = BodyEmpty
+    }
+
+
+{-|
+-}
+withStringBody : String -> String -> Request a -> Request a
+withStringBody mimeType value req = 
+    { req
+        | headers = Dict.insert "Content-Type" [mimeType] req.headers
+        , body = BodyString value
+    }
+
+
+{-|
+-}
+withJsonBody : Json.Value -> Request a -> Request a
+withJsonBody value req = 
+    withStringBody "application/json" (Json.encode 0 value) req
+
+
+{-|
+-}
+withBytesBody : String -> Bytes -> Request a -> Request a
+withBytesBody mimeType value req = 
+    { req
+        | headers = Dict.insert "Content-Type" [mimeType] req.headers
+        , body = BodyBytes value
+    }
+
+
 -- EXPECT
 
 
+{-|
+-}
 type Expect a
     = ExpectNothing
     | ExpectAnything
@@ -224,52 +288,83 @@ expectTypeAsString expect =
             "BYTES"
 
 
--- RESPONSE
-
-
-type alias Response a =
-    { statusCode : Int
-    , statusText : String
-    , headers : Dict String (Array String)
-    , data : a
+{-|
+-}
+expectAnything : Request a -> Request {}
+expectAnything req =
+    -- Need to create a new record for type checking to pass
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectAnything
+    , timeout = req.timeout
     }
 
 
--- ERRORS
+{-|
+-}
+expectNothing : Request a -> Request {}
+expectNothing req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectNothing
+    , timeout = req.timeout
+    }
 
 
-type Error 
-    = Timeout
-    | BadUrl String
-    | BadStatus (Response String)
-    | UnknownError String
+{-|
+-}
+expectString : Request a -> Request String
+expectString req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectString
+    , timeout = req.timeout
+    }
 
 
-errorToString : Error -> String
-errorToString err =
-    case err of
-        Timeout ->
-            "Timeout"
+{-|
+-}
+expectJson : Json.Decode.Decoder a -> Request x -> Request a
+expectJson decoder req = 
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectJson decoder
+    , timeout = req.timeout
+    }
 
-        BadUrl url ->
-            "Bad URL: " ++ url
 
-        BadStatus res ->
-            "Bad status: " ++ String.fromInt res.statusCode
-
-        UnknownError debugStr ->
-            "Unknown error: " ++ debugStr
+{-|
+-}
+expectBytes : Request a -> Request Bytes
+expectBytes req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectBytes
+    , timeout = req.timeout
+    }
 
 
 -- SIMPLE SEND
 
 
+{-|
+-}
 send
     : Permission 
     -> Request a
     -> Task Error (Response a)
 send _ config =
-    Gren.Kernel.HttpClient.request <| kernelRequestConfig config
+    Gren.Kernel.HttpClient.request (kernelRequestConfig config)
 
 
 type alias KernelRequestConfig a =
@@ -297,13 +392,60 @@ kernelRequestConfig config =
     }
 
 
+-- RESPONSE
+
+
+{-|
+-}
+type alias Response a =
+    { statusCode : Int
+    , statusText : String
+    , headers : Dict String (Array String)
+    , data : a
+    }
+
+
+-- ERRORS
+
+
+{-|
+-}
+type Error 
+    = Timeout
+    | BadUrl String
+    | BadStatus (Response String)
+    | UnknownError String
+
+
+{-|
+-}
+errorToString : Error -> String
+errorToString err =
+    case err of
+        Timeout ->
+            "Timeout"
+
+        BadUrl url ->
+            "Bad URL: " ++ url
+
+        BadStatus res ->
+            "Bad status: " ++ String.fromInt res.statusCode
+
+        UnknownError debugStr ->
+            "Unknown error: " ++ debugStr
+
+
 -- STREAM
 
 
+{-|
+-}
 type StreamingRequest =
     StreamingRequest Int
 
 
+{-|
+-}
 type Progress
     = SentChunk StreamingRequest
     | ReceivedChunk StreamingRequest Bytes
@@ -311,20 +453,29 @@ type Progress
     | Done
 
 
+{-|
+-}
 stream : Permission -> (Progress -> msg) -> Request Bytes -> Cmd msg
 stream _ toMsg config =
     command <| Start toMsg <| kernelRequestConfig config
 
 
+{-|
+-}
 sendChunk : StreamingRequest -> Bytes -> Cmd msg
 sendChunk req bytes =
     command <| SendChunk bytes req
 
+
+{-|
+-}
 startReceive : StreamingRequest -> Cmd msg
 startReceive req =
     command <| StartReceive req
 
 
+{-|
+-}
 abort : StreamingRequest -> Cmd a
 abort req =
     command <| Abort req
