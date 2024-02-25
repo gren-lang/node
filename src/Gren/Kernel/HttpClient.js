@@ -130,7 +130,7 @@ var _HttpClient_request = function (config) {
   });
 };
 
-var _HttpClient_stream = F3(function (sendToApp, request, config) {
+var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
   return __Scheduler_binding(function (callback) {
     function send(msg) {
       return __Scheduler_rawSpawn(sendToApp(msg));
@@ -152,6 +152,8 @@ var _HttpClient_stream = F3(function (sendToApp, request, config) {
     });
 
     req.on("error", (e) => {
+      __Scheduler_rawSpawn(cleanup(request));
+
       if (e === _HttpClient_CustomTimeoutError) {
         let err = __Scheduler_fail(__HttpClient_Timeout);
         send(__HttpClient_Error(err));
@@ -159,6 +161,7 @@ var _HttpClient_stream = F3(function (sendToApp, request, config) {
         let err = __HttpClient_UnknownError(
           "problem with request: " + e.message
         );
+
         send(__HttpClient_Error(err));
       }
     });
@@ -190,7 +193,12 @@ var _HttpClient_sendChunk = F4(function (
   });
 });
 
-var _HttpClient_startReceive = F3(function (sendToApp, kernelRequest, request) {
+var _HttpClient_startReceive = F4(function (
+  cleanup,
+  sendToApp,
+  kernelRequest,
+  request
+) {
   return __Scheduler_binding(function (callback) {
     kernelRequest.on("response", (res) => {
       res.on("data", (bytes) => {
@@ -202,6 +210,7 @@ var _HttpClient_startReceive = F3(function (sendToApp, kernelRequest, request) {
       });
 
       res.on("end", () => {
+        __Scheduler_rawSpawn(cleanup(request));
         __Scheduler_rawSpawn(sendToApp(__HttpClient_Done));
       });
     });

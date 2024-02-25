@@ -367,12 +367,11 @@ init : Task Never (RequestsState msg)
 init =
   Task.succeed
     { nextId = 0
-    -- TODO: Remove msgHandler when requests succeeds or fails
     , msgHandlers = Dict.empty
     }
 
 
-onEffects : Platform.Router msg Never -> Array (MyCmd msg) -> RequestsState msg -> Task Never (RequestsState msg)
+onEffects : Platform.Router msg SelfMsg -> Array (MyCmd msg) -> RequestsState msg -> Task Never (RequestsState msg)
 onEffects router commands state =
   case Array.popFirst commands of
     Nothing ->
@@ -385,7 +384,11 @@ onEffects router commands state =
                     streamingReq =
                         StreamingRequest state.nextId
                 in
-                Gren.Kernel.HttpClient.stream (Platform.sendToApp router << toMsg) streamingReq config
+                Gren.Kernel.HttpClient.stream 
+                    (Platform.sendToSelf router << Cleanup) 
+                    (Platform.sendToApp router << toMsg) 
+                    streamingReq 
+                    config
                     |> Task.map 
                         (\kernelRequest -> 
                             { state 
@@ -418,6 +421,7 @@ onEffects router commands state =
                 case Dict.get reqId state.msgHandlers of
                     Just msgHandler ->
                         Gren.Kernel.HttpClient.startReceive
+                            (Platform.sendToSelf router << Cleanup)
                             (Platform.sendToApp router << msgHandler.toMsg) 
                             msgHandler.kernelRequest
                             req 
@@ -432,6 +436,13 @@ onEffects router commands state =
                     (Task.succeed state)
                 
 
-onSelfMsg : Platform.Router msg Never -> Never -> RequestsState msg -> Task Never (RequestsState msg)
-onSelfMsg _ _ state =
-  Task.succeed state
+type SelfMsg
+    = Cleanup StreamingRequest
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> RequestsState msg -> Task Never (RequestsState msg)
+onSelfMsg _ event state =
+    case event of
+        Cleanup (StreamingRequest reqId) ->
+            Task.succeed 
+                { state | msgHandlers = Dict.remove reqId state.msgHandlers }
