@@ -1,6 +1,6 @@
 effect module HttpClient where { command = MyCmd } exposing
     ( Permission
-    , initialize
+    , initialize, initializeForHost
     , Request, get, post, request
     , defaultTimeout, withTimeout
     , withHeader, withHeaderAppended
@@ -29,7 +29,7 @@ See [examples/http-client](https://github.com/gren-lang/node/tree/main/examples/
 Code that wishes to perform http requests require a permission to do so. Make sure you only grant this permission
 to code that you trust.
 
-@docs Permission, initialize
+@docs Permission, initialize, initializeForHost
 
 ## Request config
 
@@ -101,15 +101,24 @@ import Gren.Kernel.HttpClient
 
 {-|
 -}
-type Permission =
-    Permission
+type Permission
+    = AnyPermission
+    | SpecificPermission String
 
 
 {-|
 -}
 initialize : Init.Task Permission
 initialize =
-    Task.succeed Permission
+    Task.succeed AnyPermission
+        |> Internal.Init.Task
+
+
+{-|
+-}
+initializeForHost : String -> Init.Task Permission
+initializeForHost host =
+    Task.succeed (SpecificPermission host)
         |> Internal.Init.Task
 
 
@@ -363,8 +372,8 @@ send
     : Permission 
     -> Request a
     -> Task Error (Response a)
-send _ config =
-    Gren.Kernel.HttpClient.request (kernelRequestConfig config)
+send permission config =
+    Gren.Kernel.HttpClient.request (kernelRequestConfig permission config)
 
 
 type alias KernelRequestConfig a =
@@ -379,10 +388,19 @@ type alias KernelRequestConfig a =
     }
 
 
-kernelRequestConfig : Request a -> KernelRequestConfig a
-kernelRequestConfig config =
+kernelRequestConfig : Permission -> Request a -> KernelRequestConfig a
+kernelRequestConfig permission config =
+    let
+        actualUrl =
+            case permission of
+                AnyPermission ->
+                    config.url
+
+                SpecificPermission prefix ->
+                    prefix ++ config.url
+    in
     { method = config.method
-    , url = config.url
+    , url = actualUrl
     , headers = config.headers
     , bodyType = bodyTypeAsString config.body
     , body = config.body
@@ -457,8 +475,8 @@ type Progress
 {-|
 -}
 stream : Permission -> (Progress -> msg) -> Request Bytes -> Cmd msg
-stream _ toMsg config =
-    command <| Start toMsg <| kernelRequestConfig config
+stream permission toMsg config =
+    command <| Start toMsg <| kernelRequestConfig permission config
 
 
 {-|
