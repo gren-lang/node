@@ -24,7 +24,7 @@ type Msg
     = Response (Result HttpClient.Error (HttpClient.Response String))
     | JsonResponse (Result HttpClient.Error (HttpClient.Response { response : String }))
     | BytesResponse (Result HttpClient.Error (HttpClient.Response Bytes))
-    | StreamResponse HttpClient.Progress
+    | StreamResponse HttpClient.StreamEvent
 
 
 main : Node.Program Model Msg
@@ -42,8 +42,8 @@ init env =
         let
             reqChunks =
                 [ "{ "
-                , "\"secret\": "
-                , "\"Hello, POST!\""
+                , "\"message\": "
+                , "\"Was chunked as bytes\""
                 , " }"
                 ]
                 |> Array.map (Bytes.Encode.encode << Bytes.Encode.string)
@@ -104,7 +104,7 @@ init env =
                     Just "stream" ->
                         HttpClient.post "http://localhost:8080/mocked-path"
                             |> HttpClient.withBytesBody "application/json" 
-                                (Maybe.withDefault (Bytes.Encode.encode (Bytes.Encode.string "")) <| Array.first reqChunks)
+                                (Bytes.Encode.encode (Bytes.Encode.string ""))
                             |> HttpClient.expectBytes
                             |> HttpClient.stream httpPerm StreamResponse
                     
@@ -175,7 +175,7 @@ update msg model =
                             , command = HttpClient.sendChunk req nextChunk
                             }
                 
-                HttpClient.ReceivedChunk _ _ ->
+                HttpClient.ReceivedChunk req chunk ->
                     -- We received some data, but we're not interested in the result
                     { model = model
                     , command = Cmd.none

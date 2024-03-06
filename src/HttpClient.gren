@@ -9,7 +9,7 @@ effect module HttpClient where { command = MyCmd } exposing
     , send
     , Response
     , Error(..), errorToString
-    , StreamingRequest, Progress(..), stream, sendChunk, startReceive, abort
+    , StreamRequest, StreamEvent(..), stream, sendChunk, startReceive, abort
     )
 
 
@@ -83,7 +83,7 @@ Streaming is the more advanced way to perform a http request. This requires that
 architecture, as you'll receive messages for every chunk of data sent and received. The benefit of this
 extra complexity, is that you can perform actions while the request is being performed.
 
-@docs StreamingRequest, Progress, stream, sendChunk, startReceive, abort
+@docs StreamRequest, StreamEvent, stream, sendChunk, startReceive, abort
 
 -}
 
@@ -415,11 +415,11 @@ kernelRequestConfig permission config =
 
 {-|
 -}
-type alias Response a =
+type alias Response data =
     { statusCode : Int
     , statusText : String
     , headers : Dict String (Array String)
-    , data : a
+    , data : data
     }
 
 
@@ -458,15 +458,15 @@ errorToString err =
 
 {-|
 -}
-type StreamingRequest =
-    StreamingRequest Int
+type StreamRequest =
+    StreamRequest Int
 
 
 {-|
 -}
-type Progress
-    = SentChunk StreamingRequest
-    | ReceivedChunk StreamingRequest Bytes
+type StreamEvent
+    = SentChunk StreamRequest
+    | ReceivedChunk StreamRequest (Response Bytes)
     | Error Error
     | Aborted
     | Done
@@ -474,28 +474,28 @@ type Progress
 
 {-|
 -}
-stream : Permission -> (Progress -> msg) -> Request Bytes -> Cmd msg
+stream : Permission -> (StreamEvent -> msg) -> Request Bytes -> Cmd msg
 stream permission toMsg config =
     command <| Start toMsg <| kernelRequestConfig permission config
 
 
 {-|
 -}
-sendChunk : StreamingRequest -> Bytes -> Cmd msg
+sendChunk : StreamRequest -> Bytes -> Cmd msg
 sendChunk req bytes =
     command <| SendChunk bytes req
 
 
 {-|
 -}
-startReceive : StreamingRequest -> Cmd msg
+startReceive : StreamRequest -> Cmd msg
 startReceive req =
     command <| StartReceive req
 
 
 {-|
 -}
-abort : StreamingRequest -> Cmd a
+abort : StreamRequest -> Cmd a
 abort req =
     command <| Abort req
 
@@ -504,10 +504,10 @@ abort req =
 
 
 type MyCmd msg
-    = Start (Progress -> msg) (KernelRequestConfig Bytes)
-    | SendChunk Bytes StreamingRequest
-    | StartReceive StreamingRequest
-    | Abort StreamingRequest
+    = Start (StreamEvent -> msg) (KernelRequestConfig Bytes)
+    | SendChunk Bytes StreamRequest
+    | StartReceive StreamRequest
+    | Abort StreamRequest
 
 
 cmdMap : (a -> b) -> MyCmd a -> MyCmd b
@@ -528,7 +528,7 @@ cmdMap func cmd =
 
 type alias RequestsState msg =
     { nextId : Int 
-    , msgHandlers : Dict Int { toMsg : (Progress -> msg), kernelRequest : KernelRequest }
+    , msgHandlers : Dict Int { toMsg : (StreamEvent -> msg), kernelRequest : KernelRequest }
     }
 
 
@@ -556,7 +556,7 @@ onEffects router commands state =
             Start toMsg config ->
                 let
                     streamingReq =
-                        StreamingRequest state.nextId
+                        StreamRequest state.nextId
                 in
                 Gren.Kernel.HttpClient.stream 
                     (Platform.sendToSelf router << Cleanup) 
@@ -578,7 +578,7 @@ onEffects router commands state =
                         )
                     |> Task.andThen (\updatedState -> onEffects router rest updatedState)
 
-            SendChunk bytes ((StreamingRequest reqId) as req) ->
+            SendChunk bytes ((StreamRequest reqId) as req) ->
                 case Dict.get reqId state.msgHandlers of
                     Just msgHandler ->
                         Gren.Kernel.HttpClient.sendChunk 
@@ -591,7 +591,7 @@ onEffects router commands state =
                     Nothing ->
                         onEffects router rest state
             
-            StartReceive ((StreamingRequest reqId) as req)->
+            StartReceive ((StreamRequest reqId) as req)->
                 case Dict.get reqId state.msgHandlers of
                     Just msgHandler ->
                         Gren.Kernel.HttpClient.startReceive
@@ -604,7 +604,7 @@ onEffects router commands state =
                     Nothing ->
                         onEffects router rest state
 
-            Abort (StreamingRequest reqId)->
+            Abort (StreamRequest reqId)->
                 case Dict.get reqId state.msgHandlers of
                     Just msgHandler ->
                         Gren.Kernel.HttpClient.abort msgHandler.kernelRequest
@@ -615,12 +615,12 @@ onEffects router commands state =
                 
 
 type SelfMsg
-    = Cleanup StreamingRequest
+    = Cleanup StreamRequest
 
 
 onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> RequestsState msg -> Task Never (RequestsState msg)
 onSelfMsg _ event state =
     case event of
-        Cleanup (StreamingRequest reqId) ->
+        Cleanup (StreamRequest reqId) ->
             Task.succeed 
                 { state | msgHandlers = Dict.remove reqId state.msgHandlers }

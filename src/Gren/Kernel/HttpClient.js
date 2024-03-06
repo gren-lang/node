@@ -237,7 +237,7 @@ var _HttpClient_startReceive = F4(function (
       res.on("data", (bytes) => {
         return __Scheduler_rawSpawn(
           sendToApp(
-            A2(__HttpClient_ReceivedChunk, request, new DataView(bytes.buffer))
+            A2(__HttpClient_ReceivedChunk, request, _HttpClient_formatResponse(res, new DataView(bytes.buffer)))
           )
         );
       });

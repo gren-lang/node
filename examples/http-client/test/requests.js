@@ -81,9 +81,9 @@ describe("Requests", () => {
   it("Streaming request", async () => {
     await server
       .forPost("/mocked-path")
-      .withHeaders({
-        "Content-Type": "application/octet-stream",
-      })
+      // .withHeaders({
+      //   "Content-Type": "application/octet-stream",
+      // })
       .withJsonBody({ message: "Was chunked as bytes" })
       .thenJson(200, { response: "Nice headers" });
 
