@@ -141,7 +141,11 @@ var _HttpClient_request = function (config) {
 
     const body = _HttpClient_extractRequestBody(config);
 
-    req.end(body);
+    if (body != null) {
+      req.end(body);
+    } else {
+      req.end();
+    }
   });
 };
 
@@ -189,9 +193,13 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
 
     const body = _HttpClient_extractRequestBody(config);
 
-    req.write(body, () => {
+    if (body == null) {
       send(__HttpClient_SentChunk(request));
-    });
+    } else {
+      req.write(body, () => {
+        send(__HttpClient_SentChunk(request));
+      });
+    }
 
     return callback(
       __Scheduler_succeed({
@@ -237,7 +245,11 @@ var _HttpClient_startReceive = F4(function (
       res.on("data", (bytes) => {
         return __Scheduler_rawSpawn(
           sendToApp(
-            A2(__HttpClient_ReceivedChunk, request, _HttpClient_formatResponse(res, new DataView(bytes.buffer)))
+            A2(
+              __HttpClient_ReceivedChunk,
+              request,
+              _HttpClient_formatResponse(res, new DataView(bytes.buffer))
+            )
           )
         );
       });
