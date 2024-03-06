@@ -17,6 +17,7 @@ type alias Model =
     { stdout : Stream 
     , httpPermission : HttpClient.Permission
     , streamReqChunks : Array Bytes
+    , streamStatusCode : Int
     }
 
 
@@ -53,6 +54,7 @@ init env =
                 { stdout = env.stdout
                 , httpPermission = httpPerm
                 , streamReqChunks = reqChunks
+                , streamStatusCode = 0
                 }
             , command =
                 case Array.get 2 env.args of
@@ -103,13 +105,11 @@ init env =
 
                     Just "stream" ->
                         HttpClient.post "http://localhost:8080/mocked-path"
-                            |> HttpClient.withBytesBody "application/json" 
-                                (Bytes.Encode.encode (Bytes.Encode.string ""))
                             |> HttpClient.expectBytes
                             |> HttpClient.stream httpPerm StreamResponse
                     
                     _ ->
-                        Stream.sendLine env.stdout"Invalid start argument"
+                        Stream.sendLine env.stdout "Invalid start argument"
             }
 
 
@@ -177,7 +177,14 @@ update msg model =
                 
                 HttpClient.ReceivedChunk req chunk ->
                     -- We received some data, but we're not interested in the result
-                    { model = model
+                    -- let
+                    --     _ =
+                    --         Bytes.Decode.decode (Bytes.Decode.string (Bytes.width chunk.data)) chunk.data
+                    --         |> Debug.log "Body"
+
+                    --     _ = Debug.log "chunk" chunk
+                    -- in
+                    { model = { model | streamStatusCode = chunk.statusCode }
                     , command = Cmd.none
                     }
                 
@@ -193,6 +200,6 @@ update msg model =
                 
                 HttpClient.Done ->
                     { model = model
-                    , command = Stream.sendLine model.stdout "Streaming done!"
+                    , command = Stream.sendLine model.stdout <| String.fromInt model.streamStatusCode ++ ": Streaming done!"
                     }
             

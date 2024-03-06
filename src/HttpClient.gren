@@ -3,7 +3,7 @@ effect module HttpClient where { command = MyCmd } exposing
     , initialize, initializeForHost
     , Request, get, post, request
     , defaultTimeout, withTimeout
-    , withHeader, withHeaderAppended
+    , withHeader, withDuplicatedHeader
     , Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
     , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
     , send
@@ -50,7 +50,7 @@ so it can be a good idea to return an error to the user instead of waiting "fore
 Every http request can have arbitrary metadata attached, called headers. Headers allow you to attach things like
 authorization information, how the body is encoded or the name of the client making the request.
 
-@docs withHeader, withHeaderAppended
+@docs withHeader, withDuplicatedHeader
 
 ## Request body
 
@@ -194,8 +194,8 @@ withHeader key value req =
 
 {-|
 -}
-withHeaderAppended : String -> String -> Request a -> Request a
-withHeaderAppended key value req =
+withDuplicatedHeader : String -> String -> Request a -> Request a
+withDuplicatedHeader key value req =
     { req
         | headers = Dict.update 
             key 
