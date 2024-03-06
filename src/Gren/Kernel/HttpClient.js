@@ -1,7 +1,7 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
-import HttpClient exposing (BadUrl, Timeout, BadStatus, UnknownError, SentChunk, ReceivedChunk, Error, Aborted, Done)
+import HttpClient exposing (BadUrl, Timeout, BadStatus, BadHeaders, UnknownError, SentChunk, ReceivedChunk, Error, Aborted, Done)
 import Json.Decode as Decode exposing (decodeString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
@@ -14,16 +14,9 @@ const http = require("http");
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
-    let url = null;
+    let req = null;
     try {
-      url = new URL(config.__$url);
-    } catch (e) {
-      return callback(__Scheduler_fail(__HttpClient_BadUrl(config.__$url)));
-    }
-
-    const req = http.request(
-      url,
-      {
+      req = http.request(config.__$url, {
         method: config.__$method,
         headers: A3(
           __Dict_foldl,
@@ -32,96 +25,20 @@ var _HttpClient_request = function (config) {
           config.__$headers
         ),
         timeout: config.__$timeout,
-      },
-      (res) => {
-        const expectType = config.__$expectType;
-
-        if (expectType === "STRING" || expectType === "JSON") {
-          res.setEncoding("utf8");
-        }
-
-        let rawData = null;
-        res.on("data", (chunk) => {
-          if (rawData === null) {
-            rawData = chunk;
-          } else {
-            rawData += chunk;
-          }
-        });
-
-        res.on("error", (e) => {
-          return callback(
-            __Scheduler_fail(
-              __HttpClient_UnknownError("problem with request: " + e.message)
-            )
-          );
-        });
-
-        res.on("end", () => {
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            return callback(
-              __Scheduler_fail(
-                __HttpClient_BadStatus(_HttpClient_formatResponse(res, rawData))
-              )
-            );
-          }
-
-          switch (expectType) {
-            case "NOTHING":
-              if (rawData === null) {
-                return callback(
-                  __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
-                );
-              } else {
-                return callback(
-                  __Scheduler_fail(
-                    __HttpClient_UnknownError(
-                      "Expected empty response, but got: " + rawData
-                    )
-                  )
-                );
-              }
-
-            case "ANYTHING":
-              return callback(
-                __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
-              );
-
-            case "STRING":
-              return callback(
-                __Scheduler_succeed(_HttpClient_formatResponse(res, rawData))
-              );
-
-            case "JSON":
-              const jsonResult = A2(
-                __Decode_decodeString,
-                config.__$expect.a,
-                rawData
-              );
-              if (__Result_isOk(jsonResult)) {
-                return callback(
-                  __Scheduler_succeed(
-                    _HttpClient_formatResponse(res, jsonResult.a)
-                  )
-                );
-              } else {
-                return callback(
-                  __Scheduler_fail(
-                    __HttpClient_UnknownError("Failed to decode json response")
-                  )
-                );
-              }
-
-            case "BYTES":
-              return callback(
-                __Scheduler_succeed(
-                  _HttpClient_formatResponse(res, new DataView(rawData.buffer))
-                )
-              );
-          }
-        });
+      });
+    } catch (e) {
+      if (e.code === "ERR_INVALID_HTTP_TOKEN") {
+        return callback(__Scheduler_fail(__HttpClient_BadHeaders));
+      } else if (e.code === "ERR_INVALID_URL") {
+        return callback(__Scheduler_fail(__HttpClient_BadUrl(config.__$url)));
+      } else {
+        return callback(
+          __Scheduler_fail(
+            __HttpClient_UnknownError("problem with request: " + e.message)
+          )
+        );
       }
-    );
+    }
 
     req.on("timeout", () => {
       req.destroy(_HttpClient_CustomTimeoutError);
@@ -137,6 +54,95 @@ var _HttpClient_request = function (config) {
           __HttpClient_UnknownError("problem with request: " + e.message)
         )
       );
+    });
+
+    req.on("response", (res) => {
+      const expectType = config.__$expectType;
+
+      if (expectType === "STRING" || expectType === "JSON") {
+        res.setEncoding("utf8");
+      }
+
+      let rawData = null;
+      res.on("data", (chunk) => {
+        if (rawData === null) {
+          rawData = chunk;
+        } else {
+          rawData += chunk;
+        }
+      });
+
+      res.on("error", (e) => {
+        return callback(
+          __Scheduler_fail(
+            __HttpClient_UnknownError("problem with request: " + e.message)
+          )
+        );
+      });
+
+      res.on("end", () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return callback(
+            __Scheduler_fail(
+              __HttpClient_BadStatus(_HttpClient_formatResponse(res, rawData))
+            )
+          );
+        }
+
+        switch (expectType) {
+          case "NOTHING":
+            if (rawData === null) {
+              return callback(
+                __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
+              );
+            } else {
+              return callback(
+                __Scheduler_fail(
+                  __HttpClient_UnknownError(
+                    "Expected empty response, but got: " + rawData
+                  )
+                )
+              );
+            }
+
+          case "ANYTHING":
+            return callback(
+              __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
+            );
+
+          case "STRING":
+            return callback(
+              __Scheduler_succeed(_HttpClient_formatResponse(res, rawData))
+            );
+
+          case "JSON":
+            const jsonResult = A2(
+              __Decode_decodeString,
+              config.__$expect.a,
+              rawData
+            );
+            if (__Result_isOk(jsonResult)) {
+              return callback(
+                __Scheduler_succeed(
+                  _HttpClient_formatResponse(res, jsonResult.a)
+                )
+              );
+            } else {
+              return callback(
+                __Scheduler_fail(
+                  __HttpClient_UnknownError("Failed to decode json response")
+                )
+              );
+            }
+
+          case "BYTES":
+            return callback(
+              __Scheduler_succeed(
+                _HttpClient_formatResponse(res, new DataView(rawData.buffer))
+              )
+            );
+        }
+      });
     });
 
     const body = _HttpClient_extractRequestBody(config);
@@ -155,25 +161,35 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
       return __Scheduler_rawSpawn(sendToApp(msg));
     }
 
-    let url = null;
+    let req = null;
     try {
-      url = new URL(config.__$url);
+      req = http.request(config.__$url, {
+        method: config.__$method,
+        headers: A3(
+          __Dict_foldl,
+          _HttpClient_dictToObject,
+          {},
+          config.__$headers
+        ),
+        timeout: config.__$timeout,
+      });
     } catch (e) {
       callback(__Scheduler_succeed(request));
-      send(__HttpClient_Error(__HttpClient_BadUrl(config.__$url)));
+
+      if (e.code === "ERR_INVALID_HTTP_TOKEN") {
+        send(__HttpClient_Error(__HttpClient_BadHeaders));
+      } else if (e.code === "ERR_INVALID_URL") {
+        send(__HttpClient_Error(__HttpClient_BadUrl(config.__$url)));
+      } else {
+        send(
+          __HttpClient_Error(
+            __HttpClient_UnknownError("problem with request: " + e.message)
+          )
+        );
+      }
+
       return __Scheduler_rawSpawn(cleanup(request));
     }
-
-    const req = http.request(config.__$url, {
-      method: config.__$method,
-      headers: A3(
-        __Dict_foldl,
-        _HttpClient_dictToObject,
-        {},
-        config.__$headers
-      ),
-      timeout: config.__$timeout,
-    });
 
     req.on("timeout", () => {
       req.destroy(_HttpClient_CustomTimeoutError);

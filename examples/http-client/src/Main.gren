@@ -180,7 +180,7 @@ update msg model =
                     -- let
                     --     _ =
                     --         Bytes.Decode.decode (Bytes.Decode.string (Bytes.width chunk.data)) chunk.data
-                    --         |> Debug.log "Body"
+                    --             |> Debug.log "Body"
 
                     --     _ = Debug.log "chunk" chunk
                     -- in

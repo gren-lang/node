@@ -430,6 +430,7 @@ type alias Response data =
 -}
 type Error 
     = BadUrl String
+    | BadHeaders
     | BadStatus (Response String)
     | Timeout
     | UnknownError String
@@ -445,6 +446,9 @@ errorToString err =
 
         BadUrl url ->
             "Bad URL: " ++ url
+
+        BadHeaders ->
+            "Bad headers: one or more of your headers contains invalid characters."
 
         BadStatus res ->
             "Bad status: " ++ String.fromInt res.statusCode
