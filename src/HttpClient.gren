@@ -67,7 +67,7 @@ what we expect the response body to be.
 
 ## Send
 
-Once your `Response` is configured, you want to actually send the request.
+Once your `Response` is configured, you'll want to actually send the request.
 
 @docs send
 
@@ -99,14 +99,16 @@ import Platform
 import Gren.Kernel.HttpClient
 
 
-{-|
+{-| A value that represents a permission to perform http requests.
+
+Only code you trust should be granted permission.
 -}
 type Permission
     = AnyPermission
     | SpecificPermission String
 
 
-{-|
+{-| Call this during application initialization to get the permission to perform any kind of HTTP request.
 -}
 initialize : Init.Task Permission
 initialize =
@@ -114,7 +116,8 @@ initialize =
         |> Internal.Init.Task
 
 
-{-|
+{-| This will return a host-specific permission. Code that has this permission value, will only
+be able to contact a specific host.
 -}
 initializeForHost : String -> Init.Task Permission
 initializeForHost host =
@@ -125,7 +128,8 @@ initializeForHost host =
 -- REQUEST CONFIG
 
 
-{-|
+{-| Represents the request to be made. Use [get](#get), [post](#post) or [request](#request) to initialize
+this value, then customize it using the following `with` functions.
 -}
 type alias Request a =
     { method : String
@@ -137,21 +141,21 @@ type alias Request a =
     }
 
 
-{-|
+{-| Initializes the configuration for a simple GET request to the given url.
 -}
 get : String -> Request {}
 get url =
     request "GET" url
 
 
-{-|
+{-| Initializes the configuration for a simple POST request to the given url.
 -}
 post : String -> Request {}
 post url =
     request "POST" url
 
 
-{-|
+{-| Initializes a request configuration with the given method and url.
 -}
 request : String -> String -> Request {}
 request method url =
@@ -164,7 +168,9 @@ request method url =
     }
 
 
-{-|
+{-| This is the default timeout value. It is set to 10 seconds.
+If you don't use [withTimeout](#withTimeout) to set a timeout specifically, the
+request you make will have a timeout set to this value.
 -}
 defaultTimeout : Int
 defaultTimeout =
@@ -172,7 +178,9 @@ defaultTimeout =
     10 * 1000
 
 
-{-|
+{-| Let's you specify a timeout, in milliseconds, for a request.
+If the server doesn't respond to your request within the given timeout, the request
+will fail with a Timeout [Error](#Error).
 -}
 withTimeout : Int -> Request a -> Request a
 withTimeout ms req =
