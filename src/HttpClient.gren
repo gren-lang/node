@@ -191,7 +191,9 @@ withTimeout ms req =
         { req | timeout = ms }
 
 
-{-|
+{-| Http requests has metadata in the form of headers. A header is a key-value pair of strings
+that says something about the request. Like the length of the body, authentication information,
+name of the client making the request, etc.
 -}
 withHeader : String -> String -> Request a -> Request a
 withHeader key value req =
@@ -200,7 +202,9 @@ withHeader key value req =
     }
 
 
-{-|
+{-| Header keys doesn't have to be unique. You're allowed to send the same kind of header
+multiple times, like sending multiple cookies. The behaviour of [withHeader](#withHeader) will
+replace the value of an already set header. This function will not.
 -}
 withDuplicatedHeader : String -> String -> Request a -> Request a
 withDuplicatedHeader key value req =
@@ -215,7 +219,7 @@ withDuplicatedHeader key value req =
 -- BODY
 
 
-{-|
+{-| The body represents the main data that you will send in the http request.
 -}
 type Body
     = BodyEmpty
@@ -236,17 +240,22 @@ bodyTypeAsString body =
             "BYTES"
 
 
-{-|
+{-| Removes the body from the Request. You normally don't have to use this function,
+as an empty body is the default.
+
+If the "Content-Type" header is set, this function will remove it.
 -}
-withEmptyBody : String -> Request a -> Request a
-withEmptyBody value req = 
+withEmptyBody : Request a -> Request a
+withEmptyBody req = 
     { req
         | headers = Dict.remove "Content-Type" req.headers
         , body = BodyEmpty
     }
 
 
-{-|
+{-| Sets the given string as the request body. You need to provide a mime type to
+describe what the string contains. This mime type will be set as the "Content-Type"
+header, potentially overwriting the header if it has already been set.
 -}
 withStringBody : String -> String -> Request a -> Request a
 withStringBody mimeType value req = 
@@ -256,14 +265,18 @@ withStringBody mimeType value req =
     }
 
 
-{-|
+{-| Sets the provided Json value the request body. A "Content-Type" header will be
+attached to the request with a value of "application/json", potentially overwriting
+the header if it has already been set.
 -}
 withJsonBody : Json.Value -> Request a -> Request a
 withJsonBody value req = 
     withStringBody "application/json" (Json.encode 0 value) req
 
 
-{-|
+{-| Sets the provided Bytes value as the request body. You need to provide a mime type to
+desribe what the bytes represent. This mime type will be set as the "Content-Type" header,
+potentially overwriting the header if it has already been set.
 -}
 withBytesBody : String -> Bytes -> Request a -> Request a
 withBytesBody mimeType value req = 
@@ -276,7 +289,7 @@ withBytesBody mimeType value req =
 -- EXPECT
 
 
-{-|
+{-| This describes what you expect the server will respond with when it receives your request.
 -}
 type Expect a
     = ExpectNothing
@@ -305,7 +318,8 @@ expectTypeAsString expect =
             "BYTES"
 
 
-{-|
+{-| Use this when you you don't really care what the server responds with. Anything is fine.
+Actually, this is the default value so you probably don't need to use this at all.
 -}
 expectAnything : Request a -> Request {}
 expectAnything req =
@@ -319,7 +333,8 @@ expectAnything req =
     }
 
 
-{-|
+{-| Expect _exactly_ nothing. Use this when you want a request to fail if the server responds with
+anything at all.
 -}
 expectNothing : Request a -> Request {}
 expectNothing req =
@@ -332,7 +347,7 @@ expectNothing req =
     }
 
 
-{-|
+{-| Use this when you expect the server to respond with a string.
 -}
 expectString : Request a -> Request String
 expectString req =
@@ -345,7 +360,7 @@ expectString req =
     }
 
 
-{-|
+{-| Use this when you expect a Json response. The request will fail if the provided decoder fails.
 -}
 expectJson : Json.Decode.Decoder a -> Request x -> Request a
 expectJson decoder req = 
@@ -358,7 +373,8 @@ expectJson decoder req =
     }
 
 
-{-|
+{-| Use this when you want to treat the response as bytes. This will likely never fail, as anything
+can be interpreted as bytes.
 -}
 expectBytes : Request a -> Request Bytes
 expectBytes req =
@@ -374,7 +390,7 @@ expectBytes req =
 -- SIMPLE SEND
 
 
-{-|
+{-| Send a request. The task will either complete with a successful [Response](#Response), or an [Error](#Error).
 -}
 send
     : Permission 
@@ -421,7 +437,12 @@ kernelRequestConfig permission config =
 -- RESPONSE
 
 
-{-|
+{-| The response from the server.
+
+* statusCode: A numerical value that gives an indication of how the request went. 200 means OK.
+* statusText: A human readable interpretation of the status code.
+* headers: The headers returned by the server.
+* data: The data returned by the server. The type depends on the [Expect](#Expect) value you set on the request.
 -}
 type alias Response data =
     { statusCode : Int
@@ -434,7 +455,13 @@ type alias Response data =
 -- ERRORS
 
 
-{-|
+{-| A Http request can fail in a number of ways.
+
+* BadUrl: Something is wrong with the URL you provided.
+* BadHeaders: The request headers are invalid. Make sure you only use characters in the latin-1 character set.
+* BadStatus: The status code indicates that the response didn't go well. The [Response](#Response) is attached, with a string-encoded data.
+* Timeout: The request timed out. The server didn't respond as quickly as you expected it would.
+* UnknownError: We don't know what went wrong. You should probably report this if you see it in the wild.
 -}
 type Error 
     = BadUrl String
