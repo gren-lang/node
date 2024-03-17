@@ -28,17 +28,17 @@ initializing your own program with the results of those initializations.
 As part of initializing a subsystem, you usually also get access to a value that permits
 you to contact said subsystem. Be careful what code you give these permissions to.
 
-## Initialization
+## Program
 
-@docs Environment, Platform, CpuArchitecture, getEnvironmentVariables
+@docs Program, ProgramConfiguration, defineProgram, startProgram
 
 ## Simple Program
 
 @docs SimpleProgram, defineSimpleProgram, endWithCmd
 
-## Program
+## Environment information
 
-@docs Program, ProgramConfiguration, defineProgram, startProgram
+@docs Environment, Platform, CpuArchitecture, getEnvironmentVariables
 
 ## Exit
 
@@ -195,7 +195,7 @@ getEnvironmentVariables =
 -- PROGRAMS
 
 
-{-| A simple program that executes a single task and then exits.
+{-| A program that executes a single task and then exits.
 -}
 type alias SimpleProgram a =
     Program {} a
