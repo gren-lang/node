@@ -22,10 +22,14 @@ type alias Model =
 
 
 type Msg 
-    = Response (Result HttpClient.Error (HttpClient.Response String))
-    | JsonResponse (Result HttpClient.Error (HttpClient.Response { response : String }))
-    | BytesResponse (Result HttpClient.Error (HttpClient.Response Bytes))
+    = Response (Result (HttpClient.Error String) (HttpClient.Response String))
+    | JsonResponse (Result (HttpClient.Error JsonBodyResponse) (HttpClient.Response JsonBodyResponse))
+    | BytesResponse (Result (HttpClient.Error Bytes) (HttpClient.Response Bytes))
     | StreamResponse HttpClient.StreamEvent
+
+
+type alias JsonBodyResponse =
+    { response : String }
 
 
 main : Node.Program Model Msg
