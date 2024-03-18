@@ -10,13 +10,23 @@ import Platform exposing (sendToApp)
 
 */
 
-const http = require("http");
+const http = require("node:http");
+const https = require ("node:https");
+
+function _HttpClient_clientForProtocol(config) {
+  if (config.__$url.startsWith("http://")) {
+    return http;
+  }
+
+  return https;
+}
 
 var _HttpClient_request = function (config) {
   return __Scheduler_binding(function (callback) {
     let req = null;
     try {
-      req = http.request(config.__$url, {
+      const client = _HttpClient_clientForProtocol(config);
+      req = client.request(config.__$url, {
         method: config.__$method,
         headers: A3(
           __Dict_foldl,
@@ -163,7 +173,8 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
 
     let req = null;
     try {
-      req = http.request(config.__$url, {
+      const client = _HttpClient_clientForProtocol(config);
+      req = client.request(config.__$url, {
         method: config.__$method,
         headers: A3(
           __Dict_foldl,
