@@ -11,7 +11,7 @@ import Platform exposing (sendToApp)
 */
 
 const http = require("node:http");
-const https = require ("node:https");
+const https = require("node:https");
 
 function _HttpClient_clientForProtocol(config) {
   if (config.__$url.startsWith("http://")) {
