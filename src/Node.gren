@@ -74,8 +74,6 @@ type alias Environment =
     }
 
 
-{-| Initialize a NodeJS application. In return you're granted the `Configuration` record, which contains useful context.
--}
 initializeEnvironment : Task Never Environment
 initializeEnvironment =
     Gren.Kernel.Node.init
@@ -231,7 +229,7 @@ type alias ProgramConfiguration model msg =
 
 {-| Define a program with access to long-lived state and the ability to respond to
 messages and listen to subscriptions. If you want to define a simple and short-lived
-program, chances are you're looking for `defineSimple` instead.
+program, chances are you're looking for [defineSimpleProgram](#defineSimpleProgram) instead.
 -}
 defineProgram : ProgramConfiguration model msg -> Program model msg
 defineProgram config =
@@ -339,7 +337,7 @@ startProgram initResult =
     Internal.Init.Task (Task.succeed initResult)
 
 
-{-| When defining a program with `defineTask`, use this function to define the
+{-| When defining a program with [defineSimpleProgram](#defineSimpleProgram), use this function to define the
 final command to execute.
 -}
 endWithCmd : Cmd a -> Init.Task (Cmd a)
