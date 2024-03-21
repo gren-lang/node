@@ -12,6 +12,7 @@
         "Terminal",
         "FileSystem",
         "ChildProcess",
+        "HttpClient",
         "HttpServer",
         "HttpServer.Response"
     ],

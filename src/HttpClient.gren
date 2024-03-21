@@ -1,0 +1,695 @@
+effect module HttpClient where { command = MyCmd } exposing
+    ( Permission
+    , initialize, initializeForHost
+    , RequestConfiguration, get, post, request
+    , defaultTimeout, withTimeout
+    , withHeader, withDuplicatedHeader
+    , Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
+    , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+    , send
+    , Response
+    , Error(..), errorToString
+    , StreamRequest, StreamEvent(..), stream, sendChunk, startReceive, abort
+    )
+
+
+{-|
+
+A module for communicating over HTTP.
+
+You start by building a [RequestConfiguration](#RequestConfiguration) type, which represents the request you'll make to a server. Once done,
+you can either do a `send`, which represents the response as a `Task`, or `stream` which will allow you to perform
+actions while the request is sending and while the response is coming in. A typical example of why you'd use `stream`
+is to show a progress bar to the user, or decode the response incrementally as opposed to all at once.
+
+See [examples/http-client](https://github.com/gren-lang/node/tree/main/examples/http-client) for a working example.
+
+## Initialization
+
+Code that wishes to perform HTTP requests require a permission to do so.
+
+@docs Permission, initialize, initializeForHost
+
+## Request configuration
+
+In order to send something over HTTP, you first need a description of how that request will look like.
+
+@docs RequestConfiguration, get, post, request
+
+## Timeouts
+
+A timeout represents how long you're willing to wait before giving up on receiving
+a response from the server. Servers might not respond for any number of reasons, like bugs or huge amounts of traffic,
+so it is a good idea to return an error to the user instead of waiting "forever" for a response.
+
+@docs defaultTimeout, withTimeout
+
+## Headers
+
+Every HTTP request can have arbitrary metadata attached, called headers. Headers allow you to attach things like
+authorization information, how the body is encoded or the name of the client making the request.
+
+It might be interesting to read this [list of HTTP header fields](https://en.wikipedia.org/wiki/List_of_HTTP_header_fields).
+
+@docs withHeader, withDuplicatedHeader
+
+## Request body
+
+The request body is the actual data that you wish to send to a server.
+
+@docs Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
+
+## Expected response body
+
+Once a request has been sent, you usually get a response. The `Expect` type represents
+what we expect the response body to be.
+
+@docs Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+
+## Send
+
+Once your `Response` is configured, you'll want to actually send the request.
+
+@docs send
+
+@docs Response
+
+## Errors
+
+@docs Error, errorToString
+
+## Streaming
+
+Streaming is the more advanced way to perform a HTTP request. This requires that you follow the Elm
+architecture, as you'll receive messages for every chunk of data sent and received. The benefit of this
+extra complexity, is that you can perform actions while the request is being performed.
+
+@docs StreamRequest, StreamEvent, stream, sendChunk, startReceive, abort
+
+-}
+
+
+import Dict exposing (Dict)
+import Init
+import Internal.Init
+import Json.Encode as Json
+import Json.Decode
+import Bytes exposing (Bytes)
+import Task exposing (Task)
+import Platform
+import Gren.Kernel.HttpClient
+
+
+{-| A value that represents the permission to perform HTTP requests.
+
+Only code you trust should be granted permission.
+-}
+type Permission
+    = AnyPermission
+    | SpecificPermission String
+
+
+{-| Call this during application initialization to get the permission to perform any kind of HTTP request.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed AnyPermission
+        |> Internal.Init.Task
+
+
+{-| Call during application initialization to get a host-specific permission. Code that has this permission value, will only
+be able to contact a specific host.
+-}
+initializeForHost : String -> Init.Task Permission
+initializeForHost host =
+    Task.succeed (SpecificPermission host)
+        |> Internal.Init.Task
+
+
+-- REQUEST CONFIGURATION
+
+
+{-| Describes the request to be made. Use [get](#get), [post](#post) or [request](#request) to initialize
+this value, then customize it using the following `with` functions.
+-}
+type alias RequestConfiguration responseType =
+    { method : String
+    , url : String
+    , headers : Dict String (Array String)
+    , body : Body
+    , expect : Expect responseType
+    , timeout : Int
+    }
+
+
+{-| Initializes the configuration for a simple GET request to the given url.
+-}
+get : String -> RequestConfiguration {}
+get url =
+    request "GET" url
+
+
+{-| Initializes the configuration for a simple POST request to the given url.
+-}
+post : String -> RequestConfiguration {}
+post url =
+    request "POST" url
+
+
+{-| Initializes a request configuration with the given method and url.
+-}
+request : String -> String -> RequestConfiguration {}
+request method url =
+    { method = method
+    , url = url
+    , headers = Dict.empty
+    , body = BodyEmpty
+    , expect = ExpectAnything
+    , timeout = defaultTimeout
+    }
+
+
+{-| This is the default timeout value. It is set to 10 seconds.
+If you don't use [withTimeout](#withTimeout) to set a timeout specifically, 
+this value will be used.
+-}
+defaultTimeout : Int
+defaultTimeout =
+    -- 10 seconds
+    10 * 1000
+
+
+{-| Lets you specify a timeout, in milliseconds, for a request.
+If the server doesn't respond to your request within the given timeout, the request
+will fail with a Timeout [Error](#Error).
+-}
+withTimeout : Int -> RequestConfiguration a -> RequestConfiguration a
+withTimeout ms req =
+    if ms < 0 then
+        req
+
+    else
+        { req | timeout = ms }
+
+
+{-| A header is a key-value pair of strings that says something about the request.
+Examples include the length of the body, authentication information, name of the client making the request, etc.
+-}
+withHeader : String -> String -> RequestConfiguration a -> RequestConfiguration a
+withHeader key value req =
+    { req
+        | headers = Dict.insert key [value] req.headers
+    }
+
+
+{-| Header keys doesn't have to be unique. You're allowed to send the same kind of header
+multiple times, like sending multiple cookies. The behaviour of [withHeader](#withHeader) will
+replace the value of an already set header. This function will not.
+-}
+withDuplicatedHeader : String -> String -> RequestConfiguration a -> RequestConfiguration a
+withDuplicatedHeader key value req =
+    { req
+        | headers = Dict.update 
+            key 
+            (Maybe.map (Array.pushLast value) >> Maybe.withDefault [value] >> Just)
+            req.headers
+    }
+
+
+-- BODY
+
+
+{-| The body represents the main data that you will send in the HTTP request.
+-}
+type Body
+    = BodyEmpty
+    | BodyString String
+    | BodyBytes Bytes
+
+
+bodyTypeAsString : Body -> String
+bodyTypeAsString body =
+    case body of
+        BodyEmpty ->
+            "EMPTY"
+
+        BodyString _ ->
+            "STRING"
+
+        BodyBytes _ ->
+            "BYTES"
+
+
+{-| Removes the body from the [RequestConfiguration](#RequestConfiguration).
+You normally don't have to use this function, as an empty body is the default.
+
+If the "Content-Type" header is set, this function will remove it.
+-}
+withEmptyBody : RequestConfiguration a -> RequestConfiguration a
+withEmptyBody req = 
+    { req
+        | headers = Dict.remove "Content-Type" req.headers
+        , body = BodyEmpty
+    }
+
+
+{-| Sets the given string as the request body. You need to provide a mime type to
+describe what the string contains. This mime type will be set as the "Content-Type"
+header, potentially overwriting the header if it has already been set.
+-}
+withStringBody : String -> String -> RequestConfiguration a -> RequestConfiguration a
+withStringBody mimeType value req = 
+    { req
+        | headers = Dict.insert "Content-Type" [mimeType] req.headers
+        , body = BodyString value
+    }
+
+
+{-| Sets the provided Json value the request body. A "Content-Type" header will be
+attached to the request with a value of "application/json", potentially overwriting
+the header if it has already been set.
+-}
+withJsonBody : Json.Value -> RequestConfiguration a -> RequestConfiguration a
+withJsonBody value req = 
+    withStringBody "application/json" (Json.encode 0 value) req
+
+
+{-| Sets the provided Bytes value as the request body. You need to provide a mime type to
+desribe what the bytes represent. This mime type will be set as the "Content-Type" header,
+potentially overwriting the header if it has already been set.
+-}
+withBytesBody : String -> Bytes -> RequestConfiguration a -> RequestConfiguration a
+withBytesBody mimeType value req = 
+    { req
+        | headers = Dict.insert "Content-Type" [mimeType] req.headers
+        , body = BodyBytes value
+    }
+
+
+-- EXPECT
+
+
+{-| This describes what you expect the server will respond with when it receives your request.
+-}
+type Expect a
+    = ExpectNothing
+    | ExpectAnything
+    | ExpectString
+    | ExpectJson (Json.Decode.Decoder a)
+    | ExpectBytes
+
+
+expectTypeAsString : Expect a -> String
+expectTypeAsString expect =
+    case expect of
+        ExpectNothing ->
+            "NOTHING"
+
+        ExpectAnything ->
+            "ANYTHING"
+
+        ExpectString ->
+            "STRING"
+
+        ExpectJson _ ->
+            "JSON"
+
+        ExpectBytes ->
+            "BYTES"
+
+
+{-| Use this when you you don't really care what the server responds with. Anything is fine.
+Actually, this is the default value so you probably don't need to use this at all.
+-}
+expectAnything : RequestConfiguration a -> RequestConfiguration {}
+expectAnything req =
+    -- Need to create a new record for type checking to pass
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectAnything
+    , timeout = req.timeout
+    }
+
+
+{-| Expect _exactly_ nothing. Use this when you want a request to fail if the server responds with
+anything at all.
+-}
+expectNothing : RequestConfiguration a -> RequestConfiguration {}
+expectNothing req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectNothing
+    , timeout = req.timeout
+    }
+
+
+{-| Use this when you expect the server to respond with a string.
+-}
+expectString : RequestConfiguration a -> RequestConfiguration String
+expectString req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectString
+    , timeout = req.timeout
+    }
+
+
+{-| Use this when you expect a Json response. The request will fail if the provided decoder fails.
+-}
+expectJson : Json.Decode.Decoder a -> RequestConfiguration x -> RequestConfiguration a
+expectJson decoder req = 
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectJson decoder
+    , timeout = req.timeout
+    }
+
+
+{-| Use this when you want to treat the response as bytes. This will likely never fail, as anything
+can be interpreted as bytes.
+-}
+expectBytes : RequestConfiguration a -> RequestConfiguration Bytes
+expectBytes req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectBytes
+    , timeout = req.timeout
+    }
+
+
+-- SIMPLE SEND
+
+
+{-| Send a request. The task will either complete with a successful [Response](#Response), or an [Error](#Error).
+-}
+send
+    : Permission 
+    -> RequestConfiguration expectedBody
+    -> Task (Error expectedBody) (Response expectedBody)
+send permission config =
+    Gren.Kernel.HttpClient.request (kernelRequestConfig permission config)
+
+
+type alias KernelRequestConfig a =
+    { method : String
+    , url : String
+    , headers : Dict String (Array String)
+    , bodyType : String
+    , body : Body
+    , expectType : String
+    , expect : Expect a
+    , timeout : Int
+    }
+
+
+kernelRequestConfig : Permission -> RequestConfiguration a -> KernelRequestConfig a
+kernelRequestConfig permission config =
+    let
+        actualUrl =
+            case permission of
+                AnyPermission ->
+                    config.url
+
+                SpecificPermission prefix ->
+                    prefix ++ config.url
+    in
+    { method = config.method
+    , url = actualUrl
+    , headers = config.headers
+    , bodyType = bodyTypeAsString config.body
+    , body = config.body
+    , expectType = expectTypeAsString config.expect
+    , expect = config.expect
+    , timeout = config.timeout
+    }
+
+
+-- RESPONSE
+
+
+{-| The response from the server.
+
+* statusCode: A numerical value that gives an indication of how the request went.
+It might be a good idea to read this [list of HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).
+* statusText: A human readable interpretation of the status code.
+* headers: The headers returned by the server.
+* data: The data returned by the server. The type depends on the [Expect](#Expect) value you set on the request.
+-}
+type alias Response data =
+    { statusCode : Int
+    , statusText : String
+    , headers : Dict String (Array String)
+    , data : data
+    }
+
+
+-- ERRORS
+
+
+{-| A HTTP request can fail in a number of ways.
+
+* BadUrl: Something is wrong with the URL you provided.
+* BadHeaders: The request headers are invalid. Make sure you only use characters in the latin-1 character set.
+* BadStatus: The status code indicates that the response didn't go well. The [Response](#Response) is attached, with a string-encoded data.
+* Timeout: The request timed out. The server didn't respond as quickly as you expected it would.
+* UnknownError: We don't know what went wrong. You should probably report this if you see it in the wild.
+-}
+type Error body
+    = BadUrl String
+    | BadHeaders
+    | BadStatus (Response body)
+    | Timeout
+    | UnknownError String
+
+
+{-| Gives a brief description of an error.
+-}
+errorToString : Error body -> String
+errorToString err =
+    case err of
+        Timeout ->
+            "Timeout"
+
+        BadUrl url ->
+            "Bad URL: " ++ url
+
+        BadHeaders ->
+            "Bad headers: one or more of your headers contains invalid characters."
+
+        BadStatus res ->
+            "Bad status: " ++ String.fromInt res.statusCode
+
+        UnknownError debugStr ->
+            "Unknown error: " ++ debugStr
+
+
+-- STREAM
+
+
+{-| Identifies a streaming request. Required to perform certain operations while
+the request is streaming.
+-}
+type StreamRequest =
+    StreamRequest Int
+
+
+{-| When a request is streaming, the application is notified of important events
+and is required to act on those events for the request to be successful.
+
+* SentChunk: The initial request body, or the last piece of data sent with [sendChunk](#sendChunk) has been sent.
+Send more data, or call `startReceive` to begin listening for the response.
+* ReceivedChunk: The server has responded with some data. More data might be coming in, though.
+The `Done` event will be triggered when there's no more data coming. You can use the provided
+`Response` object to access the response headers, and decide if you'd like to [abort](#abort) the
+request or not.
+* Error: Something went wrong. More information in the provided [Error](#Error) object.
+* Aborted: You called [abort](#abort) on this request.
+* Done: The server has sent all it's going to send. You're done.
+-}
+type StreamEvent
+    = SentChunk StreamRequest
+    | ReceivedChunk StreamRequest (Response Bytes)
+    | Error (Error Bytes)
+    | Aborted
+    | Done
+
+
+{-| Initialize a streaming request. You need to provide a function that generates a message
+for handling [StreamEvent](#StreamEvent)s. The headers and data will be sent to the server
+immedietly, and a `SentChunk` event will be sent they're done.
+
+To tell different requests apart, you can use a partially applied custom type like this:
+
+    type Msg = HttpRequest String StreamEvent
+
+    HttpClient.stream httpPermission (HttpRequest "Request 1") requestConfig
+-}
+stream : Permission -> (StreamEvent -> msg) -> RequestConfiguration Bytes -> Cmd msg
+stream permission toMsg config =
+    command <| Start toMsg <| kernelRequestConfig permission config
+
+
+{-| Send more data to the server. This allows you to generate more data as you need to, enabling
+you slice up a potentially costly, memory heavy or long-running operation over time.
+
+You don't have to wait for the matching `SentChunk` event before sending more data but keep in
+mind that data will be kept in memory until sent, potentially causing out-of-memory errors in
+the case of large amounts of data.
+
+If you're already receiving data from the server, calling this function will no effect.
+-}
+sendChunk : StreamRequest -> Bytes -> Cmd msg
+sendChunk req bytes =
+    command <| SendChunk bytes req
+
+
+{-| Use this when you're done sending data. The server will now begin streaming you the response.
+-}
+startReceive : StreamRequest -> Cmd msg
+startReceive req =
+    command <| StartReceive req
+
+
+{-| Stops the request, for any reason, at any time. Useful if you have an unexpected error with
+your own source of data, or if the server response is one you know you don't want to handle after
+having inspected the headers.
+-}
+abort : StreamRequest -> Cmd a
+abort req =
+    command <| Abort req
+
+
+-- COMMANDS
+
+
+type MyCmd msg
+    = Start (StreamEvent -> msg) (KernelRequestConfig Bytes)
+    | SendChunk Bytes StreamRequest
+    | StartReceive StreamRequest
+    | Abort StreamRequest
+
+
+cmdMap : (a -> b) -> MyCmd a -> MyCmd b
+cmdMap func cmd =
+    case cmd of
+        Start toMsg req ->
+            Start (toMsg >> func) req
+
+        SendChunk bytes req ->
+            SendChunk bytes req
+        
+        StartReceive req ->
+            StartReceive req
+
+        Abort req ->
+            Abort req
+
+
+type alias RequestsState msg =
+    { nextId : Int 
+    , msgHandlers : Dict Int { toMsg : (StreamEvent -> msg), kernelRequest : KernelRequest }
+    }
+
+
+type KernelRequest = 
+    -- Actual implementation provided by kernel code
+    KernelRequest
+
+
+init : Task Never (RequestsState msg)
+init =
+  Task.succeed
+    { nextId = 0
+    , msgHandlers = Dict.empty
+    }
+
+
+onEffects : Platform.Router msg SelfMsg -> Array (MyCmd msg) -> RequestsState msg -> Task Never (RequestsState msg)
+onEffects router commands state =
+  case Array.popFirst commands of
+    Nothing ->
+      Task.succeed state
+
+    Just { first, rest } ->
+        case first of
+            Start toMsg config ->
+                let
+                    streamingReq =
+                        StreamRequest state.nextId
+                in
+                Gren.Kernel.HttpClient.stream 
+                    (Platform.sendToSelf router << Cleanup) 
+                    (Platform.sendToApp router << toMsg) 
+                    streamingReq 
+                    config
+                    |> Task.map 
+                        (\kernelRequest -> 
+                            { state 
+                                | nextId = state.nextId + 1
+                                , msgHandlers = 
+                                    Dict.insert 
+                                        state.nextId
+                                        { toMsg = toMsg
+                                        , kernelRequest = kernelRequest
+                                        }
+                                        state.msgHandlers
+                            }
+                        )
+                    |> Task.andThen (\updatedState -> onEffects router rest updatedState)
+
+            SendChunk bytes ((StreamRequest reqId) as req) ->
+                case Dict.get reqId state.msgHandlers of
+                    Just msgHandler ->
+                        Gren.Kernel.HttpClient.sendChunk 
+                            (Platform.sendToApp router << msgHandler.toMsg) 
+                            msgHandler.kernelRequest
+                            req 
+                            bytes
+                            |> Task.andThen (\_ -> onEffects router rest state)
+                    
+                    Nothing ->
+                        onEffects router rest state
+            
+            StartReceive ((StreamRequest reqId) as req)->
+                case Dict.get reqId state.msgHandlers of
+                    Just msgHandler ->
+                        Gren.Kernel.HttpClient.startReceive
+                            (Platform.sendToSelf router << Cleanup)
+                            (Platform.sendToApp router << msgHandler.toMsg) 
+                            msgHandler.kernelRequest
+                            req 
+                            |> Task.andThen (\_ -> onEffects router rest state)
+                    
+                    Nothing ->
+                        onEffects router rest state
+
+            Abort (StreamRequest reqId)->
+                case Dict.get reqId state.msgHandlers of
+                    Just msgHandler ->
+                        Gren.Kernel.HttpClient.abort msgHandler.kernelRequest
+                            |> Task.andThen (\_ -> onEffects router rest state)
+                    
+                    Nothing ->
+                        onEffects router rest state
+                
+
+type SelfMsg
+    = Cleanup StreamRequest
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> RequestsState msg -> Task Never (RequestsState msg)
+onSelfMsg _ event state =
+    case event of
+        Cleanup (StreamRequest reqId) ->
+            Task.succeed 
+                { state | msgHandlers = Dict.remove reqId state.msgHandlers }

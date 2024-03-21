@@ -1,0 +1,209 @@
+module Main exposing (main)
+
+import Node
+import Init
+import Task
+import HttpClient
+import Stream exposing (Stream)
+import Json.Encode as Json
+import Json.Decode
+import Dict
+import Bytes exposing (Bytes)
+import Bytes.Encode
+import Bytes.Decode
+
+
+type alias Model =
+    { stdout : Stream 
+    , httpPermission : HttpClient.Permission
+    , streamReqChunks : Array Bytes
+    , streamStatusCode : Int
+    }
+
+
+type Msg 
+    = Response (Result (HttpClient.Error String) (HttpClient.Response String))
+    | JsonResponse (Result (HttpClient.Error JsonBodyResponse) (HttpClient.Response JsonBodyResponse))
+    | BytesResponse (Result (HttpClient.Error Bytes) (HttpClient.Response Bytes))
+    | StreamResponse HttpClient.StreamEvent
+
+
+type alias JsonBodyResponse =
+    { response : String }
+
+
+main : Node.Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await HttpClient.initialize <| \httpPerm ->
+        let
+            reqChunks =
+                [ "{ "
+                , "\"message\": "
+                , "\"Was chunked as bytes\""
+                , " }"
+                ]
+                |> Array.map (Bytes.Encode.encode << Bytes.Encode.string)
+        in
+        Node.startProgram
+            { model = 
+                { stdout = env.stdout
+                , httpPermission = httpPerm
+                , streamReqChunks = reqChunks
+                , streamStatusCode = 0
+                }
+            , command =
+                case Array.get 2 env.args of
+                    Just "simple get" ->
+                        HttpClient.get "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectString
+                            |> HttpClient.send httpPerm
+                            |> Task.attempt Response
+                    
+                    Just "post with body" ->
+                        HttpClient.post "http://localhost:8080/mocked-path"
+                            |> HttpClient.withBytesBody "application/json"
+                                -- Overly complicated, but it's for testing bytes support
+                                (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
+                            |> HttpClient.expectJson
+                                ( Json.Decode.map (\s -> { response = s })
+                                    (Json.Decode.field "response" Json.Decode.string)
+                                )
+                            |> HttpClient.send httpPerm
+                            |> Task.attempt JsonResponse
+                    
+                    Just "timeout" ->
+                        HttpClient.get "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectString
+                            |> HttpClient.withTimeout 50
+                            |> HttpClient.send httpPerm
+                            |> Task.attempt Response
+                    
+                    Just "headers" ->
+                        HttpClient.post "http://localhost:8080/mocked-path"
+                            |> HttpClient.withHeader "X-Request-ID" "12345"
+                            |> HttpClient.withJsonBody
+                                ( Json.object
+                                    [ { key = "message", value = Json.string "Check out my headers" } ]
+                                )
+                            |> HttpClient.expectJson
+                                ( Json.Decode.map (\s -> { response = s })
+                                    (Json.Decode.field "response" Json.Decode.string)
+                                )
+                            |> HttpClient.send httpPerm
+                            |> Task.attempt JsonResponse
+
+                    Just "bytes" ->
+                        HttpClient.get "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectBytes
+                            |> HttpClient.send httpPerm
+                            |> Task.attempt BytesResponse
+
+                    Just "stream" ->
+                        HttpClient.post "http://localhost:8080/mocked-path"
+                            |> HttpClient.expectBytes
+                            |> HttpClient.stream httpPerm StreamResponse
+                    
+                    _ ->
+                        Stream.sendLine env.stdout "Invalid start argument"
+            }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    case msg of
+        Response (Ok response) ->
+            { model = model
+            , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data)
+            }
+
+        Response (Err err) ->
+            { model = model
+            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            }
+        
+        JsonResponse (Ok response) ->
+            { model = model
+            , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data.response)
+            }
+
+        JsonResponse (Err err) ->
+            { model = model
+            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            }
+        
+        BytesResponse (Ok response) ->
+            let
+                decoder =
+                    Bytes.Decode.map2 (\i1 i2 -> { i1 = i1, i2 = i2})
+                        (Bytes.Decode.unsignedInt32 Bytes.BE)
+                        (Bytes.Decode.unsignedInt32 Bytes.BE)
+            in
+            case Bytes.Decode.decode decoder response.data of
+                Just { i1, i2 } ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ String.fromInt i1 ++ " & " ++ String.fromInt i2)
+                    }
+
+                Nothing ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Failed to decode byte sequence"
+                    }
+                    
+
+        BytesResponse (Err err) ->
+            { model = model
+            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            }
+
+        StreamResponse progress ->
+            case progress of
+                HttpClient.SentChunk req ->
+                    case Array.popFirst model.streamReqChunks of
+                        Nothing ->
+                            -- We are done sending stuff
+                            { model = model
+                            , command = HttpClient.startReceive req
+                            }
+
+                        Just { first = nextChunk, rest = remainingChunks } ->
+                            { model = { model | streamReqChunks = remainingChunks }
+                            , command = HttpClient.sendChunk req nextChunk
+                            }
+                
+                HttpClient.ReceivedChunk req chunk ->
+                    -- We received some data, but we're not interested in the result
+                    -- let
+                    --     _ =
+                    --         Bytes.Decode.decode (Bytes.Decode.string (Bytes.width chunk.data)) chunk.data
+                    --             |> Debug.log "Body"
+
+                    --     _ = Debug.log "chunk" chunk
+                    -- in
+                    { model = { model | streamStatusCode = chunk.statusCode }
+                    , command = Cmd.none
+                    }
+                
+                HttpClient.Error err ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+                    }
+                
+                HttpClient.Aborted ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout "Aborted"
+                    }
+                
+                HttpClient.Done ->
+                    { model = model
+                    , command = Stream.sendLine model.stdout <| String.fromInt model.streamStatusCode ++ ": Streaming done!"
+                    }
+            
