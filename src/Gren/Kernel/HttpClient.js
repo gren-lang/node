@@ -1,8 +1,8 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
-import HttpClient exposing (BadUrl, Timeout, BadStatus, BadHeaders, UnknownError, SentChunk, ReceivedChunk, Error, Aborted, Done)
-import Json.Decode as Decode exposing (decodeString)
+import HttpClient exposing (BadUrl, Timeout, BadStatus, BadHeaders, UnexpectedResponseBody, UnknownError, SentChunk, ReceivedChunk, Error, Aborted, Done)
+import Json.Decode as Decode exposing (decodeString, errorToString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
 import Dict exposing (empty, insert, foldl)
@@ -108,8 +108,8 @@ var _HttpClient_request = function (config) {
             } else {
               return callback(
                 __Scheduler_fail(
-                  __HttpClient_UnknownError(
-                    "Expected empty response, but got: " + rawData
+                  __HttpClient_UnexpectedResponseBody(
+                    "Received response body where I expected none."
                   )
                 )
               );
@@ -140,7 +140,7 @@ var _HttpClient_request = function (config) {
             } else {
               return callback(
                 __Scheduler_fail(
-                  __HttpClient_UnknownError("Failed to decode json response")
+                  __HttpClient_UnexpectedResponseBody(__Decode_errorToString(jsonResult.a))
                 )
               );
             }

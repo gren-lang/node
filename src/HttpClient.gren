@@ -468,6 +468,7 @@ type Error body
     = BadUrl String
     | BadHeaders
     | BadStatus (Response body)
+    | UnexpectedResponseBody String
     | Timeout
     | UnknownError String
 
@@ -488,6 +489,9 @@ errorToString err =
 
         BadStatus res ->
             "Bad status: " ++ String.fromInt res.statusCode
+
+        UnexpectedResponseBody message ->
+            "Unexpected response body: " ++ message
 
         UnknownError debugStr ->
             "Unknown error: " ++ debugStr
