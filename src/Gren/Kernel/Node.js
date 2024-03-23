@@ -24,10 +24,6 @@ var _Node_getEnvironmentVariables = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(_Node_objToDict(process.env)));
 });
 
-var _Node_exit = __Scheduler_binding(function (callback) {
-  process.exit();
-});
-
 var _Node_exitWithCode = function (code) {
   return __Scheduler_binding(function (callback) {
     process.exit(code);
