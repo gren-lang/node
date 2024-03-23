@@ -26,7 +26,6 @@ module FileSystem exposing
     , write
     , writeFromOffset
     --
-    , RemoveOptions
     , remove
     --
     , makeDirectory
@@ -63,7 +62,7 @@ module FileSystem exposing
 
 ## Remove files and directories
 
-@docs RemoveOptions, remove
+@docs remove
 
 ## Directories
 
@@ -298,20 +297,12 @@ writeFromOffset =
 -- REMOVE
 
 
-{-| This record allows you to customize the behaviour of `remove`.
+{-| Remove the file or directory at the given path.
 
 * `recursive` will delete everything inside a directory.
 * `ignoreErrors` will... ignore any errors related to a remove operation.
 -}
-type alias RemoveOptions =
-    { recursive : Bool
-    , ignoreErrors : Bool
-    }
-
-
-{-| Remove the file or directory at the given path.
--}
-remove : Permission -> String -> RemoveOptions -> Task AccessError {}
+remove : Permission -> String -> { recursive : Bool, ignoreErrors : Bool } -> Task AccessError {}
 remove _ path options =
     Gren.Kernel.FileSystem.remove options path
 
