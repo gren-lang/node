@@ -302,8 +302,8 @@ writeFromOffset =
 * `recursive` will delete everything inside a directory.
 * `ignoreErrors` will... ignore any errors related to a remove operation.
 -}
-remove : Permission -> String -> { recursive : Bool, ignoreErrors : Bool } -> Task AccessError {}
-remove _ path options =
+remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> String -> Task AccessError {}
+remove _ options path =
     Gren.Kernel.FileSystem.remove options path
 
 
@@ -315,8 +315,8 @@ remove _ path options =
 If `recursive` is `True`, then a directory will be created for every section of the
 given path.
 -}
-makeDirectory : Permission -> String -> { recursive : Bool } -> Task AccessError {}
-makeDirectory _ path options =
+makeDirectory : Permission -> { recursive : Bool } -> String -> Task AccessError {}
+makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 
 
