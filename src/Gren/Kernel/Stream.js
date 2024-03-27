@@ -20,6 +20,8 @@ var _Stream_attachListener = F2(function (stream, sendToApp) {
 });
 
 var _Stream_send = F2(function (stream, data) {
-  stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-  return {};
+  return __Scheduler_binding(function (callback) {
+    stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    callback({});
+  })
 });
