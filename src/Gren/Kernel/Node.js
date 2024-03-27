@@ -33,11 +33,13 @@ var _Node_exitWithCode = function (code) {
 var _Node_setExitCode = function (code) {
   return __Scheduler_binding(function (callback) {
     process.exitCode = code;
+    callback({});
   });
 };
 
 // Helpers
 
+// TODO: Move to core package?
 function _Node_objToDict(obj) {
   var dict = __Dict_empty;
 
