@@ -31,8 +31,8 @@ type alias Stream
 {-| This lets you send bytes over a `Stream`.
 -}
 send : Stream -> Bytes -> Task Never {}
-send =
-    Gren.Kernel.Stream.send
+send (Internal.Stream _ kernelStream) bytes =
+    Gren.Kernel.Stream.send kernelStream bytes
 
 
 {-| This lets you send a string over a `Stream`.
