@@ -23,5 +23,5 @@ var _Stream_send = F2(function (stream, data) {
   return __Scheduler_binding(function (callback) {
     stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
     callback({});
-  })
+  });
 });

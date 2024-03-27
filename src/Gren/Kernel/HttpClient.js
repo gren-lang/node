@@ -140,7 +140,9 @@ var _HttpClient_request = function (config) {
             } else {
               return callback(
                 __Scheduler_fail(
-                  __HttpClient_UnexpectedResponseBody(__Decode_errorToString(jsonResult.a))
+                  __HttpClient_UnexpectedResponseBody(
+                    __Decode_errorToString(jsonResult.a)
+                  )
                 )
               );
             }
