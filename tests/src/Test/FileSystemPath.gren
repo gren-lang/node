@@ -1,0 +1,51 @@
+module Test.FileSystemPath exposing (tests)
+
+import FileSystem.Path as Path
+import Test exposing (Test, describe, test)
+import Expect
+
+
+tests : Test
+tests =
+    describe "FileSystem.Path Tests"
+        [ describe "fromPosixString"
+            [ test "absolute file" <| 
+                \{} ->
+                    Path.fromPosixString "/some/long/path.js"
+                        |> Expect.equal
+                            { root = "/"
+                            , directory = [ "some", "long" ]
+                            , filename = "path"
+                            , extension = "js"
+                            }
+            , test "absolute file without extension" <| 
+                \{} ->
+                    Path.fromPosixString "/some/long"
+                        |> Expect.equal
+                            { root = "/"
+                            , directory = [ "some" ]
+                            , filename = "long"
+                            , extension = ""
+                            }
+            , test "relative file" <| 
+                \{} ->
+                    Path.fromPosixString "some/other/file"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            ]
+        , describe "fromWin32String"
+            [ test "absolute file" <| 
+                \{} ->
+                    Path.fromWin32String "C:\\some\\long\\path.js"
+                        |> Expect.equal
+                            { root = "C:\\"
+                            , directory = [ "some", "long" ]
+                            , filename = "path"
+                            , extension = "js"
+                            }
+            ]
+        ]

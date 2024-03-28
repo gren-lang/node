@@ -43,5 +43,5 @@ var _Terminal_setStdInRawMode = function (toggle) {
   return __Scheduler_binding(function (callback) {
     process.stdin.setRawMode(toggle);
     callback(__Scheduler_succeed({}));
-  })
+  });
 };

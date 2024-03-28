@@ -1,0 +1,16 @@
+module Main exposing (main)
+
+import Basics exposing (..)
+import Json.Decode exposing (Value)
+import Platform.Cmd exposing (Cmd)
+import Test
+import Test.FileSystemPath as FileSystemPath
+import Test.Runner.Node exposing (Program, run)
+
+
+main : Program
+main =
+    run <|
+        Test.describe "Gren Node Tests"
+            [ FileSystemPath.tests
+            ]

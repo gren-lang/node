@@ -1,0 +1,26 @@
+module FileSystem.Path exposing 
+    ( Path
+    , fromPosixString
+    , fromWin32String
+    )
+
+
+import Gren.Kernel.FilePath
+
+
+type alias Path =
+    { root : String
+    , directory : Array String
+    , filename : String
+    , extension : String
+    }
+
+
+fromPosixString : String -> Path
+fromPosixString =
+    Gren.Kernel.FilePath.fromPosix
+
+
+fromWin32String : String -> Path
+fromWin32String =
+    Gren.Kernel.FilePath.fromWin32
