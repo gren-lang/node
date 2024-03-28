@@ -210,11 +210,8 @@ onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task Never (State
 onSelfMsg router event state =
     case event of
         SelfToggleStdInRawMode toggle ->
-            let
-                _ =
-                    Gren.Kernel.Terminal.setStdInRawMode toggle
-            in
-                Task.succeed state
+            Gren.Kernel.Terminal.setStdInRawMode toggle
+                |> Task.map (\_ -> state)
 
         SelfOnResize newSize ->
             state.taggers
@@ -224,4 +221,4 @@ onSelfMsg router event state =
                         Task.andThen (\{} -> Platform.sendToApp router msg) tasks
                     )
                     (Task.succeed {})
-                |> Task.andThen (\_ -> Task.succeed state)
+                |> Task.map (\_ -> state)

@@ -355,10 +355,9 @@ This function is equivalent to:
 
     exitWithCode 0
 -}
-exit : Cmd msg
+exit : Task Never {}
 exit =
-    Gren.Kernel.Node.exitWithCode 0
-        |> Task.execute
+    exitWithCode 0
 
 
 {-| Terminate the program immediatly. It will not wait for tasks like http calls
@@ -370,10 +369,9 @@ The exit code can be read by other processes on your system. Any value other tha
 makes an exit code. If all you want is to signalize that your application exited
 due to an error, -1 is a good option.
 -}
-exitWithCode : Int -> Cmd msg
+exitWithCode : Int -> Task Never {}
 exitWithCode code =
     Gren.Kernel.Node.exitWithCode code
-        |> Task.execute
 
 
 {-| Set the error code that the program will return once it finishes.
@@ -382,6 +380,6 @@ Note: This will not terminate your program, so things like http calls
 or writes to the filesystem will be allowed to complete. However,
 the program will only exit once there are no ongoing tasks.
 -}
-setExitCode : Int -> Task Never {}
+setExitCode : Int -> Task x {}
 setExitCode code =
     Gren.Kernel.Node.setExitCode code

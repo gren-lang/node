@@ -30,14 +30,14 @@ type alias Stream
 
 {-| This lets you send bytes over a `Stream`.
 -}
-send : Stream -> Bytes -> Task Never {}
+send : Stream -> Bytes -> Task x {}
 send (Internal.Stream _ kernelStream) bytes =
     Gren.Kernel.Stream.send kernelStream bytes
 
 
 {-| This lets you send a string over a `Stream`.
 -}
-sendString : Stream -> String -> Task Never {}
+sendString : Stream -> String -> Task x {}
 sendString stream string =
     send stream <|
         BE.encode <|
@@ -46,7 +46,7 @@ sendString stream string =
 
 {-| This sends string and a newline over a `Stream`.
 -}
-sendLine : Stream -> String -> Task Never {}
+sendLine : Stream -> String -> Task x {}
 sendLine stream string =
     sendString stream <| string ++ "\n"
 
@@ -122,12 +122,11 @@ onEffects router subs state =
     in
     killTasks
         |> Task.andThen (\_ -> spawnHelp router toSpawn existingProcesses)
-        |> Task.andThen (\newProcesses ->
-            Task.succeed
-                { taggers = newTaggers
-                , processes = newProcesses
-                }
-            )
+        |> Task.map (\newProcesses ->
+            { taggers = newTaggers
+            , processes = newProcesses
+            }
+        )
 
 
 subToListener : StreamSub msg -> Dict Int (Tagger msg) -> Dict Int (Tagger msg)
@@ -194,4 +193,4 @@ onSelfMsg router event state =
                         Task.andThen (\{} -> Platform.sendToApp router msg) tasks
                     )
                     (Task.succeed {})
-                |> Task.andThen (\_ -> Task.succeed state)
+                |> Task.map (\_ -> state)

@@ -1,11 +1,19 @@
 /*
 
 import Dict exposing (empty, insert)
+import Gren.Kernel.Platform exposing (export)
 import Gren.Kernel.Scheduler exposing (binding, succeed)
 
 */
 
 var process = require("node:process");
+
+var _Node_log = F2(function (text, args) {
+  // This function is used for simple applications where the main function returns String
+  // NOTE: this function needs __Platform_export available to work
+  console.log(text);
+  return {};
+});
 
 var _Node_init = __Scheduler_binding(function (callback) {
   callback(
@@ -33,7 +41,7 @@ var _Node_exitWithCode = function (code) {
 var _Node_setExitCode = function (code) {
   return __Scheduler_binding(function (callback) {
     process.exitCode = code;
-    callback({});
+    callback(__Scheduler_succeed({}));
   });
 };
 

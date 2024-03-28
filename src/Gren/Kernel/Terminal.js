@@ -40,6 +40,8 @@ var _Terminal_attachListener = function (sendToApp) {
 };
 
 var _Terminal_setStdInRawMode = function (toggle) {
-  process.stdin.setRawMode(toggle);
-  return {};
+  return __Scheduler_binding(function (callback) {
+    process.stdin.setRawMode(toggle);
+    callback(__Scheduler_succeed({}));
+  })
 };

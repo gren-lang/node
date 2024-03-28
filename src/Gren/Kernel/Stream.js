@@ -1,6 +1,6 @@
 /*
 
-import Gren.Kernel.Scheduler exposing (binding, rawSpawn)
+import Gren.Kernel.Scheduler exposing (binding, rawSpawn, succeed)
 
 */
 
@@ -22,6 +22,6 @@ var _Stream_attachListener = F2(function (stream, sendToApp) {
 var _Stream_send = F2(function (stream, data) {
   return __Scheduler_binding(function (callback) {
     stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-    callback({});
+    callback(__Scheduler_succeed({}));
   });
 });
