@@ -36,6 +36,15 @@ tests =
                             , filename = "file"
                             , extension = ""
                             }
+            , test "just a file name" <|
+                \{} ->
+                    Path.fromPosixString "file.md"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "file"
+                            , extension = "md"
+                            }
             , test "paths are normalized" <| 
                 \{} ->
                     Path.fromPosixString "some/other/file/."
@@ -72,6 +81,16 @@ tests =
                     let
                         pathStr =
                             "/some/specific/file.md"
+
+                        path =
+                            Path.fromPosixString pathStr
+                    in
+                    Expect.equal pathStr (Path.toPosixString path)
+            , test "toPosixString works on simple file name" <|
+                \{} ->
+                    let
+                        pathStr =
+                            "file.md"
 
                         path =
                             Path.fromPosixString pathStr

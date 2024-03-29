@@ -209,26 +209,36 @@ var _FileSystem_remove = F2(function (options, path) {
 
 var _FileSystem_makeDirectory = F2(function (options, path) {
   return __Scheduler_binding(function (callback) {
-    fs.mkdir(__FilePath_toString(path), { recursive: options.__$recursive }, function (err) {
-      if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed({}));
+    fs.mkdir(
+      __FilePath_toString(path),
+      { recursive: options.__$recursive },
+      function (err) {
+        if (err != null) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed({}));
+        }
       }
-    });
+    );
   });
 });
 
 // List of dir contents as DirEntry values holding filename string
 var _FileSystem_listDirectory = function (path) {
   return __Scheduler_binding(function (callback) {
-    fs.readdir(__FilePath_toString(path), { withFileTypes: true }, function (err, content) {
-      if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(content.map(_FileSystem_toGrenDirEntry)));
+    fs.readdir(
+      __FilePath_toString(path),
+      { withFileTypes: true },
+      function (err, content) {
+        if (err != null) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(
+            __Scheduler_succeed(content.map(_FileSystem_toGrenDirEntry))
+          );
+        }
       }
-    });
+    );
   });
 };
 
@@ -251,6 +261,6 @@ var _FileSystem_toGrenDirEntry = function (dirEnt) {
 var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (
   callback
 ) {
-  const cwd = __FilePath_fromString(process.cwd())
+  const cwd = __FilePath_fromString(process.cwd());
   callback(__Scheduler_succeed(cwd));
 });

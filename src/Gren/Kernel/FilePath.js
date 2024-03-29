@@ -14,7 +14,7 @@ var _FilePath_fromWin32 = function (str) {
 
 var _FilePath_fromString = function (str) {
   return _FilePath_parse(path, str);
-}
+};
 
 var _FilePath_parse = function (pathMod, str) {
   const result = pathMod.parse(pathMod.normalize(str));
@@ -25,7 +25,7 @@ var _FilePath_parse = function (pathMod, str) {
     : result.dir;
 
   return {
-    __$directory: dirStr.split(pathMod.sep),
+    __$directory: dirStr === "" ? [] : dirStr.split(pathMod.sep),
     __$extension: result.ext.length > 0 ? result.ext.substring(1) : "",
     __$filename: result.name,
     __$root: result.root,
@@ -50,7 +50,7 @@ var _FilePath_toString = function (filePath) {
   }
 
   return _FilePath_toPosix(filePath);
-}
+};
 
 var _FilePath_format = function (pathMod, filePath) {
   const filename =
