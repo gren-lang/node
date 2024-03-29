@@ -117,7 +117,7 @@ type UnknownFileSystemError
 * `recursive` will delete everything inside a directory.
 * `ignoreErrors` will... ignore any errors related to a remove operation.
 -}
-remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task AccessError {}
+remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task AccessError Path
 remove _ options path =
     Gren.Kernel.FileSystem.remove options path
 
@@ -130,7 +130,7 @@ remove _ options path =
 If `recursive` is `True`, then a directory will be created for every section of the
 given path.
 -}
-makeDirectory : Permission -> { recursive : Bool } -> Path -> Task AccessError {}
+makeDirectory : Permission -> { recursive : Bool } -> Path -> Task AccessError Path
 makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 

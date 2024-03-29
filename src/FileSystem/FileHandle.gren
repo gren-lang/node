@@ -19,6 +19,14 @@ module FileSystem.FileHandle exposing
     --
     , write
     , writeFromOffset
+    --
+    , changeAccess
+    , changeOwner
+    , changeTimes
+    , sync
+    , syncData
+    , metadata
+    , truncate
     )
 
 
@@ -35,6 +43,10 @@ module FileSystem.FileHandle exposing
 ## Write to file
 
 @docs write, writeFromOffset
+
+## Temp
+
+@docs changeAccess, changeOwner, changeTimes, sync, syncData, metadata, truncate
 
 -}
 
@@ -192,13 +204,51 @@ readFromOffset =
 
 {-| Write the provided bytes into the file. If the file is not empty, bytes will be overwritten.
 -}
-write : WriteableFileHandle a -> Bytes -> Task UnknownFileSystemError {}
+write : WriteableFileHandle a -> Bytes -> Task UnknownFileSystemError (WriteableFileHandle a)
 write fh bytes =
     writeFromOffset fh 0 bytes
 
 
 {-| Write bytes into a specific location of a file.
 -}
-writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task UnknownFileSystemError {}
+writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task UnknownFileSystemError (WriteableFileHandle a)
 writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
+
+
+-- OTHER INFORMATION
+
+
+changeAccess : Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeAccess =
+    Gren.Kernel.FileSystem.fchmod
+
+
+changeOwner : Int -> Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeOwner =
+    Gren.Kernel.FileSystem.fchown
+
+
+sync : WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+sync =
+    Gren.Kernel.FileSystem.fsync
+
+
+syncData : WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+syncData =
+    Gren.Kernel.FileSystem.fdatasync
+
+
+metadata : ReadableFileHandle a -> Task UnknownFileSystemError (ReadableFileHandle a)
+metadata =
+    Gren.Kernel.FileSystem.fstat
+
+
+truncate : Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+truncate =
+    Gren.Kernel.FileSystem.ftruncate
+
+
+changeTimes : Int -> Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeTimes =
+    Gren.Kernel.FileSystem.futimes
