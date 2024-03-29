@@ -1,7 +1,9 @@
 module FileSystem.Path exposing 
     ( Path
     , fromPosixString
+    , toPosixString
     , fromWin32String
+    , toWin32String
     )
 
 
@@ -21,6 +23,16 @@ fromPosixString =
     Gren.Kernel.FilePath.fromPosix
 
 
+toPosixString : Path -> String
+toPosixString =
+    Gren.Kernel.FilePath.toPosix
+
+
 fromWin32String : String -> Path
 fromWin32String =
     Gren.Kernel.FilePath.fromWin32
+
+
+toWin32String : Path -> String
+toWin32String =
+    Gren.Kernel.FilePath.toWin32
