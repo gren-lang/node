@@ -1,5 +1,5 @@
 /*
- */
+*/
 
 const path = require("node:path");
 
@@ -12,7 +12,7 @@ var _FilePath_fromWin32 = function (str) {
 };
 
 var _FilePath_parse = function (pathMod, str) {
-  const result = pathMod.parse(str);
+  const result = pathMod.parse(pathMod.normalize(str));
 
   const root = result.root;
   const dirStr = result.dir.startsWith(root)
