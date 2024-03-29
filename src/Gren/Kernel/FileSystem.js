@@ -1,6 +1,7 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
+import Gren.Kernel.FilePath exposing (toString, fromString)
 import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe)
 
 */
@@ -16,7 +17,7 @@ var _FileSystem_coerce = function (fh) {
 
 var _FileSystem_open = F2(function (access, path) {
   return __Scheduler_binding(function (callback) {
-    fs.open(path, access, function (err, fd) {
+    fs.open(__FilePath_toString(path), access, function (err, fd) {
       if (err != null) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
@@ -196,7 +197,7 @@ var _FileSystem_remove = F2(function (options, path) {
   };
 
   return __Scheduler_binding(function (callback) {
-    fs.rm(path, rmOpts, function (err) {
+    fs.rm(__FilePath_toString(path), rmOpts, function (err) {
       if (err != null) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
@@ -208,7 +209,7 @@ var _FileSystem_remove = F2(function (options, path) {
 
 var _FileSystem_makeDirectory = F2(function (options, path) {
   return __Scheduler_binding(function (callback) {
-    fs.mkdir(path, { recursive: options.__$recursive }, function (err) {
+    fs.mkdir(__FilePath_toString(path), { recursive: options.__$recursive }, function (err) {
       if (err != null) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
@@ -221,7 +222,7 @@ var _FileSystem_makeDirectory = F2(function (options, path) {
 // List of dir contents as DirEntry values holding filename string
 var _FileSystem_listDirectory = function (path) {
   return __Scheduler_binding(function (callback) {
-    fs.readdir(path, { withFileTypes: true }, function (err, content) {
+    fs.readdir(__FilePath_toString(path), { withFileTypes: true }, function (err, content) {
       if (err != null) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
@@ -250,13 +251,6 @@ var _FileSystem_toGrenDirEntry = function (dirEnt) {
 var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (
   callback
 ) {
-  callback(__Scheduler_succeed(process.cwd()));
+  const cwd = __FilePath_fromString(process.cwd())
+  callback(__Scheduler_succeed(cwd));
 });
-
-var _FileSystem_normalizePath = function (input) {
-  return path.normalize(input);
-};
-
-var _FileSystem_buildPath = function (paths) {
-  return path.join.apply(null, paths);
-};

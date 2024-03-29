@@ -1,7 +1,8 @@
 /*
 */
 
-const path = require("node:path");
+var path = require("node:path");
+var process = require("node:process");
 
 var _FilePath_fromPosix = function (str) {
   return _FilePath_parse(path.posix, str);
@@ -10,6 +11,10 @@ var _FilePath_fromPosix = function (str) {
 var _FilePath_fromWin32 = function (str) {
   return _FilePath_parse(path.win32, str);
 };
+
+var _FilePath_fromString = function (str) {
+  return _FilePath_parse(path, str);
+}
 
 var _FilePath_parse = function (pathMod, str) {
   const result = pathMod.parse(pathMod.normalize(str));
@@ -38,6 +43,14 @@ var _FilePath_toPosix = function (filePath) {
 var _FilePath_toWin32 = function (filePath) {
   return _FilePath_format(path.win32, filePath);
 };
+
+var _FilePath_toString = function (filePath) {
+  if (process.platform.toLowerCase() === "win32") {
+    return _FilePath_toWin32(filePath);
+  }
+
+  return _FilePath_toPosix(filePath);
+}
 
 var _FilePath_format = function (pathMod, filePath) {
   const filename =

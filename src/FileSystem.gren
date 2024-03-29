@@ -31,9 +31,6 @@ module FileSystem exposing
     , makeDirectory
     , DirEntry(..)
     , listDirectory
-    --
-    , buildPath
-    , normalizePath
     , currentWorkingDirectory
     )
 
@@ -66,17 +63,15 @@ module FileSystem exposing
 
 ## Directories
 
-@docs makeDirectory, DirEntry, listDirectory
+@docs makeDirectory, DirEntry, listDirectory, currentWorkingDirectory
 
-## Paths
-
-@docs buildPath, normalizePath, currentWorkingDirectory
 -}
 
 
 import Gren.Kernel.FileSystem
 import Bytes exposing (Bytes)
 import Task exposing (Task)
+import FileSystem.Path exposing (Path)
 import Init
 import Internal.Init
 
@@ -201,7 +196,7 @@ type UnknownFileSystemError
 
 {-| Open the file at the provided path with read permissions.
 -}
-openForRead : Permission -> String -> Task AccessError (FileHandle ReadPermission Never)
+openForRead : Permission -> Path -> Task AccessError (FileHandle ReadPermission Never)
 openForRead _ path =
     openImpl "r" path
 
@@ -220,7 +215,7 @@ type OpenForWriteBehaviour
 
 {-| Open a file at the provided path with write permissions.
 -}
-openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError (FileHandle Never WritePermission)
+openForWrite : Permission -> OpenForWriteBehaviour -> Path -> Task AccessError (FileHandle Never WritePermission)
 openForWrite _ behaviour path =
     let
         access =
@@ -234,7 +229,7 @@ openForWrite _ behaviour path =
 
 {-| Open a file for at the provided path with both read and write permissions.
 -}
-openForReadAndWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError ReadWriteableFileHandle
+openForReadAndWrite : Permission -> OpenForWriteBehaviour -> Path -> Task AccessError ReadWriteableFileHandle
 openForReadAndWrite _ behaviour path =
     let
         access =
@@ -246,7 +241,7 @@ openForReadAndWrite _ behaviour path =
     openImpl access path
 
 
-openImpl : String -> String -> Task AccessError (FileHandle a b)
+openImpl : String -> Path -> Task AccessError (FileHandle a b)
 openImpl =
     Gren.Kernel.FileSystem.open
 
@@ -302,7 +297,7 @@ writeFromOffset =
 * `recursive` will delete everything inside a directory.
 * `ignoreErrors` will... ignore any errors related to a remove operation.
 -}
-remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> String -> Task AccessError {}
+remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task AccessError {}
 remove _ options path =
     Gren.Kernel.FileSystem.remove options path
 
@@ -315,7 +310,7 @@ remove _ options path =
 If `recursive` is `True`, then a directory will be created for every section of the
 given path.
 -}
-makeDirectory : Permission -> { recursive : Bool } -> String -> Task AccessError {}
+makeDirectory : Permission -> { recursive : Bool } -> Path -> Task AccessError {}
 makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 
@@ -323,39 +318,14 @@ makeDirectory _ options path =
 {-| Returns an `Array` of `DirEntry` variants holding names of the files in the
 directory at the given path.
 -}
-listDirectory : Permission -> String -> Task AccessError (Array DirEntry)
+listDirectory : Permission -> Path -> Task AccessError (Array DirEntry)
 listDirectory _ path =
     Gren.Kernel.FileSystem.listDirectory path
-
-
--- PATHS
-
-
-{-| Joins an array of strings using the filesystem's path seperator, then normalizes the result.
-An empty array will result in ".", a path to the current working directory.
-
-    buildPath [] == "."
-    buildPath [ "one", "two", "three" ] == "one/two/three" -- On Unix based operating systems
-
--}
-buildPath : Array String -> String
-buildPath =
-    Gren.Kernel.FileSystem.buildPath
-
-
-{-| Removes redundant symbols from the path.
-
-    normalizePath "one/two/.." == "one/two"
-
--}
-normalizePath : String -> String
-normalizePath =
-    Gren.Kernel.FileSystem.normalizePath
 
 
 {-| Returns the current working directory of the program.
 This is the directory that all relative paths are relative to.
 -}
-currentWorkingDirectory : Permission -> Task Never String
+currentWorkingDirectory : Permission -> Task x Path
 currentWorkingDirectory _ =
     Gren.Kernel.FileSystem.currentWorkingDirectory
