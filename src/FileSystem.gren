@@ -2,8 +2,10 @@ module FileSystem exposing
     ( Permission
     , initialize
     --
-    , UnknownFileSystemError(..)
     , AccessError(..)
+    , accessErrorToString
+    , UnknownFileSystemError(..)
+    , unknownFileSystemErrorToString
     --
     , remove
     --
@@ -102,11 +104,25 @@ type AccessError
     | AccessErrorUnknown String
 
 
+accessErrorToString : AccessError -> String
+accessErrorToString err =
+    case err of
+        AccessErrorNotFound -> "Not found"
+        AccessErrorNoAccess -> "No access"
+        AccessErrorNotADirectory -> "Not a directory"
+        AccessErrorUnknown errorMessage -> "Unknown error: " ++ errorMessage
+
+
 {-| An error thrown by the OS, in situations where we don't expect errors to happen,
 or have been unable to reproduce such an error in development.
 -}
 type UnknownFileSystemError
     = UnknownFileSystemError String
+
+
+unknownFileSystemErrorToString : UnknownFileSystemError -> String
+unknownFileSystemErrorToString (UnknownFileSystemError msg) =
+    msg
 
 
 -- REMOVE
