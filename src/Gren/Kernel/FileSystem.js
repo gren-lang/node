@@ -277,9 +277,9 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
   });
 });
 
-var _FileSystem_fchown = F3(function (uid, gid, fd) {
+var _FileSystem_fchown = F3(function (ids, fd) {
   return __Scheduler_binding(function (callback) {
-    fs.fchown(fd, uid, gid, function (err) {
+    fs.fchown(fd, ids.__$userID, ids.__$groupID, function (err) {
       if (err) {
         callback(__FileSystem_UnknownFileSystemError(err.message));
       } else {
@@ -320,7 +320,7 @@ var _FileSystem_fstat = function (fd) {
       if (err) {
         callback(__FileSystem_UnknownFileSystemError(err.message));
       } else {
-        callback(__Scheduler_succeed(fd));
+        callback(__Scheduler_succeed({}));
       }
     });
   });

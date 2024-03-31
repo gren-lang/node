@@ -58,6 +58,7 @@ import FileSystem.Path exposing (Path)
 import FileSystem exposing (Permission, AccessError, UnknownFileSystemError)
 import Init
 import Internal.Init
+import Time
 
 
 {-| A file handle is used to perform operations on a file, like reading and writing.
@@ -219,12 +220,43 @@ writeFromOffset =
 -- OTHER INFORMATION
 
 
-changeAccess : Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
-changeAccess =
-    Gren.Kernel.FileSystem.fchmod
+type AccessMode
+    = Read
+    | Write
+    | Execute
 
 
-changeOwner : Int -> Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeAccess 
+    : { owner : Array AccessMode
+      , group : Array AccessMode
+      , others : Array AccessMode
+      }
+    -> WriteableFileHandle a
+    -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeAccess modes fh =
+    let
+        mode =
+            (accessModeInt modes.owner * 100)
+            + (accessModeInt modes.group * 10)
+            + accessModeInt modes.others
+    in
+    Gren.Kernel.FileSystem.fchmod mode fh
+
+
+accessModeInt : Array AccessMode -> Int
+accessModeInt values =
+    let
+        numberFor num a =
+            if Array.member a values then
+                num
+
+            else
+                0
+    in
+    numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
+
+
+changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
 changeOwner =
     Gren.Kernel.FileSystem.fchown
 
@@ -239,7 +271,11 @@ syncData =
     Gren.Kernel.FileSystem.fdatasync
 
 
-metadata : ReadableFileHandle a -> Task UnknownFileSystemError (ReadableFileHandle a)
+type alias FileMetadata =
+    {}
+
+
+metadata : ReadableFileHandle a -> Task UnknownFileSystemError (ReadableFileHandle FileMetadata)
 metadata =
     Gren.Kernel.FileSystem.fstat
 
@@ -249,6 +285,14 @@ truncate =
     Gren.Kernel.FileSystem.ftruncate
 
 
-changeTimes : Int -> Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
-changeTimes =
+changeTimes 
+    : { lastAccessed : Time.Posix
+      , lastModified : Time.Posix 
+      }
+    -> WriteableFileHandle a
+    -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeTimes { lastAccessed, lastModified } fh =
     Gren.Kernel.FileSystem.futimes
+        (Time.posixToMillis lastAccessed // 1000)
+        (Time.posixToMillis lastModified // 1000)
+        fh
