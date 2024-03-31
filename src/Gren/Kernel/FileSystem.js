@@ -269,7 +269,7 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchmod(fd, mode, function (err) {
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -277,11 +277,11 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
   });
 });
 
-var _FileSystem_fchown = F3(function (ids, fd) {
+var _FileSystem_fchown = F2(function (ids, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchown(fd, ids.__$userID, ids.__$groupID, function (err) {
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -293,7 +293,7 @@ var _FileSystem_fdatasync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fdatasync(fd, function (err) {
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -305,7 +305,7 @@ var _FileSystem_fsync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fsync(fd, function (err) {
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -318,7 +318,7 @@ var _FileSystem_fstat = function (fd) {
     fs.fstat(fd, function (err, stats) {
       console.log(stats)
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed({}));
       }
@@ -330,7 +330,7 @@ var _FileSystem_ftruncate = F2(function (len, fd) {
   return __Scheduler_binding(function (callback) {
     fs.ftruncate(fd, len, function (err) {
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -342,7 +342,7 @@ var _FileSystem_futimes = F3(function (atime, mtime, fd) {
   return __Scheduler_binding(function (callback) {
     fs.futimes(fd, atime, mtime, function (err) {
       if (err) {
-        callback(__FileSystem_UnknownFileSystemError(err.message));
+        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
