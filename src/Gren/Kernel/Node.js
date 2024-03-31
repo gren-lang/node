@@ -19,13 +19,13 @@ var _Node_log = F2(function (text, args) {
 var _Node_init = __Scheduler_binding(function (callback) {
   callback(
     __Scheduler_succeed({
-      __$platform: process.platform,
+      __$applicationPath: __FilePath_fromString(module.filename),
       __$arch: process.arch,
       __$args: process.argv,
-      __$applicationPath: __FilePath_fromString(module.filename),
-      __$stdout: process.stdout,
+      __$platform: process.platform,
       __$stderr: process.stderr,
       __$stdin: process.stdin,
+      __$stdout: process.stdout,
     })
   );
 });

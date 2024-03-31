@@ -273,7 +273,18 @@ syncData =
 
 
 type alias FileMetadata =
-    {}
+    -- TODO: add file type (dir, link, pipe etc.)
+    { deviceID : Int
+    , userID : Int
+    , groupID : Int
+    , byteSize : Int
+    , blockSize : Int
+    , blocks : Int
+    , lastAccessed : Time.Posix
+    , lastModified : Time.Posix
+    , lastChanged : Time.Posix
+    , created : Time.Posix
+    }
 
 
 metadata : ReadableFileHandle a -> Task UnknownFileSystemError (ReadableFileHandle FileMetadata)

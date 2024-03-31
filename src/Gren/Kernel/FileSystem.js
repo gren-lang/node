@@ -3,6 +3,7 @@
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
 import Gren.Kernel.FilePath exposing (toString, fromString)
 import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe)
+import Time exposing (millisToPosix)
 
 */
 
@@ -316,11 +317,21 @@ var _FileSystem_fsync = function (fd) {
 var _FileSystem_fstat = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fstat(fd, function (err, stats) {
-      console.log(stats)
       if (err) {
         callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
       } else {
-        callback(__Scheduler_succeed({}));
+        callback(__Scheduler_succeed({
+          __$blockSize: stats.blksize,
+          __$blocks: stats.blocks,
+          __$byteSize: stats.size,
+          __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
+          __$deviceID: stats.dev,
+          __$groupID: stats.gid,
+          __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
+          __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
+          __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
+          __$userID: stats.uid,
+        }));
       }
     });
   });
