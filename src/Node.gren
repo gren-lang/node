@@ -52,6 +52,7 @@ import Internal.Init
 import Task exposing ( Task )
 import Gren.Kernel.Node
 import Internal.Stream as IStream
+import FileSystem.Path exposing (Path)
 
 
 -- ENVIRONMENT
@@ -67,6 +68,7 @@ import Internal.Stream as IStream
 type alias Environment =
     { platform : Platform
     , cpuArchitecture : CpuArchitecture
+    , applicationPath : Path
     , args : Array String
     , stdout : IStream.Stream
     , stderr : IStream.Stream
@@ -81,6 +83,7 @@ initializeEnvironment =
                 (\raw ->
                     { platform = platformFromString raw.platform
                     , cpuArchitecture = archFromString raw.arch
+                    , applicationPath = raw.applicationPath
                     , args = raw.args
                     , stdout = IStream.Stream 0 raw.stdout
                     , stderr = IStream.Stream 1 raw.stderr

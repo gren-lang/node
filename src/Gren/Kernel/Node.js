@@ -3,6 +3,7 @@
 import Dict exposing (empty, insert)
 import Gren.Kernel.Platform exposing (export)
 import Gren.Kernel.Scheduler exposing (binding, succeed)
+import Gren.Kernel.FilePath exposing (fromString)
 
 */
 
@@ -21,6 +22,7 @@ var _Node_init = __Scheduler_binding(function (callback) {
       __$platform: process.platform,
       __$arch: process.arch,
       __$args: process.argv,
+      __$applicationPath: __FilePath_fromString(module.filename),
       __$stdout: process.stdout,
       __$stderr: process.stderr,
       __$stdin: process.stdin,
