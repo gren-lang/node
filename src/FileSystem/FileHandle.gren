@@ -20,6 +20,7 @@ module FileSystem.FileHandle exposing
     , write
     , writeFromOffset
     --
+    , AccessMode(..)
     , changeAccess
     , changeOwner
     , changeTimes
@@ -46,7 +47,7 @@ module FileSystem.FileHandle exposing
 
 ## Temp
 
-@docs changeAccess, changeOwner, changeTimes, sync, syncData, metadata, truncate
+@docs AccessMode, changeAccess, changeOwner, changeTimes, sync, syncData, metadata, truncate
 
 -}
 
@@ -240,7 +241,7 @@ changeAccess modes fh =
             + (accessModeInt modes.group * 10)
             + accessModeInt modes.others
     in
-    Gren.Kernel.FileSystem.fchmod mode fh
+    Gren.Kernel.FileSystem.fchmod (String.fromInt mode) fh
 
 
 accessModeInt : Array AccessMode -> Int
