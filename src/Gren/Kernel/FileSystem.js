@@ -269,7 +269,9 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchmod(fd, mode, function (err) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -281,7 +283,9 @@ var _FileSystem_fchown = F2(function (ids, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchown(fd, ids.__$userID, ids.__$groupID, function (err) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -293,7 +297,9 @@ var _FileSystem_fdatasync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fdatasync(fd, function (err) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -305,7 +311,9 @@ var _FileSystem_fsync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fsync(fd, function (err) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -317,20 +325,24 @@ var _FileSystem_fstat = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fstat(fd, function (err, stats) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
-        callback(__Scheduler_succeed({
-          __$blockSize: stats.blksize,
-          __$blocks: stats.blocks,
-          __$byteSize: stats.size,
-          __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
-          __$deviceID: stats.dev,
-          __$groupID: stats.gid,
-          __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
-          __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
-          __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
-          __$userID: stats.uid,
-        }));
+        callback(
+          __Scheduler_succeed({
+            __$blockSize: stats.blksize,
+            __$blocks: stats.blocks,
+            __$byteSize: stats.size,
+            __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
+            __$deviceID: stats.dev,
+            __$groupID: stats.gid,
+            __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
+            __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
+            __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
+            __$userID: stats.uid,
+          })
+        );
       }
     });
   });
@@ -340,7 +352,9 @@ var _FileSystem_ftruncate = F2(function (len, fd) {
   return __Scheduler_binding(function (callback) {
     fs.ftruncate(fd, len, function (err) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -352,7 +366,9 @@ var _FileSystem_futimes = F3(function (atime, mtime, fd) {
   return __Scheduler_binding(function (callback) {
     fs.futimes(fd, atime, mtime, function (err) {
       if (err) {
-        callback(__Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message)));
+        callback(
+          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+        );
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -398,49 +414,67 @@ var _FileSystem_chmod = F2(function (mode, path) {
 
 var _FileSystem_chown = F2(function (ids, path) {
   return __Scheduler_binding(function (callback) {
-    fs.chown(__FilePath_toString(path), ids.__$userID, ids.__$groupID, function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(path));
+    fs.chown(
+      __FilePath_toString(path),
+      ids.__$userID,
+      ids.__$groupID,
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed(path));
+        }
       }
-    });
+    );
   });
 });
 
 var _FileSystem_copyFile = F3(function (mode, src, dest) {
   return __Scheduler_binding(function (callback) {
-    fs.copyFile(__FilePath_toString(src), __FilePath_toString(dest), mode, function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(dest));
+    fs.copyFile(
+      __FilePath_toString(src),
+      __FilePath_toString(dest),
+      mode,
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed(dest));
+        }
       }
-    });
+    );
   });
 });
 
 var _FileSystem_link = F2(function (src, dest) {
   return __Scheduler_binding(function (callback) {
-    fs.link(__FilePath_toString(src), __FilePath_toString(dest), function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(dest));
+    fs.link(
+      __FilePath_toString(src),
+      __FilePath_toString(dest),
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed(dest));
+        }
       }
-    });
+    );
   });
 });
 
 var _FileSystem_symlink = F2(function (src, dest) {
   return __Scheduler_binding(function (callback) {
-    fs.symlink(__FilePath_toString(src), __FilePath_toString(dest), function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(dest));
+    fs.symlink(
+      __FilePath_toString(src),
+      __FilePath_toString(dest),
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed(dest));
+        }
       }
-    });
+    );
   });
 });
 
@@ -482,13 +516,17 @@ var _FileSystem_readLink = function (path) {
 
 var _FileSystem_rename = F2(function (oldPath, newPath) {
   return __Scheduler_binding(function (callback) {
-    fs.rename(__FilePath_toString(oldPath), __FilePath_toString(newPath), function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
-      } else {
-        callback(__Scheduler_succeed(newPath));
+    fs.rename(
+      __FilePath_toString(oldPath),
+      __FilePath_toString(newPath),
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed(newPath));
+        }
       }
-    });
+    );
   });
 });
 
@@ -498,18 +536,20 @@ var _FileSystem_stat = function (path) {
       if (err) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
-        callback(__Scheduler_succeed({
-          __$blockSize: stats.blksize,
-          __$blocks: stats.blocks,
-          __$byteSize: stats.size,
-          __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
-          __$deviceID: stats.dev,
-          __$groupID: stats.gid,
-          __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
-          __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
-          __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
-          __$userID: stats.uid,
-        }));
+        callback(
+          __Scheduler_succeed({
+            __$blockSize: stats.blksize,
+            __$blocks: stats.blocks,
+            __$byteSize: stats.size,
+            __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
+            __$deviceID: stats.dev,
+            __$groupID: stats.gid,
+            __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
+            __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
+            __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
+            __$userID: stats.uid,
+          })
+        );
       }
     });
   });
