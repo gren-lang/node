@@ -4,6 +4,10 @@ module FileSystem.Path exposing
     , toPosixString
     , fromWin32String
     , toWin32String
+    , filenameWithExtension
+    , append
+    , prepend
+    , concat
     )
 
 
@@ -36,3 +40,35 @@ fromWin32String =
 toWin32String : Path -> String
 toWin32String =
     Gren.Kernel.FilePath.toWin32
+
+
+filenameWithExtension : Path -> String
+filenameWithExtension path =
+    if String.isEmpty path.extension then
+        path.filename
+
+    else
+        path.filename ++ "." ++ path.extension
+
+
+append : Path -> Path -> Path
+append left right =
+    prepend right left
+
+
+prepend : Path -> Path -> Path
+prepend left right =
+    { left
+        | directory =
+            left.directory
+                |> Array.pushLast (filenameWithExtension left)
+                |> Array.postfix right.directory
+                |> Array.filter (\dir -> dir /= "")
+        , filename = right.filename
+        , extension = right.extension
+    }
+
+
+concat : Array Path -> Path
+concat paths =
+    Array.foldl append (fromPosixString ".") paths

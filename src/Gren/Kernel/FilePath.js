@@ -24,10 +24,13 @@ var _FilePath_parse = function (pathMod, str) {
     ? result.dir.substring(root.length)
     : result.dir;
 
+  const filename =
+    result.name === "." && result.ext.length === 0 ? "" : result.name;
+
   return {
     __$directory: dirStr === "" ? [] : dirStr.split(pathMod.sep),
     __$extension: result.ext.length > 0 ? result.ext.substring(1) : "",
-    __$filename: result.name,
+    __$filename: filename,
     __$root: result.root,
   };
 };

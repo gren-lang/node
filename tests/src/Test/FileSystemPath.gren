@@ -63,6 +63,19 @@ tests =
                             , filename = "file"
                             , extension = ""
                             }
+            , test "empty path" <|
+                \{} ->
+                    Path.fromPosixString ""
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = ""
+                            , extension = ""
+                            }
+            , test "current path" <|
+                \{} ->
+                    Path.fromPosixString ""
+                        |> Expect.equal (Path.fromPosixString ".")
             ]
         , describe "fromWin32String"
             [ test "absolute file" <| 
@@ -116,5 +129,36 @@ tests =
                             Path.fromWin32String pathStr
                     in
                     Expect.equal "/some/specific/file.md" (Path.toPosixString path)
+            ]
+        , describe "filenameWithExtension"
+            [ test "Returns the filename with extension" <|
+                \{} ->
+                    Expect.equal "file.md" (Path.filenameWithExtension (Path.fromPosixString "/dir/file.md"))
+            , test "Or just the filename if no extension is set" <|
+                \{} ->
+                    Expect.equal "file" (Path.filenameWithExtension (Path.fromPosixString "/dir/file"))
+            ]
+        , describe "append"
+            [ test "Joins two paths" <|
+                \{} ->
+                    Path.fromPosixString "/some/longer/file.md"
+                        |> Path.append (Path.fromPosixString "/with/more")
+                        |> Path.toPosixString
+                        |> Expect.equal "/some/longer/file.md/with/more"
+            ]
+        , describe "concat"
+            [ test "Easier way to join many paths" <|
+                \{} ->
+                    Expect.equal
+                        (Path.fromPosixString "one"
+                            |> Path.append (Path.fromPosixString "two/three")
+                            |> Path.append (Path.fromPosixString "/file.md")
+                        )
+                        (Path.concat
+                            [ Path.fromPosixString "one"
+                            , Path.fromPosixString "two/three"
+                            , Path.fromPosixString "/file.md"
+                            ]
+                        )
             ]
         ]
