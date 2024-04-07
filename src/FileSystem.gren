@@ -1,18 +1,40 @@
 module FileSystem exposing
     ( Permission
     , initialize
-    --
+    -- Errors
     , AccessError(..)
     , accessErrorToString
     , UnknownFileSystemError(..)
     , unknownFileSystemErrorToString
-    --
+    -- Metadata
+    , Metadata
+    , EntityType(..)
+    , metadata
+    , checkAccess
+    , AccessPermission(..)
+    , changeAccess
+    , accessPermissionsToInt
+    , changeOwner
+    , changeTimes
+    , rename
+    , realPath
+    -- Files
+    , appendToFile
+    , copyFile
+    , readFile
+    , writeFile
+    , truncateFile
     , remove
-    --
-    , makeDirectory
-    , DirEntry(..)
+    -- Directories
     , listDirectory
+    , makeDirectory
+    , makeTempDirectory
     , currentWorkingDirectory
+    -- Links
+    , hardLink
+    , softLink
+    , readLink
+    , unlink
     )
 
 
@@ -24,27 +46,23 @@ module FileSystem exposing
 
 ## Errors
 
-@docs AccessError, UnknownFileSystemError
+@docs AccessError, accessErrorToString, UnknownFileSystemError, unknownFileSystemErrorToString
 
-## File open/close
+## Metadata
 
-@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
+@docs Metadata, EntityType, metadata, checkAccess, AccessPermission, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, rename, realPath
 
-## Read from file
+## Files
 
-@docs read, readFromOffset
-
-## Write to file
-
-@docs write, writeFromOffset
-
-## Remove files and directories
-
-@docs remove
+@docs copyFile, appendToFile, readFile, writeFile, truncateFile, remove
 
 ## Directories
 
-@docs makeDirectory, DirEntry, listDirectory, currentWorkingDirectory
+@docs listDirectory, makeDirectory, makeTempDirectory, currentWorkingDirectory
+
+## Links
+
+@docs hardLink, softLink, readLink, unlink
 
 -}
 
@@ -55,6 +73,7 @@ import Task exposing (Task)
 import FileSystem.Path exposing (Path)
 import Init
 import Internal.Init
+import Time
 
 
 {-| This value represents the permission to perform file system operations.
@@ -72,24 +91,6 @@ initialize : Init.Task Permission
 initialize =
     Task.succeed Permission
         |> Internal.Init.Task
-
-
--- DIRECTORY
-
-
-{-| Represents entries in a directory.
-
-Variants for each type of entry, with a `String` representing the relative path.
-
-As returned by `FileSystem.listDirectory`.
--}
-type DirEntry
-    = File String
-    | Directory String
-    | Socket String
-    | Symlink String
-    | Device String
-    | Pipe String
 
 
 -- ERRORS
@@ -125,7 +126,153 @@ unknownFileSystemErrorToString (UnknownFileSystemError msg) =
     msg
 
 
--- REMOVE
+-- METADATA
+
+type alias Metadata =
+    { entityType : EntityType
+    , deviceID : Int
+    , userID : Int
+    , groupID : Int
+    , byteSize : Int
+    , blockSize : Int
+    , blocks : Int
+    , lastAccessed : Time.Posix
+    , lastModified : Time.Posix
+    , lastChanged : Time.Posix
+    , created : Time.Posix
+    }
+
+
+{-| Represents entries in a directory.
+
+Variants for each type of entry, with a `String` representing the relative path.
+-}
+type EntityType
+    = File
+    | Directory
+    | Socket
+    | Symlink
+    | Device
+    | Pipe
+
+
+metadata : Permission -> { resolveLink : Bool } -> Path -> Task AccessError Metadata
+metadata _ { resolveLink } path =
+    if resolveLink then
+        Gren.Kernel.FileSystem.stat path
+
+    else
+        Gren.Kernel.FileSystem.lstat path
+
+
+checkAccess : Permission -> String -> Path -> Task AccessError Path
+checkAccess _ mode path =
+    Gren.Kernel.FileSystem.access mode path
+
+
+type AccessPermission
+    = Read
+    | Write
+    | Execute
+
+
+changeAccess 
+    : Permission
+    -> { owner : Array AccessPermission 
+       , group : Array AccessPermission
+       , others : Array AccessPermission
+       , resolveLink : Bool
+       }
+    -> Path
+    -> Task AccessError Path
+changeAccess _ permissions path =
+    let
+        mode =
+            (String.fromInt <| accessPermissionsToInt permissions.owner)
+            ++ (String.fromInt <| accessPermissionsToInt permissions.group)
+            ++ (String.fromInt <| accessPermissionsToInt permissions.others)
+    in
+    if permissions.resolveLink then
+        Gren.Kernel.FileSystem.chmod mode path
+
+    else
+        Gren.Kernel.FileSystem.lchmod mode path
+
+
+accessPermissionsToInt : Array AccessPermission -> Int
+accessPermissionsToInt values =
+    let
+        numberFor num a =
+            if Array.member a values then
+                num
+
+            else
+                0
+    in
+    numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
+
+
+changeOwner : Permission -> { userID : Int, groupID : Int, resolveLink : Bool } -> Path -> Task AccessError Path
+changeOwner _ options path =
+    if options.resolveLink then
+        Gren.Kernel.FileSystem.chown options path
+
+    else
+        Gren.Kernel.FileSystem.lchown options path
+
+
+changeTimes : Permission -> { lastAccessed : Time.Posix, lastModified : Time.Posix, resolveLink : Bool } -> Path -> Task AccessError Path
+changeTimes _ { lastAccessed, lastModified, resolveLink } path =
+    let
+        lastAccessedSeconds = 
+            Time.posixToMillis lastAccessed // 1000
+        
+        lastModifiedSeconds = 
+            Time.posixToMillis lastModified // 1000
+    in
+    if resolveLink then
+        Gren.Kernel.FileSystem.utimes lastAccessedSeconds lastModifiedSeconds path
+
+    else
+        Gren.Kernel.FileSystem.lutimes lastAccessedSeconds lastModifiedSeconds path
+
+
+rename : Permission -> Path -> Path -> Task AccessError Path
+rename _ new old =
+    Gren.Kernel.FileSystem.rename old new
+
+
+realPath : Permission -> Path -> Task AccessError Path
+realPath _ path =
+    Gren.Kernel.FileSystem.realpath path
+
+
+-- FILES
+
+
+appendToFile : Permission -> Bytes -> Path -> Task AccessError Path
+appendToFile _ bytes path =
+    Gren.Kernel.FileSystem.appendFile bytes path
+
+
+copyFile : Permission -> String -> Path -> Path -> Task AccessError Path
+copyFile _ mode dest src =
+    Gren.Kernel.FileSystem.copyFile mode src dest
+
+
+readFile : Permission -> Path -> Task AccessError Bytes
+readFile _ path =
+    Gren.Kernel.FileSystem.readFile path
+
+
+writeFile : Permission -> Bytes -> Path -> Task AccessError Path
+writeFile _ bytes path =
+    Gren.Kernel.FileSystem.writeFile bytes path
+
+
+truncateFile : Permission -> Int -> Path -> Task AccessError Path
+truncateFile _ length path =
+    Gren.Kernel.FileSystem.truncate length path
 
 
 {-| Remove the file or directory at the given path.
@@ -141,6 +288,14 @@ remove _ options path =
 -- DIRECTORIES
 
 
+{-| Returns an `Array` of `DirEntry` variants holding names of the files in the
+directory at the given path.
+-}
+listDirectory : Permission -> Path -> Task AccessError (Array { path : Path, entityType : EntityType })
+listDirectory _ path =
+    Gren.Kernel.FileSystem.listDirectory path
+
+
 {-| Create a new directory at the given path.
 
 If `recursive` is `True`, then a directory will be created for every section of the
@@ -151,12 +306,9 @@ makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 
 
-{-| Returns an `Array` of `DirEntry` variants holding names of the files in the
-directory at the given path.
--}
-listDirectory : Permission -> Path -> Task AccessError (Array DirEntry)
-listDirectory _ path =
-    Gren.Kernel.FileSystem.listDirectory path
+makeTempDirectory : Permission -> String -> Task AccessError Path
+makeTempDirectory _ prefix =
+    Gren.Kernel.FileSystem.mkdtemp prefix
 
 
 {-| Returns the current working directory of the program.
@@ -165,3 +317,27 @@ This is the directory that all relative paths are relative to.
 currentWorkingDirectory : Permission -> Task x Path
 currentWorkingDirectory _ =
     Gren.Kernel.FileSystem.currentWorkingDirectory
+
+
+-- LINKS
+
+
+hardLink : Permission -> Path -> Path -> Task AccessError Path
+hardLink _ dest src =
+    Gren.Kernel.FileSystem.link src dest
+
+
+softLink : Permission -> Path -> Path -> Task AccessError Path
+softLink _ dest src =
+    Gren.Kernel.FileSystem.symlink src dest
+
+
+readLink : Permission -> Path -> Task AccessError Path
+readLink _ path =
+    Gren.Kernel.FileSystem.readLink path
+
+
+unlink : Permission -> Path -> Task AccessError Path
+unlink _ path =
+    Gren.Kernel.FileSystem.unlink path
+

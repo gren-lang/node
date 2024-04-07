@@ -7,27 +7,25 @@ module FileSystem.FileHandle exposing
     , WritePermission
     , makeReadOnly
     , makeWriteOnly
-    --
     , openForRead
     , OpenForWriteBehaviour (..)
     , openForWrite
     , openForReadAndWrite
     , close
     --
+    , metadata
+    , changeAccess
+    , changeOwner
+    , changeTimes
+    --
     , read
     , readFromOffset
     --
     , write
     , writeFromOffset
-    --
-    , AccessMode(..)
-    , changeAccess
-    , changeOwner
-    , changeTimes
+    , truncate
     , sync
     , syncData
-    , metadata
-    , truncate
     )
 
 
@@ -37,17 +35,17 @@ module FileSystem.FileHandle exposing
 
 @docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
 
+## File metadata
+
+@docs metadata, changeAccess, changeOwner, changeTimes
+
 ## Read from file
 
 @docs read, readFromOffset
 
 ## Write to file
 
-@docs write, writeFromOffset
-
-## Temp
-
-@docs AccessMode, changeAccess, changeOwner, changeTimes, sync, syncData, metadata, truncate
+@docs write, writeFromOffset, truncate, sync, syncData
 
 -}
 
@@ -175,13 +173,54 @@ openImpl =
     Gren.Kernel.FileSystem.open
 
 
--- CLOSE
-
 {-| Close a file. All operations performed against the given `FileHandle` will fail.
 -}
 close : FileHandle a b -> Task UnknownFileSystemError {}
 close =
     Gren.Kernel.FileSystem.close
+
+
+-- METADATA
+
+
+metadata : ReadableFileHandle a -> Task UnknownFileSystemError (ReadableFileHandle FileSystem.Metadata)
+metadata =
+    Gren.Kernel.FileSystem.fstat
+
+
+changeAccess 
+    : { owner : Array FileSystem.AccessPermission
+      , group : Array FileSystem.AccessPermission
+      , others : Array FileSystem.AccessPermission
+      }
+    -> WriteableFileHandle a
+    -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeAccess permissions fh =
+    let
+        mode =
+            (String.fromInt <| FileSystem.accessPermissionsToInt permissions.owner)
+            ++ (String.fromInt <| FileSystem.accessPermissionsToInt permissions.group)
+            ++ (String.fromInt <| FileSystem.accessPermissionsToInt permissions.others)
+    in
+    Gren.Kernel.FileSystem.fchmod mode fh
+
+
+changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeOwner =
+    Gren.Kernel.FileSystem.fchown
+
+
+changeTimes 
+    : { lastAccessed : Time.Posix
+      , lastModified : Time.Posix 
+      }
+    -> WriteableFileHandle a
+    -> Task UnknownFileSystemError (WriteableFileHandle a)
+changeTimes { lastAccessed, lastModified } fh =
+    Gren.Kernel.FileSystem.futimes
+        (Time.posixToMillis lastAccessed // 1000)
+        (Time.posixToMillis lastModified // 1000)
+        fh
 
 
 -- READING
@@ -218,48 +257,9 @@ writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
 
 
--- OTHER INFORMATION
-
-
-type AccessMode
-    = Read
-    | Write
-    | Execute
-
-
-changeAccess 
-    : { owner : Array AccessMode
-      , group : Array AccessMode
-      , others : Array AccessMode
-      }
-    -> WriteableFileHandle a
-    -> Task UnknownFileSystemError (WriteableFileHandle a)
-changeAccess modes fh =
-    let
-        mode =
-            (accessModeInt modes.owner * 100)
-            + (accessModeInt modes.group * 10)
-            + accessModeInt modes.others
-    in
-    Gren.Kernel.FileSystem.fchmod (String.fromInt mode) fh
-
-
-accessModeInt : Array AccessMode -> Int
-accessModeInt values =
-    let
-        numberFor num a =
-            if Array.member a values then
-                num
-
-            else
-                0
-    in
-    numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
-
-
-changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
-changeOwner =
-    Gren.Kernel.FileSystem.fchown
+truncate : Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
+truncate =
+    Gren.Kernel.FileSystem.ftruncate
 
 
 sync : WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
@@ -270,41 +270,3 @@ sync =
 syncData : WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
 syncData =
     Gren.Kernel.FileSystem.fdatasync
-
-
-type alias FileMetadata =
-    -- TODO: add file type (dir, link, pipe etc.)
-    { deviceID : Int
-    , userID : Int
-    , groupID : Int
-    , byteSize : Int
-    , blockSize : Int
-    , blocks : Int
-    , lastAccessed : Time.Posix
-    , lastModified : Time.Posix
-    , lastChanged : Time.Posix
-    , created : Time.Posix
-    }
-
-
-metadata : ReadableFileHandle a -> Task UnknownFileSystemError (ReadableFileHandle FileMetadata)
-metadata =
-    Gren.Kernel.FileSystem.fstat
-
-
-truncate : Int -> WriteableFileHandle a -> Task UnknownFileSystemError (WriteableFileHandle a)
-truncate =
-    Gren.Kernel.FileSystem.ftruncate
-
-
-changeTimes 
-    : { lastAccessed : Time.Posix
-      , lastModified : Time.Posix 
-      }
-    -> WriteableFileHandle a
-    -> Task UnknownFileSystemError (WriteableFileHandle a)
-changeTimes { lastAccessed, lastModified } fh =
-    Gren.Kernel.FileSystem.futimes
-        (Time.posixToMillis lastAccessed // 1000)
-        (Time.posixToMillis lastModified // 1000)
-        fh
