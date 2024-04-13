@@ -565,6 +565,18 @@ var _FileSystem_rename = F2(function (oldPath, newPath) {
   });
 });
 
+var _FileSystem_realpath = function (path) {
+  return __Scheduler_binding(function (callback) {
+    fs.realpath(__FilePath_toString(path), function (err, resolvedPath) {
+      if (err) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(__FilePath_fromString(resolvedPath)));
+      }
+    });
+  });
+};
+
 var _FileSystem_stat = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.stat(__FilePath_toString(path), function (err, stats) {
