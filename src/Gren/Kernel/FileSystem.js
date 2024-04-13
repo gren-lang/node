@@ -447,6 +447,23 @@ var _FileSystem_chown = F2(function (ids, path) {
   });
 });
 
+var _FileSystem_lchown = F2(function (ids, path) {
+  return __Scheduler_binding(function (callback) {
+    fs.lchown(
+      __FilePath_toString(path),
+      ids.__$userID,
+      ids.__$groupID,
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+        } else {
+          callback(__Scheduler_succeed(path));
+        }
+      }
+    );
+  });
+});
+
 var _FileSystem_copyFile = F3(function (mode, src, dest) {
   return __Scheduler_binding(function (callback) {
     fs.copyFile(
@@ -603,6 +620,18 @@ var _FileSystem_truncate = F2(function (len, path) {
 var _FileSystem_utimes = F3(function (atime, mtime, path) {
   return __Scheduler_binding(function (callback) {
     fs.utimes(__FilePath_toString(path), atime, mtime, function (err) {
+      if (err) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(path));
+      }
+    });
+  });
+});
+
+var _FileSystem_lutimes = F3(function (atime, mtime, path) {
+  return __Scheduler_binding(function (callback) {
+    fs.lutimes(__FilePath_toString(path), atime, mtime, function (err) {
       if (err) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
