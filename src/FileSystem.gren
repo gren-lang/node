@@ -166,15 +166,15 @@ metadata _ { resolveLink } path =
         Gren.Kernel.FileSystem.lstat path
 
 
-checkAccess : Permission -> String -> Path -> Task AccessError Path
-checkAccess _ mode path =
-    Gren.Kernel.FileSystem.access mode path
-
-
 type AccessPermission
     = Read
     | Write
     | Execute
+
+
+checkAccess : Permission -> Array AccessPermission -> Path -> Task AccessError Path
+checkAccess _ permissions path =
+    Gren.Kernel.FileSystem.access permissions path
 
 
 changeAccess 

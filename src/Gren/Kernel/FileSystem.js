@@ -2,7 +2,7 @@
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
 import Gren.Kernel.FilePath exposing (toString, fromString)
-import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe)
+import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe, Read, Write, Execute)
 import Time exposing (millisToPosix)
 
 */
@@ -368,7 +368,21 @@ var _FileSystem_futimes = F3(function (atime, mtime, fd) {
   });
 });
 
-var _FileSystem_access = F2(function (mode, path) {
+var _FileSystem_access = F2(function (permissions, path) {
+  var mode = fs.constants.F_OK;
+
+  if (permissions.includes(__FileSystem_Read)) {
+    mode = mode | fs.constants.R_OK;
+  }
+
+  if (permissions.includes(__FileSystem_Write)) {
+    mode = mode | fs.constants.W_OK;
+  }
+
+  if (permissions.includes(__FileSystem_Execute)) {
+    mode = mode | fs.constants.X_OK;
+  }
+
   return __Scheduler_binding(function (callback) {
     fs.access(__FilePath_toString(path), mode, function (err) {
       if (err != null) {
