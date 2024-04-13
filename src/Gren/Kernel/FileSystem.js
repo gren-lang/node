@@ -234,7 +234,12 @@ var _FileSystem_listDirectory = function (path) {
           callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
         } else {
           callback(
-            __Scheduler_succeed(content.map(_FileSystem_toGrenDirEntry))
+            __Scheduler_succeed(
+              content.map((f) => ({
+                __$name: f.name,
+                __$entityType: _FileSystem_toEntityType(f),
+              }))
+            )
           );
         }
       }
@@ -242,19 +247,19 @@ var _FileSystem_listDirectory = function (path) {
   });
 };
 
-var _FileSystem_toGrenDirEntry = function (dirEnt) {
+var _FileSystem_toEntityType = function (dirEnt) {
   if (dirEnt.isFile()) {
-    return __FileSystem_File(dirEnt.name);
+    return __FileSystem_File;
   } else if (dirEnt.isDirectory()) {
-    return __FileSystem_Directory(dirEnt.name);
+    return __FileSystem_Directory;
   } else if (dirEnt.isFIFO()) {
-    return __FileSystem_Pipe(dirEnt.name);
+    return __FileSystem_Pipe;
   } else if (dirEnt.isSocket()) {
-    return __FileSystem_Socket(dirEnt.name);
+    return __FileSystem_Socket;
   } else if (dirEnt.isSymbolicLink()) {
-    return __FileSystem_Symlink(dirEnt.name);
+    return __FileSystem_Symlink;
   } else {
-    return __FileSystem_Device(dirEnt.name);
+    return __FileSystem_Device;
   }
 };
 
@@ -329,20 +334,7 @@ var _FileSystem_fstat = function (fd) {
           __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
         );
       } else {
-        callback(
-          __Scheduler_succeed({
-            __$blockSize: stats.blksize,
-            __$blocks: stats.blocks,
-            __$byteSize: stats.size,
-            __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
-            __$deviceID: stats.dev,
-            __$groupID: stats.gid,
-            __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
-            __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
-            __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
-            __$userID: stats.uid,
-          })
-        );
+        callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
       }
     });
   });
@@ -536,23 +528,38 @@ var _FileSystem_stat = function (path) {
       if (err) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
-        callback(
-          __Scheduler_succeed({
-            __$blockSize: stats.blksize,
-            __$blocks: stats.blocks,
-            __$byteSize: stats.size,
-            __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
-            __$deviceID: stats.dev,
-            __$groupID: stats.gid,
-            __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
-            __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
-            __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
-            __$userID: stats.uid,
-          })
-        );
+        callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
       }
     });
   });
+};
+
+var _FileSystem_lstat = function (path) {
+  return __Scheduler_binding(function (callback) {
+    fs.lstat(__FilePath_toString(path), function (err, stats) {
+      if (err) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
+      }
+    });
+  });
+};
+
+var _FileSystem_statToGrenRecord = function (stats) {
+  return {
+    __$entityType: _FileSystem_toEntityType(stats),
+    __$blockSize: stats.blksize,
+    __$blocks: stats.blocks,
+    __$byteSize: stats.size,
+    __$created: __Time_millisToPosix(Math.floor(stats.birthtimeMs)),
+    __$deviceID: stats.dev,
+    __$groupID: stats.gid,
+    __$lastAccessed: __Time_millisToPosix(Math.floor(stats.atimeMs)),
+    __$lastChanged: __Time_millisToPosix(Math.floor(stats.ctimeMs)),
+    __$lastModified: __Time_millisToPosix(Math.floor(stats.mtimeMs)),
+    __$userID: stats.uid,
+  };
 };
 
 var _FileSystem_truncate = F2(function (len, path) {
