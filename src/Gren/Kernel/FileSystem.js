@@ -418,6 +418,18 @@ var _FileSystem_chmod = F2(function (mode, path) {
   });
 });
 
+var _FileSystem_lchmod = F2(function (mode, path) {
+  return __Scheduler_binding(function (callback) {
+    fs.lchmod(__FilePath_toString(path), mode, function (err) {
+      if (err != null) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(path));
+      }
+    });
+  });
+});
+
 var _FileSystem_chown = F2(function (ids, path) {
   return __Scheduler_binding(function (callback) {
     fs.chown(

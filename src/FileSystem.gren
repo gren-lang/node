@@ -10,8 +10,8 @@ module FileSystem exposing
     , Metadata
     , EntityType(..)
     , metadata
-    , checkAccess
     , AccessPermission(..)
+    , checkAccess
     , changeAccess
     , accessPermissionsToInt
     , changeOwner
@@ -50,7 +50,7 @@ module FileSystem exposing
 
 ## Metadata
 
-@docs Metadata, EntityType, metadata, checkAccess, AccessPermission, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, rename, realPath
+@docs Metadata, EntityType, metadata, AccessPermission, checkAccess, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, rename, realPath
 
 ## Files
 
