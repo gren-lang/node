@@ -10,6 +10,8 @@ import Time exposing (millisToPosix)
 var fs = require("node:fs");
 var bufferNs = require("node:buffer");
 var process = require("node:process");
+var path = require("node:path");
+var os = require("node:os");
 
 var _FileSystem_coerce = function (fh) {
   return fh;
@@ -396,7 +398,7 @@ var _FileSystem_access = F2(function (permissions, path) {
 
 var _FileSystem_appendFile = F2(function (data, path) {
   return __Scheduler_binding(function (callback) {
-    fs.appendFile(__FilePath_toString(path), data.buffer, function (err) {
+    fs.appendFile(__FilePath_toString(path), data, function (err) {
       if (err != null) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
@@ -464,12 +466,12 @@ var _FileSystem_lchown = F2(function (ids, path) {
   });
 });
 
-var _FileSystem_copyFile = F3(function (mode, src, dest) {
+var _FileSystem_copyFile = F2(function (src, dest) {
   return __Scheduler_binding(function (callback) {
     fs.copyFile(
       __FilePath_toString(src),
       __FilePath_toString(dest),
-      mode,
+      0,
       function (err) {
         if (err) {
           callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
@@ -513,9 +515,21 @@ var _FileSystem_symlink = F2(function (src, dest) {
   });
 });
 
+var _FileSystem_unlink = function (src) {
+  return __Scheduler_binding(function (callback) {
+    fs.unlink(__FilePath_toString(src), function (err) {
+      if (err) {
+        callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
+      } else {
+        callback(__Scheduler_succeed(src));
+      }
+    });
+  });
+};
+
 var _FileSystem_mkdtemp = function (prefix) {
   return __Scheduler_binding(function (callback) {
-    fs.mkdtemp(prefix, function (err, dir) {
+    fs.mkdtemp(path.join(os.tmpdir(), prefix), function (err, dir) {
       if (err) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
@@ -531,7 +545,11 @@ var _FileSystem_readFile = function (path) {
       if (err) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {
-        callback(__Scheduler_succeed(new DataView(data)));
+        callback(
+          __Scheduler_succeed(
+            new DataView(data.buffer, data.byteOffset, data.length)
+          )
+        );
       }
     });
   });
@@ -655,7 +673,7 @@ var _FileSystem_lutimes = F3(function (atime, mtime, path) {
 
 var _FileSystem_writeFile = F2(function (data, path) {
   return __Scheduler_binding(function (callback) {
-    fs.writeFile(__FilePath_toString(path), data.buffer, function (err) {
+    fs.writeFile(__FilePath_toString(path), data, function (err) {
       if (err) {
         callback(__Scheduler_fail(_FileSystem_constructAccessError(err)));
       } else {

@@ -256,9 +256,9 @@ appendToFile _ bytes path =
     Gren.Kernel.FileSystem.appendFile bytes path
 
 
-copyFile : Permission -> String -> Path -> Path -> Task AccessError Path
-copyFile _ mode dest src =
-    Gren.Kernel.FileSystem.copyFile mode src dest
+copyFile : Permission -> Path -> Path -> Task AccessError Path
+copyFile _ dest src =
+    Gren.Kernel.FileSystem.copyFile src dest
 
 
 readFile : Permission -> Path -> Task AccessError Bytes

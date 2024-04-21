@@ -150,7 +150,14 @@ var _HttpClient_request = function (config) {
           case "BYTES":
             return callback(
               __Scheduler_succeed(
-                _HttpClient_formatResponse(res, new DataView(rawData.buffer))
+                _HttpClient_formatResponse(
+                  res,
+                  new DataView(
+                    rawData.buffer,
+                    rawData.byteOffset,
+                    rawData.length
+                  )
+                )
               )
             );
         }
@@ -277,7 +284,10 @@ var _HttpClient_startReceive = F4(function (
             A2(
               __HttpClient_ReceivedChunk,
               request,
-              _HttpClient_formatResponse(res, new DataView(bytes.buffer))
+              _HttpClient_formatResponse(
+                res,
+                new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
+              )
             )
           )
         );
