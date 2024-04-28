@@ -1,4 +1,4 @@
-module FileSystem exposing
+effect module FileSystem where { subscription = FileSystemSub } exposing
     ( Permission
     , initialize
     -- Errors
@@ -35,6 +35,10 @@ module FileSystem exposing
     , softLink
     , readLink
     , unlink
+    -- Watch
+    , WatchEvent(..)
+    , watch
+    , watchRecursive
     )
 
 
@@ -342,3 +346,141 @@ unlink : Permission -> Path -> Task AccessError Path
 unlink _ path =
     Gren.Kernel.FileSystem.unlink path
 
+
+-- SUBSCRIPTION
+
+
+type FileSystemSub msg
+    = Watch Path Bool (WatchEvent -> msg)
+
+
+type WatchEvent
+    = Change (Maybe Path)
+    | Rename (Maybe Path)
+
+
+subMap : (a -> b) -> FileSystemSub a -> FileSystemSub b
+subMap mapFn sub =
+    case sub of
+        Watch path recursive msgMap ->
+            Watch path recursive (mapFn << msgMap)
+
+
+{-| This notifies your application every time bytes have arrived over the `Stream`.
+-}
+watch : Path -> (WatchEvent -> msg) -> Sub msg
+watch path msgMap =
+    subscription (Watch path False msgMap)
+
+
+{-| This notifies your application every time bytes have arrived over the `Stream`.
+-}
+watchRecursive : Path -> (WatchEvent -> msg) -> Sub msg
+watchRecursive path msgMap =
+    subscription (Watch path True msgMap)
+
+
+-- LOOP
+
+
+type alias State msg =
+    { watchers : Dict String (Taggers msg)
+    , recursiveWatchers : Dict String (Taggers msg)
+    , processes : Dict String Process.Id
+    }
+
+
+type alias Taggers msg =
+    Array (WatchEvent -> msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed
+        { watchers = Dict.empty
+        , recursiveWatchers = Dict.empty
+        , processes : Dict.empty
+        }
+
+
+onEffects
+    : Platform.Router msg Event
+    -> Array (StreamSub msg)
+    -> State msg
+    -> Task.Task Never (State msg)
+onEffects router subs state =
+    let
+        newWatchers =
+            subs
+                |> Array.filter (\(Watch _ bool _ -> bool))
+                |> Array.foldl subToWatcher Dict.empty
+
+        newRecursiveWatchers =
+            subs
+                |> Array.filter (\(Watch _ bool _ -> not bool))
+                |> Array.foldl subToWatcher Dict.empty
+
+        toStart =
+            Dict.diff newWatchers state.watchers
+                |> Dict.keys
+        
+        recursiveToStart =
+            Dict.diff newRecursiveWatchers state.recursiveWatchers
+                |> Dict.keys
+        
+        toStop =
+            Dict.diff state.watchers newWatchers
+                |> Dict.keys
+        
+        recursiveToStop =
+            Dict.diff state.recursiveWatchers newRecursiveWatchers
+                |> Dict.keys
+    in
+    Task.succeed
+        { watchers = newWatchers
+        , recursiveWatchers = newRecursiveWatchers
+        , processes = state.processes
+        }
+        -- TODO:
+        -- stop watchers
+        -- stop recursive watchers
+        -- start watchers
+        -- start recursive watchers
+
+
+subToWatcher : FileSystemSub msg -> Dict String (Taggers msg) -> Dict String (Taggers msg)
+subToWatcher sub taggers =
+    case sub of
+        Watch path _ tagger ->
+            case Dict.get path taggers of
+                Just data ->
+                    Dict.insert
+                        sid
+                        Array.pushLast tagger data
+                        taggers
+
+                Nothing ->
+                    Dict.insert
+                        path
+                        [ tagger ]
+                        taggers
+
+
+attachWatcher : String -> Bool -> (WatchEvent -> Task.Task Never {}) -> Task.Task x {}
+attachWatcher =
+  Gren.Kernel.FileSystem.watch
+
+
+unattachWatcher : String -> Bool -> (WatchEvent -> Task.Task Never {}) -> Task.Task x {}
+unattachWatcher =
+  Gren.Kernel.FileSystem.unwatch
+
+
+type SelfMsg
+    = WatchPathChange Bool String WatchEvent
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task.Task Never (State msg)
+onSelfMsg _router (WatchPathChange recursive path event) state =
+    -- TODO:
+    state
