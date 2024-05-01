@@ -72,12 +72,15 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 
 import Gren.Kernel.FileSystem
+import Gren.Kernel.FilePath
 import Bytes exposing (Bytes)
+import Dict exposing (Dict)
 import Task exposing (Task)
 import FileSystem.Path exposing (Path)
 import Init
 import Internal.Init
 import Time
+import Process
 
 
 {-| This value represents the permission to perform file system operations.
@@ -399,32 +402,32 @@ init =
     Task.succeed
         { watchers = Dict.empty
         , recursiveWatchers = Dict.empty
-        , processes : Dict.empty
+        , processes = Dict.empty
         }
 
 
 onEffects
-    : Platform.Router msg Event
-    -> Array (StreamSub msg)
+    : Platform.Router msg SelfMsg
+    -> Array (FileSystemSub msg)
     -> State msg
     -> Task.Task Never (State msg)
 onEffects router subs state =
     let
         newWatchers =
             subs
-                |> Array.filter (\(Watch _ bool _ -> bool))
+                |> Array.filter (\(Watch _ bool _) -> bool)
                 |> Array.foldl subToWatcher Dict.empty
 
         newRecursiveWatchers =
             subs
-                |> Array.filter (\(Watch _ bool _ -> not bool))
+                |> Array.filter (\(Watch _ bool _) -> not bool)
                 |> Array.foldl subToWatcher Dict.empty
 
-        toStart =
+        toSpawn =
             Dict.diff newWatchers state.watchers
                 |> Dict.keys
         
-        recursiveToStart =
+        recursiveToSpawn =
             Dict.diff newRecursiveWatchers state.recursiveWatchers
                 |> Dict.keys
         
@@ -435,45 +438,80 @@ onEffects router subs state =
         recursiveToStop =
             Dict.diff state.recursiveWatchers newRecursiveWatchers
                 |> Dict.keys
+
+        asRecursiveKey key =
+            key ++ "$recursive"
+
+        flipFold fn array initial =
+            Array.foldl fn initial array
+
+        taskStopper keyMapper =
+            (\key accTask ->
+                Task.andThen 
+                    (\processes ->
+                        let
+                            realKey = 
+                                keyMapper key
+                        in
+                        case Dict.get realKey processes of
+                            Just processId ->
+                                Process.kill processId
+                                    |> Task.map (\_ -> Dict.remove realKey processes)
+
+                            Nothing ->
+                                accTask
+                    )
+                    accTask
+            )
+
+        taskSpawner keyMapper isRecursive =
+            (\key accTask ->
+                accTask
+                    |> Task.andThen 
+                        (\processes ->
+                            Process.spawn (attachWatcher key isRecursive (Platform.sendToSelf router << WatchPathChange isRecursive key))
+                                |> Task.map (\id -> Dict.insert (keyMapper key) id processes)
+                        )
+            )
     in
-    Task.succeed
-        { watchers = newWatchers
-        , recursiveWatchers = newRecursiveWatchers
-        , processes = state.processes
-        }
-        -- TODO:
-        -- stop watchers
-        -- stop recursive watchers
-        -- start watchers
-        -- start recursive watchers
+    Array.foldl 
+        (taskStopper identity)
+        (Task.succeed state.processes)
+        toStop
+    |> flipFold (taskStopper asRecursiveKey) recursiveToStop
+    |> flipFold (taskSpawner identity False) toSpawn
+    |> flipFold (taskSpawner asRecursiveKey True) recursiveToSpawn
+    |> Task.map
+        (\newProcesses ->
+            { watchers = newWatchers
+            , recursiveWatchers = newRecursiveWatchers
+            , processes = newProcesses
+            }
+        )
 
 
 subToWatcher : FileSystemSub msg -> Dict String (Taggers msg) -> Dict String (Taggers msg)
 subToWatcher sub taggers =
     case sub of
         Watch path _ tagger ->
-            case Dict.get path taggers of
+            let
+                key =
+                    Gren.Kernel.FilePath.toString path
+            in
+            case Dict.get key taggers of
                 Just data ->
-                    Dict.insert
-                        sid
-                        Array.pushLast tagger data
+                    Dict.insert 
+                        key
+                        (Array.pushLast tagger data)
                         taggers
 
                 Nothing ->
-                    Dict.insert
-                        path
-                        [ tagger ]
-                        taggers
+                    Dict.insert key [ tagger ] taggers
 
 
 attachWatcher : String -> Bool -> (WatchEvent -> Task.Task Never {}) -> Task.Task x {}
 attachWatcher =
   Gren.Kernel.FileSystem.watch
-
-
-unattachWatcher : String -> Bool -> (WatchEvent -> Task.Task Never {}) -> Task.Task x {}
-unattachWatcher =
-  Gren.Kernel.FileSystem.unwatch
 
 
 type SelfMsg
@@ -483,4 +521,7 @@ type SelfMsg
 onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task.Task Never (State msg)
 onSelfMsg _router (WatchPathChange recursive path event) state =
     -- TODO:
-    state
+    let
+        _ = Debug.log "selfMsg" event
+    in
+    Task.succeed state
