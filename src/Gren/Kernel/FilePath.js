@@ -36,6 +36,10 @@ var _FilePath_parse = function (pathMod, str) {
 };
 
 var _FilePath_toPosix = function (filePath) {
+  if (_FilePath_isEmpty(filePath)) {
+    return ".";
+  }
+
   if (filePath.__$root !== "" && filePath.__$root !== "/") {
     filePath = { ...filePath, __$root: "/" };
   }
@@ -44,6 +48,10 @@ var _FilePath_toPosix = function (filePath) {
 };
 
 var _FilePath_toWin32 = function (filePath) {
+  if (_FilePath_isEmpty(filePath)) {
+    return ".";
+  }
+
   return _FilePath_format(path.win32, filePath);
 };
 
@@ -53,6 +61,15 @@ var _FilePath_toString = function (filePath) {
   }
 
   return _FilePath_toPosix(filePath);
+};
+
+var _FilePath_isEmpty = function (filePath) {
+  return (
+    filePath.__$root === "" &&
+    filePath.__$directory.length === 0 &&
+    filePath.__$filename === "" &&
+    filePath.__$extension === ""
+  );
 };
 
 var _FilePath_format = function (pathMod, filePath) {
