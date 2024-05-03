@@ -415,12 +415,12 @@ onEffects router subs state =
     let
         newWatchers =
             subs
-                |> Array.filter (\(Watch _ bool _) -> bool)
+                |> Array.filter (\(Watch _ bool _) -> not bool)
                 |> Array.foldl subToWatcher Dict.empty
 
         newRecursiveWatchers =
             subs
-                |> Array.filter (\(Watch _ bool _) -> not bool)
+                |> Array.filter (\(Watch _ bool _) -> bool)
                 |> Array.foldl subToWatcher Dict.empty
 
         toSpawn =
