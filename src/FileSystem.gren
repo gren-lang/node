@@ -371,15 +371,15 @@ subMap mapFn sub =
 
 {-| This notifies your application every time bytes have arrived over the `Stream`.
 -}
-watch : Path -> (WatchEvent -> msg) -> Sub msg
-watch path msgMap =
+watch : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
+watch _ msgMap path =
     subscription (Watch path False msgMap)
 
 
 {-| This notifies your application every time bytes have arrived over the `Stream`.
 -}
-watchRecursive : Path -> (WatchEvent -> msg) -> Sub msg
-watchRecursive path msgMap =
+watchRecursive : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
+watchRecursive _ msgMap path =
     subscription (Watch path True msgMap)
 
 
