@@ -2,10 +2,8 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     ( Permission
     , initialize
     -- Errors
-    , AccessError(..)
-    , accessErrorToString
-    , UnknownFileSystemError(..)
-    , unknownFileSystemErrorToString
+    , Error(..)
+    , errorToString
     -- Metadata
     , Metadata
     , EntityType(..)
@@ -50,7 +48,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Errors
 
-@docs AccessError, accessErrorToString, UnknownFileSystemError, unknownFileSystemErrorToString
+@docs Error, errorToString
 
 ## Metadata
 
@@ -105,32 +103,22 @@ initialize =
 
 {-| The set of errors that can happen when accessing a file or directory.
 -}
-type AccessError
-    = AccessErrorNotFound
-    | AccessErrorNoAccess
-    | AccessErrorNotADirectory
-    | AccessErrorUnknown String
+type Error
+    = ErrorNotFound
+    | ErrorNoAccess
+    | ErrorNotADirectory
+    | ErrorUnknown String
 
 
-accessErrorToString : AccessError -> String
-accessErrorToString err =
+errorToString : Error -> String
+errorToString err =
     case err of
-        AccessErrorNotFound -> "Not found"
-        AccessErrorNoAccess -> "No access"
-        AccessErrorNotADirectory -> "Not a directory"
-        AccessErrorUnknown errorMessage -> "Unknown error: " ++ errorMessage
+        ErrorNotFound -> "Not found"
+        ErrorNoAccess -> "No access"
+        ErrorNotADirectory -> "Not a directory"
+        ErrorUnknown errorMessage -> "Unknown error: " ++ errorMessage
 
 
-{-| An error thrown by the OS, in situations where we don't expect errors to happen,
-or have been unable to reproduce such an error in development.
--}
-type UnknownFileSystemError
-    = UnknownFileSystemError String
-
-
-unknownFileSystemErrorToString : UnknownFileSystemError -> String
-unknownFileSystemErrorToString (UnknownFileSystemError msg) =
-    msg
 
 
 -- METADATA
@@ -164,7 +152,7 @@ type EntityType
     | Pipe
 
 
-metadata : Permission -> { resolveLink : Bool } -> Path -> Task AccessError Metadata
+metadata : Permission -> { resolveLink : Bool } -> Path -> Task Error Metadata
 metadata _ { resolveLink } path =
     if resolveLink then
         Gren.Kernel.FileSystem.stat path
@@ -179,7 +167,7 @@ type AccessPermission
     | Execute
 
 
-checkAccess : Permission -> Array AccessPermission -> Path -> Task AccessError Path
+checkAccess : Permission -> Array AccessPermission -> Path -> Task Error Path
 checkAccess _ permissions path =
     Gren.Kernel.FileSystem.access permissions path
 
@@ -192,7 +180,7 @@ changeAccess
        , resolveLink : Bool
        }
     -> Path
-    -> Task AccessError Path
+    -> Task Error Path
 changeAccess _ permissions path =
     let
         mode =
@@ -220,7 +208,7 @@ accessPermissionsToInt values =
     numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
 
 
-changeOwner : Permission -> { userID : Int, groupID : Int, resolveLink : Bool } -> Path -> Task AccessError Path
+changeOwner : Permission -> { userID : Int, groupID : Int, resolveLink : Bool } -> Path -> Task Error Path
 changeOwner _ options path =
     if options.resolveLink then
         Gren.Kernel.FileSystem.chown options path
@@ -229,7 +217,7 @@ changeOwner _ options path =
         Gren.Kernel.FileSystem.lchown options path
 
 
-changeTimes : Permission -> { lastAccessed : Time.Posix, lastModified : Time.Posix, resolveLink : Bool } -> Path -> Task AccessError Path
+changeTimes : Permission -> { lastAccessed : Time.Posix, lastModified : Time.Posix, resolveLink : Bool } -> Path -> Task Error Path
 changeTimes _ { lastAccessed, lastModified, resolveLink } path =
     let
         lastAccessedSeconds = 
@@ -245,12 +233,12 @@ changeTimes _ { lastAccessed, lastModified, resolveLink } path =
         Gren.Kernel.FileSystem.lutimes lastAccessedSeconds lastModifiedSeconds path
 
 
-move : Permission -> Path -> Path -> Task AccessError Path
+move : Permission -> Path -> Path -> Task Error Path
 move _ new old =
     Gren.Kernel.FileSystem.rename old new
 
 
-realPath : Permission -> Path -> Task AccessError Path
+realPath : Permission -> Path -> Task Error Path
 realPath _ path =
     Gren.Kernel.FileSystem.realpath path
 
@@ -258,27 +246,27 @@ realPath _ path =
 -- FILES
 
 
-appendToFile : Permission -> Bytes -> Path -> Task AccessError Path
+appendToFile : Permission -> Bytes -> Path -> Task Error Path
 appendToFile _ bytes path =
     Gren.Kernel.FileSystem.appendFile bytes path
 
 
-copyFile : Permission -> Path -> Path -> Task AccessError Path
+copyFile : Permission -> Path -> Path -> Task Error Path
 copyFile _ dest src =
     Gren.Kernel.FileSystem.copyFile src dest
 
 
-readFile : Permission -> Path -> Task AccessError Bytes
+readFile : Permission -> Path -> Task Error Bytes
 readFile _ path =
     Gren.Kernel.FileSystem.readFile path
 
 
-writeFile : Permission -> Bytes -> Path -> Task AccessError Path
+writeFile : Permission -> Bytes -> Path -> Task Error Path
 writeFile _ bytes path =
     Gren.Kernel.FileSystem.writeFile bytes path
 
 
-truncateFile : Permission -> Int -> Path -> Task AccessError Path
+truncateFile : Permission -> Int -> Path -> Task Error Path
 truncateFile _ length path =
     Gren.Kernel.FileSystem.truncate length path
 
@@ -288,7 +276,7 @@ truncateFile _ length path =
 * `recursive` will delete everything inside a directory.
 * `ignoreErrors` will... ignore any errors related to a remove operation.
 -}
-remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task AccessError Path
+remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task Error Path
 remove _ options path =
     Gren.Kernel.FileSystem.remove options path
 
@@ -299,7 +287,7 @@ remove _ options path =
 {-| Returns an `Array` of `DirEntry` variants holding names of the files in the
 directory at the given path.
 -}
-listDirectory : Permission -> Path -> Task AccessError (Array { path : Path, entityType : EntityType })
+listDirectory : Permission -> Path -> Task Error (Array { path : Path, entityType : EntityType })
 listDirectory _ path =
     Gren.Kernel.FileSystem.listDirectory path
 
@@ -309,12 +297,12 @@ listDirectory _ path =
 If `recursive` is `True`, then a directory will be created for every section of the
 given path.
 -}
-makeDirectory : Permission -> { recursive : Bool } -> Path -> Task AccessError Path
+makeDirectory : Permission -> { recursive : Bool } -> Path -> Task Error Path
 makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 
 
-makeTempDirectory : Permission -> String -> Task AccessError Path
+makeTempDirectory : Permission -> String -> Task Error Path
 makeTempDirectory _ prefix =
     Gren.Kernel.FileSystem.mkdtemp prefix
 
@@ -330,22 +318,22 @@ currentWorkingDirectory _ =
 -- LINKS
 
 
-hardLink : Permission -> Path -> Path -> Task AccessError Path
+hardLink : Permission -> Path -> Path -> Task Error Path
 hardLink _ dest src =
     Gren.Kernel.FileSystem.link src dest
 
 
-softLink : Permission -> Path -> Path -> Task AccessError Path
+softLink : Permission -> Path -> Path -> Task Error Path
 softLink _ dest src =
     Gren.Kernel.FileSystem.symlink src dest
 
 
-readLink : Permission -> Path -> Task AccessError Path
+readLink : Permission -> Path -> Task Error Path
 readLink _ path =
     Gren.Kernel.FileSystem.readLink path
 
 
-unlink : Permission -> Path -> Task AccessError Path
+unlink : Permission -> Path -> Task Error Path
 unlink _ path =
     Gren.Kernel.FileSystem.unlink path
 

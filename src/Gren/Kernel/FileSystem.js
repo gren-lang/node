@@ -2,7 +2,8 @@
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
 import Gren.Kernel.FilePath exposing (toString, fromString)
-import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe, Read, Write, Execute, Changed, Moved)
+import FileSystem exposing (ErrorNotFound, ErrorNoAccess, ErrorNotADirectory, ErrorUnknown, File, Directory, Socket, Symlink, Device, Pipe, Read, Write, Execute, Changed, Moved)
+import FileSystem.FileHandle as FileHandle exposing (ErrorUnknown)
 import Maybe exposing (Just, Nothing)
 import Time exposing (millisToPosix)
 
@@ -33,13 +34,13 @@ var _FileSystem_open = F2(function (access, path) {
 var _FileSystem_constructAccessError = function (err) {
   var errMsg = err.message;
   if (errMsg.indexOf("ENOENT") >= 0) {
-    return __FileSystem_AccessErrorNotFound;
+    return __FileSystem_ErrorNotFound;
   } else if (errMsg.indexOf("EACCES") >= 0) {
-    return __FileSystem_AccessErrorNoAccess;
+    return __FileSystem_ErrorNoAccess;
   } else if (errMsg.indexOf("ENOTDIR") >= 0) {
-    return __FileSystem_AccessErrorNotADirectory;
+    return __FileSystem_ErrorNotADirectory;
   } else {
-    return __FileSystem_AccessErrorUnknown(errMsg);
+    return __FileSystem_ErrorUnknown(errMsg);
   }
 };
 
@@ -100,7 +101,7 @@ var _FileSystem_readHelper = function (
     function (err, bytesRead, _buff) {
       if (err != null) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
         return;
       }
@@ -168,7 +169,7 @@ var _FileSystem_writeHelper = function (
     function (err, bytesWritten, buffer) {
       if (err != null) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
         return;
       }
@@ -278,7 +279,7 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
     fs.fchmod(fd, mode, function (err) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(fd));
@@ -292,7 +293,7 @@ var _FileSystem_fchown = F2(function (ids, fd) {
     fs.fchown(fd, ids.__$userID, ids.__$groupID, function (err) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(fd));
@@ -306,7 +307,7 @@ var _FileSystem_fdatasync = function (fd) {
     fs.fdatasync(fd, function (err) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(fd));
@@ -320,7 +321,7 @@ var _FileSystem_fsync = function (fd) {
     fs.fsync(fd, function (err) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(fd));
@@ -334,7 +335,7 @@ var _FileSystem_fstat = function (fd) {
     fs.fstat(fd, function (err, stats) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
@@ -348,7 +349,7 @@ var _FileSystem_ftruncate = F2(function (len, fd) {
     fs.ftruncate(fd, len, function (err) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(fd));
@@ -362,7 +363,7 @@ var _FileSystem_futimes = F3(function (atime, mtime, fd) {
     fs.futimes(fd, atime, mtime, function (err) {
       if (err) {
         callback(
-          __Scheduler_fail(__FileSystem_UnknownFileSystemError(err.message))
+          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
         );
       } else {
         callback(__Scheduler_succeed(fd));
