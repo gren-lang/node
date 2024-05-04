@@ -16,7 +16,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , accessPermissionsToInt
     , changeOwner
     , changeTimes
-    , rename
+    , move
     , realPath
     -- Files
     , appendToFile
@@ -54,7 +54,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Metadata
 
-@docs Metadata, EntityType, metadata, AccessPermission, checkAccess, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, rename, realPath
+@docs Metadata, EntityType, metadata, AccessPermission, checkAccess, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, move, realPath
 
 ## Files
 
@@ -245,8 +245,8 @@ changeTimes _ { lastAccessed, lastModified, resolveLink } path =
         Gren.Kernel.FileSystem.lutimes lastAccessedSeconds lastModifiedSeconds path
 
 
-rename : Permission -> Path -> Path -> Task AccessError Path
-rename _ new old =
+move : Permission -> Path -> Path -> Task AccessError Path
+move _ new old =
     Gren.Kernel.FileSystem.rename old new
 
 
