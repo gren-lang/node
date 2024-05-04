@@ -100,9 +100,7 @@ var _FileSystem_readHelper = function (
     fileOffset,
     function (err, bytesRead, _buff) {
       if (err != null) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
         return;
       }
 
@@ -168,9 +166,7 @@ var _FileSystem_writeHelper = function (
     fileOffset,
     function (err, bytesWritten, buffer) {
       if (err != null) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
         return;
       }
 
@@ -278,9 +274,7 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchmod(fd, mode, function (err) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -292,9 +286,7 @@ var _FileSystem_fchown = F2(function (ids, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchown(fd, ids.__$userID, ids.__$groupID, function (err) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -306,9 +298,7 @@ var _FileSystem_fdatasync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fdatasync(fd, function (err) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -320,9 +310,7 @@ var _FileSystem_fsync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fsync(fd, function (err) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -334,9 +322,7 @@ var _FileSystem_fstat = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fstat(fd, function (err, stats) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
       }
@@ -348,9 +334,7 @@ var _FileSystem_ftruncate = F2(function (len, fd) {
   return __Scheduler_binding(function (callback) {
     fs.ftruncate(fd, len, function (err) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -362,9 +346,7 @@ var _FileSystem_futimes = F3(function (atime, mtime, fd) {
   return __Scheduler_binding(function (callback) {
     fs.futimes(fd, atime, mtime, function (err) {
       if (err) {
-        callback(
-          __Scheduler_fail(__FileHandle_ErrorUnknown(err.message))
-        );
+        callback(__Scheduler_fail(__FileHandle_ErrorUnknown(err.message)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -687,30 +669,34 @@ var _FileSystem_writeFile = F2(function (data, path) {
 
 var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
   return __Scheduler_binding(function (_callback) {
-    var watcher = fs.watch(
-      path,
-      { recursive: isRecursive },
-      function (eventType, filename) {
-        var maybePath = filename
-          ? __Maybe_Just(__FilePath_fromString(filename))
-          : __Maybe_Nothing;
+    var watcher = null;
 
-        if (eventType === "rename") {
-          __Scheduler_rawSpawn(
-            sendToSelf(__FileSystem_Moved(maybePath))
-          );
-        } else if (eventType === "change") {
-          __Scheduler_rawSpawn(
-            sendToSelf(__FileSystem_Changed(maybePath))
-          );
+    try {
+      watcher = fs.watch(
+        path,
+        { recursive: isRecursive },
+        function (eventType, filename) {
+          var maybePath = filename
+            ? __Maybe_Just(__FilePath_fromString(filename))
+            : __Maybe_Nothing;
+
+          if (eventType === "rename") {
+            __Scheduler_rawSpawn(sendToSelf(__FileSystem_Moved(maybePath)));
+          } else if (eventType === "change") {
+            __Scheduler_rawSpawn(sendToSelf(__FileSystem_Changed(maybePath)));
+          }
+
+          // other change types are ignored
         }
-
-        // other change types are ignored
-      }
-    );
+      );
+    } catch (e) {
+      // ignore errors
+    }
 
     return function () {
-      watcher.close();
+      if (watcher) {
+        watcher.close();
+      }
     };
   });
 });
