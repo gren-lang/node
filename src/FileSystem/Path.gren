@@ -1,5 +1,6 @@
 module FileSystem.Path exposing 
     ( Path
+    , empty
     , fromPosixString
     , toPosixString
     , fromWin32String
@@ -19,6 +20,15 @@ type alias Path =
     , directory : Array String
     , filename : String
     , extension : String
+    }
+
+
+empty : Path
+empty =
+    { root = ""
+    , directory = []
+    , filename = ""
+    , extension = ""
     }
 
 
