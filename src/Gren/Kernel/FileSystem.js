@@ -1,8 +1,8 @@
 /*
 
-import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
+import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
 import Gren.Kernel.FilePath exposing (toString, fromString)
-import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe, Read, Write, Execute, Rename, Change)
+import FileSystem exposing (AccessErrorNotFound, AccessErrorNoAccess, AccessErrorNotADirectory, AccessErrorUnknown, UnknownFileSystemError, File, Directory, Socket, Symlink, Device, Pipe, Read, Write, Execute, Changed, Moved)
 import Maybe exposing (Just, Nothing)
 import Time exposing (millisToPosix)
 
@@ -695,9 +695,13 @@ var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
           : __Maybe_Nothing;
 
         if (eventType === "rename") {
-          sendToSelf(__FileSystem_Rename(maybePath));
+          __Scheduler_rawSpawn(
+            sendToSelf(__FileSystem_Moved(maybePath))
+          );
         } else if (eventType === "change") {
-          sendToSelf(__FileSystem_Change(maybePath));
+          __Scheduler_rawSpawn(
+            sendToSelf(__FileSystem_Changed(maybePath))
+          );
         }
 
         // other change types are ignored
@@ -705,7 +709,7 @@ var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
     );
 
     return function () {
-      stream.off("data", listener);
+      watcher.close();
     };
   });
 });

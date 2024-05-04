@@ -358,8 +358,8 @@ type FileSystemSub msg
 
 
 type WatchEvent
-    = Change (Maybe Path)
-    | Rename (Maybe Path)
+    = Changed (Maybe Path)
+    | Moved (Maybe Path)
 
 
 subMap : (a -> b) -> FileSystemSub a -> FileSystemSub b
@@ -519,9 +519,30 @@ type SelfMsg
 
 
 onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task.Task Never (State msg)
-onSelfMsg _router (WatchPathChange recursive path event) state =
-    -- TODO:
+onSelfMsg router (WatchPathChange recursive key event) state =
     let
-        _ = Debug.log "selfMsg" event
+        notifyApplication taggers =
+            Array.foldl 
+                (\tagger tasks -> 
+                    tasks
+                        |> Task.andThen (\{} -> Platform.sendToApp router (tagger event))
+                )
+                (Task.succeed {})
+                taggers
+                |> Task.map (\{} -> state)
     in
-    Task.succeed state
+    if recursive then
+        case Dict.get key state.recursiveWatchers of
+            Just taggers ->
+                notifyApplication taggers
+
+            Nothing ->
+                Task.succeed state
+
+    else
+        case Dict.get key state.watchers of
+            Just taggers ->
+                notifyApplication taggers
+
+            Nothing ->
+                Task.succeed state
