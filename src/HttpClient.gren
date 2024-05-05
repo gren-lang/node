@@ -98,6 +98,7 @@ import Bytes exposing (Bytes)
 import Task exposing (Task)
 import Platform
 import Gren.Kernel.HttpClient
+import HttpServer exposing (Method(..), methodToString)
 
 
 {-| A value that represents the permission to perform HTTP requests.
@@ -133,7 +134,7 @@ initializeForHost host =
 this value, then customize it using the following `with` functions.
 -}
 type alias RequestConfiguration responseType =
-    { method : String
+    { method : Method
     , url : String
     , headers : Dict String (Array String)
     , body : Body
@@ -146,19 +147,19 @@ type alias RequestConfiguration responseType =
 -}
 get : String -> RequestConfiguration {}
 get url =
-    request "GET" url
+    request GET url
 
 
 {-| Initializes the configuration for a simple POST request to the given url.
 -}
 post : String -> RequestConfiguration {}
 post url =
-    request "POST" url
+    request POST url
 
 
 {-| Initializes a request configuration with the given method and url.
 -}
-request : String -> String -> RequestConfiguration {}
+request : Method -> String -> RequestConfiguration {}
 request method url =
     { method = method
     , url = url
@@ -423,7 +424,7 @@ kernelRequestConfig permission config =
                 SpecificPermission prefix ->
                     prefix ++ config.url
     in
-    { method = config.method
+    { method = methodToString config.method
     , url = actualUrl
     , headers = config.headers
     , bodyType = bodyTypeAsString config.body
