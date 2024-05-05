@@ -8,9 +8,6 @@ module FileSystem.FileHandle exposing
     , makeReadOnly
     , makeWriteOnly
     --
-    , Error(..)
-    , errorToString
-    --
     , openForRead
     , OpenForWriteBehaviour(..)
     , openForWrite
@@ -34,10 +31,6 @@ module FileSystem.FileHandle exposing
 
 
 {-| This module provides access to the file system. It allows you to read and write files or directories.
-
-## Errors
-
-@docs Error, errorToString
 
 ## File open/close
 
@@ -126,21 +119,6 @@ makeWriteOnly =
     Gren.Kernel.FileSystem.coerce
 
 
--- ERRORS
-
-
-{-| An error thrown by the OS, in situations where we don't expect errors to happen,
-or have been unable to reproduce such an error in development.
--}
-type Error
-    = ErrorUnknown String
-
-
-errorToString : Error -> String
-errorToString (ErrorUnknown msg) =
-    msg
-
-
 -- OPEN
 
 
@@ -198,7 +176,7 @@ openImpl =
 
 {-| Close a file. All operations performed against the given `FileHandle` will fail.
 -}
-close : FileHandle a b -> Task Error {}
+close : FileHandle a b -> Task FileSystem.Error {}
 close =
     Gren.Kernel.FileSystem.close
 
@@ -206,7 +184,7 @@ close =
 -- METADATA
 
 
-metadata : ReadableFileHandle a -> Task Error (ReadableFileHandle FileSystem.Metadata)
+metadata : ReadableFileHandle a -> Task FileSystem.Error (ReadableFileHandle FileSystem.Metadata)
 metadata =
     Gren.Kernel.FileSystem.fstat
 
@@ -217,7 +195,7 @@ changeAccess
       , others : Array FileSystem.AccessPermission
       }
     -> WriteableFileHandle a
-    -> Task Error (WriteableFileHandle a)
+    -> Task FileSystem.Error (WriteableFileHandle a)
 changeAccess permissions fh =
     let
         mode =
@@ -228,7 +206,7 @@ changeAccess permissions fh =
     Gren.Kernel.FileSystem.fchmod mode fh
 
 
-changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task Error (WriteableFileHandle a)
+changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 changeOwner =
     Gren.Kernel.FileSystem.fchown
 
@@ -238,7 +216,7 @@ changeTimes
       , lastModified : Time.Posix 
       }
     -> WriteableFileHandle a
-    -> Task Error (WriteableFileHandle a)
+    -> Task FileSystem.Error (WriteableFileHandle a)
 changeTimes { lastAccessed, lastModified } fh =
     Gren.Kernel.FileSystem.futimes
         (Time.posixToMillis lastAccessed // 1000)
@@ -251,14 +229,14 @@ changeTimes { lastAccessed, lastModified } fh =
 
 {-| Read all bytes in a file.
 -}
-read : ReadableFileHandle a -> Task Error Bytes
+read : ReadableFileHandle a -> Task FileSystem.Error Bytes
 read fh =
     readFromOffset fh { offset = 0, length = -1 }
 
 
 {-| Read `length` number of bytes from a file, starting at `offset` bytes.
 -}
-readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task Error Bytes
+readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task FileSystem.Error Bytes
 readFromOffset =
     Gren.Kernel.FileSystem.readFromOffset
 
@@ -268,28 +246,28 @@ readFromOffset =
 
 {-| Write the provided bytes into the file. If the file is not empty, bytes will be overwritten.
 -}
-write : WriteableFileHandle a -> Bytes -> Task Error (WriteableFileHandle a)
+write : WriteableFileHandle a -> Bytes -> Task FileSystem.Error (WriteableFileHandle a)
 write fh bytes =
     writeFromOffset fh 0 bytes
 
 
 {-| Write bytes into a specific location of a file.
 -}
-writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task Error (WriteableFileHandle a)
+writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task FileSystem.Error (WriteableFileHandle a)
 writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
 
 
-truncate : Int -> WriteableFileHandle a -> Task Error (WriteableFileHandle a)
+truncate : Int -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 truncate =
     Gren.Kernel.FileSystem.ftruncate
 
 
-sync : WriteableFileHandle a -> Task Error (WriteableFileHandle a)
+sync : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 sync =
     Gren.Kernel.FileSystem.fsync
 
 
-syncData : WriteableFileHandle a -> Task Error (WriteableFileHandle a)
+syncData : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 syncData =
     Gren.Kernel.FileSystem.fdatasync

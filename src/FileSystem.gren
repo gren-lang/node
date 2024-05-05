@@ -2,8 +2,21 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     ( Permission
     , initialize
     -- Errors
-    , Error(..)
+    , Error
+    , errorCode
     , errorToString
+    , errorIsPermissionDenied
+    , errorIsFileExists
+    , errorIsDirectoryFound
+    , errorIsTooManyOpenFiles
+    , errorIsNoSuchFileOrDirectory
+    , errorIsNotADirectory
+    , errorIsDirectoryNotEmpty
+    , errorIsNotPermitted
+    , errorIsLinkLoop
+    , errorIsPathTooLong
+    , errorIsInvalidInput
+    , errorIsIO
     -- Metadata
     , Metadata
     , EntityType(..)
@@ -48,7 +61,8 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Errors
 
-@docs Error, errorToString
+@docs Error, errorCode, errorToString
+@docs errorIsPermissionDenied, errorIsFileExists, errorIsDirectoryFound, errorIsTooManyOpenFiles, errorIsNoSuchFileOrDirectory, errorIsNotADirectory, errorIsDirectoryNotEmpty, errorIsNotPermitted, errorIsLinkLoop, errorIsPathTooLong, errorIsInvalidInput, errorIsIO
 
 ## Metadata
 
@@ -104,21 +118,77 @@ initialize =
 {-| The set of errors that can happen when accessing a file or directory.
 -}
 type Error
-    = ErrorNotFound
-    | ErrorNoAccess
-    | ErrorNotADirectory
-    | ErrorUnknown String
+    = Error String String
+
+
+errorCode : Error -> String
+errorCode (Error code _) =
+    code
 
 
 errorToString : Error -> String
-errorToString err =
-    case err of
-        ErrorNotFound -> "Not found"
-        ErrorNoAccess -> "No access"
-        ErrorNotADirectory -> "Not a directory"
-        ErrorUnknown errorMessage -> "Unknown error: " ++ errorMessage
+errorToString (Error _ message) =
+    message
 
 
+errorIsPermissionDenied : Error -> Bool
+errorIsPermissionDenied (Error code _) =
+    code == "EACCES"
+
+
+errorIsFileExists : Error -> Bool
+errorIsFileExists (Error code _) =
+    code == "EEXIST"
+
+
+errorIsDirectoryFound : Error -> Bool
+errorIsDirectoryFound (Error code _) =
+    code == "EISDIR"
+
+
+errorIsTooManyOpenFiles : Error -> Bool
+errorIsTooManyOpenFiles (Error code _) =
+    code == "EMFILE"
+
+
+errorIsNoSuchFileOrDirectory : Error -> Bool
+errorIsNoSuchFileOrDirectory (Error code _) =
+    code == "ENOENT"
+
+
+errorIsNotADirectory : Error -> Bool
+errorIsNotADirectory (Error code _) =
+    code == "ENOTDIR"
+
+
+errorIsDirectoryNotEmpty : Error -> Bool
+errorIsDirectoryNotEmpty (Error code _) =
+    code == "ENOTEMPTY"
+
+
+errorIsNotPermitted : Error -> Bool
+errorIsNotPermitted (Error code _) =
+    code == "EPERM"
+
+
+errorIsLinkLoop : Error -> Bool
+errorIsLinkLoop (Error code _) =
+    code == "ELOOP"
+
+
+errorIsPathTooLong : Error -> Bool
+errorIsPathTooLong (Error code _) =
+    code == "ENAMETOOLONG"
+
+
+errorIsInvalidInput : Error -> Bool
+errorIsInvalidInput (Error code _) =
+    code == "EINVAL"
+
+
+errorIsIO : Error -> Bool
+errorIsIO (Error code _) =
+    code == "EIO"
 
 
 -- METADATA
