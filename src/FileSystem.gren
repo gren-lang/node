@@ -528,7 +528,7 @@ onEffects router subs state =
                     |> Task.andThen 
                         (\processes ->
                             Process.spawn (attachWatcher key isRecursive (Platform.sendToSelf router << WatchPathChange isRecursive key))
-                                |> Task.map (\id -> Dict.insert (keyMapper key) id processes)
+                                |> Task.map (\id -> Dict.set (keyMapper key) id processes)
                         )
             )
     in
@@ -558,13 +558,13 @@ subToWatcher sub taggers =
             in
             case Dict.get key taggers of
                 Just data ->
-                    Dict.insert 
+                    Dict.set 
                         key
                         (Array.pushLast tagger data)
                         taggers
 
                 Nothing ->
-                    Dict.insert key [ tagger ] taggers
+                    Dict.set key [ tagger ] taggers
 
 
 attachWatcher : String -> Bool -> (WatchEvent -> Task.Task Never {}) -> Task.Task x {}

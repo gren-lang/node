@@ -199,7 +199,7 @@ Examples include the length of the body, authentication information, name of the
 withHeader : String -> String -> RequestConfiguration a -> RequestConfiguration a
 withHeader key value req =
     { req
-        | headers = Dict.insert (String.toLower key) [value] req.headers
+        | headers = Dict.set (String.toLower key) [value] req.headers
     }
 
 
@@ -261,7 +261,7 @@ header, potentially overwriting the header if it has already been set.
 withStringBody : String -> String -> RequestConfiguration a -> RequestConfiguration a
 withStringBody mimeType value req = 
     { req
-        | headers = Dict.insert "content-type" [mimeType] req.headers
+        | headers = Dict.set "content-type" [mimeType] req.headers
         , body = BodyString value
     }
 
@@ -282,7 +282,7 @@ potentially overwriting the header if it has already been set.
 withBytesBody : String -> Bytes -> RequestConfiguration a -> RequestConfiguration a
 withBytesBody mimeType value req = 
     { req
-        | headers = Dict.insert "content-type" [mimeType] req.headers
+        | headers = Dict.set "content-type" [mimeType] req.headers
         , body = BodyBytes value
     }
 
@@ -642,7 +642,7 @@ onEffects router commands state =
                             { state 
                                 | nextId = state.nextId + 1
                                 , msgHandlers = 
-                                    Dict.insert 
+                                    Dict.set 
                                         state.nextId
                                         { toMsg = toMsg
                                         , kernelRequest = kernelRequest

@@ -135,12 +135,12 @@ subToListener sub taggers =
         Listen ((Internal.Stream sid _) as stream) tagger ->
             case Dict.get sid taggers of
                 Just data ->
-                    Dict.insert sid
+                    Dict.set sid
                         { data | taggers = Array.pushLast tagger data.taggers }
                         taggers
 
                 Nothing ->
-                    Dict.insert sid
+                    Dict.set sid
                         { stream = stream
                         , taggers = [ tagger ]
                         }
@@ -165,7 +165,7 @@ spawnHelp router toSpawn processes =
           Array.dropFirst 1 toSpawn
 
         spawnRest processId =
-          spawnHelp router rest (Dict.insert sid processId processes)
+          spawnHelp router rest (Dict.set sid processId processes)
       in
         spawnStream
           |> Task.andThen spawnRest

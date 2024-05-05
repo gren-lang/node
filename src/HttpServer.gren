@@ -324,18 +324,15 @@ arrayPairs a =
 dictFromPairs : Array (Array String) -> Dict String String
 dictFromPairs pairs =
     let
-        mapper p =
+        mapper p dict =
             case p of
                 [a, b] ->
-                    Just { key = a, value = b }
+                    Dict.set a b dict
                 
                 _ ->
-                    Nothing
-        
-        array =
-            Array.filterMap mapper pairs
+                    dict
     in
-    Dict.fromArray array
+    Array.foldl mapper Dict.empty pairs
 
 
 -- EFFECT STUFF
