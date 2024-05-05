@@ -20,7 +20,7 @@ terminal is connected to this application.
 
 ## Commands
 
-@docs setStdInRawMode, setProcesstitle
+@docs setStdInRawMode, setProcessTitle
 
 ## Subscriptions
 
