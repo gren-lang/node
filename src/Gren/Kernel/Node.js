@@ -1,6 +1,6 @@
 /*
 
-import Dict exposing (empty, insert)
+import Dict exposing (empty, set)
 import Gren.Kernel.Platform exposing (export)
 import Gren.Kernel.Scheduler exposing (binding, succeed)
 import Gren.Kernel.FilePath exposing (fromString)
@@ -49,12 +49,11 @@ var _Node_setExitCode = function (code) {
 
 // Helpers
 
-// TODO: Move to core package?
 function _Node_objToDict(obj) {
   var dict = __Dict_empty;
 
   for (var key in obj) {
-    dict = A3(__Dict_insert, key, obj[key], dict);
+    dict = A3(__Dict_set, key, obj[key], dict);
   }
 
   return dict;

@@ -5,7 +5,7 @@ import HttpClient exposing (BadUrl, Timeout, BadStatus, BadHeaders, UnexpectedRe
 import Json.Decode as Decode exposing (decodeString, errorToString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
-import Dict exposing (empty, insert, foldl)
+import Dict exposing (empty, set, foldl)
 import Platform exposing (sendToApp)
 
 */
@@ -360,7 +360,7 @@ var _HttpClient_CustomTimeoutError = new Error();
 var _HttpClient_formatResponse = function (res, data) {
   let headerDict = __Dict_empty;
   for (const [key, value] of Object.entries(res.headersDistinct)) {
-    headerDict = A3(__Dict_insert, key.toLowerCase(), value, headerDict);
+    headerDict = A3(__Dict_set, key.toLowerCase(), value, headerDict);
   }
 
   return {
