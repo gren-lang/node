@@ -1,10 +1,11 @@
-effect module Terminal where { command = TerminalCmd, subscription = TerminalSub } exposing
+effect module Terminal where { subscription = TerminalSub } exposing
     ( Permission
     , Configuration
     , Size
     , initialize
     --
     , setStdInRawMode
+    , setProcessTitle
     --
     , onResize
     )
@@ -19,11 +20,12 @@ terminal is connected to this application.
 
 ## Commands
 
-@docs setStdInRawMode
+@docs setStdInRawMode, setProcesstitle
 
 ## Subscriptions
 
 @docs onResize
+
 -}
 
 
@@ -87,17 +89,6 @@ initialize =
 -- COMMANDS
 
 
-type TerminalCmd a
-    = SetStdInRawMode Bool
-
-
-cmdMap : (a -> b) -> TerminalCmd a -> TerminalCmd b
-cmdMap _ cmd =
-    case cmd of
-        SetStdInRawMode toggle ->
-            SetStdInRawMode toggle
-
-
 {-| In it's default mode, `stdin` only sends data when the user hits the enter key.
 
 If you switch over to raw mode, every keypress will be sent over the stream, and special
@@ -105,9 +96,17 @@ combinations like `Ctrl-C` will no longer trigger the kill signal.
 
 Enable this when you need full control over how input is handled.
 -}
-setStdInRawMode : Permission -> Bool -> Cmd a
+setStdInRawMode : Permission -> Bool -> Task Never {}
 setStdInRawMode _ toggle =
-    command (SetStdInRawMode toggle)
+    Gren.Kernel.Terminal.setStdInRawMode toggle
+
+
+{-| Set the title of the running process. This will usually display in
+activity monitors or in the title bar of your terminal emulator.
+-}
+setProcessTitle : Permission -> String -> Task Never {}
+setProcessTitle _ title =
+    Gren.Kernel.Terminal.setProcessTitle title
 
 
 -- SUBSCRIPTIONS
@@ -150,11 +149,10 @@ init =
 
 onEffects
     : Platform.Router msg Event
-    -> Array (TerminalCmd msg)
     -> Array (TerminalSub msg)
     -> State msg
     -> Task Never (State msg)
-onEffects router commands subs state =
+onEffects router subs state =
     let
         newTaggers =
             Array.foldl extractTagger [] subs
@@ -182,37 +180,23 @@ onEffects router commands subs state =
 
                     Nothing ->
                         Task.succeed Nothing
-
-        commandTasks =
-            Array.foldl
-                (\(SetStdInRawMode toggle) tasks ->
-                    Task.andThen (\_ -> Platform.sendToSelf router (SelfToggleStdInRawMode toggle)) tasks
-                )
-                (Task.succeed {})
-                commands
     in
-        commandTasks
-            |> Task.andThen (\_ -> subscriptionTask)
-            |> Task.andThen (\maybeProcessId ->
-                Task.succeed
-                    { taggers = newTaggers
-                    , maybeProcessId = maybeProcessId
-                    }
-                )
+    subscriptionTask
+        |> Task.andThen (\maybeProcessId ->
+            Task.succeed
+                { taggers = newTaggers
+                , maybeProcessId = maybeProcessId
+                }
+            )
 
 
 type Event
-    = SelfToggleStdInRawMode Bool
-    | SelfOnResize Size
+    = SelfOnResize Size
 
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task Never (State msg)
 onSelfMsg router event state =
     case event of
-        SelfToggleStdInRawMode toggle ->
-            Gren.Kernel.Terminal.setStdInRawMode toggle
-                |> Task.map (\_ -> state)
-
         SelfOnResize newSize ->
             state.taggers
                 |> Array.map (\tagger -> tagger newSize)

@@ -45,3 +45,10 @@ var _Terminal_setStdInRawMode = function (toggle) {
     callback(__Scheduler_succeed({}));
   });
 };
+
+var _Terminal_setProcessTitle = function (title) {
+  return __Scheduler_binding(function (callback) {
+    process.title = title;
+    callback(__Scheduler_succeed({}));
+  });
+};
