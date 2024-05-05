@@ -360,7 +360,7 @@ var _HttpClient_CustomTimeoutError = new Error();
 var _HttpClient_formatResponse = function (res, data) {
   let headerDict = __Dict_empty;
   for (const [key, value] of Object.entries(res.headersDistinct)) {
-    headerDict = A3(__Dict_insert, key, value, headerDict);
+    headerDict = A3(__Dict_insert, key.toLowerCase(), value, headerDict);
   }
 
   return {
