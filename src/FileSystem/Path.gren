@@ -72,7 +72,7 @@ prepend left right =
         | directory =
             left.directory
                 |> Array.pushLast (filenameWithExtension left)
-                |> Array.postfix right.directory
+                |> Array.append right.directory
                 |> Array.filter (\dir -> dir /= "")
         , filename = right.filename
         , extension = right.extension
