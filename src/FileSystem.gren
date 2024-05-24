@@ -80,6 +80,10 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 @docs hardLink, softLink, readLink, unlink
 
+## Watch for changes
+
+@docs WatchEvent, watch, watchRecursive
+
 -}
 
 
@@ -121,71 +125,99 @@ type Error
     = Error String String
 
 
+{-|
+-}
 errorCode : Error -> String
 errorCode (Error code _) =
     code
 
 
+{-|
+-}
 errorToString : Error -> String
 errorToString (Error _ message) =
     message
 
 
+{-|
+-}
 errorIsPermissionDenied : Error -> Bool
 errorIsPermissionDenied (Error code _) =
     code == "EACCES"
 
 
+{-|
+-}
 errorIsFileExists : Error -> Bool
 errorIsFileExists (Error code _) =
     code == "EEXIST"
 
 
+{-|
+-}
 errorIsDirectoryFound : Error -> Bool
 errorIsDirectoryFound (Error code _) =
     code == "EISDIR"
 
 
+{-|
+-}
 errorIsTooManyOpenFiles : Error -> Bool
 errorIsTooManyOpenFiles (Error code _) =
     code == "EMFILE"
 
 
+{-|
+-}
 errorIsNoSuchFileOrDirectory : Error -> Bool
 errorIsNoSuchFileOrDirectory (Error code _) =
     code == "ENOENT"
 
 
+{-|
+-}
 errorIsNotADirectory : Error -> Bool
 errorIsNotADirectory (Error code _) =
     code == "ENOTDIR"
 
 
+{-|
+-}
 errorIsDirectoryNotEmpty : Error -> Bool
 errorIsDirectoryNotEmpty (Error code _) =
     code == "ENOTEMPTY"
 
 
+{-|
+-}
 errorIsNotPermitted : Error -> Bool
 errorIsNotPermitted (Error code _) =
     code == "EPERM"
 
 
+{-|
+-}
 errorIsLinkLoop : Error -> Bool
 errorIsLinkLoop (Error code _) =
     code == "ELOOP"
 
 
+{-|
+-}
 errorIsPathTooLong : Error -> Bool
 errorIsPathTooLong (Error code _) =
     code == "ENAMETOOLONG"
 
 
+{-|
+-}
 errorIsInvalidInput : Error -> Bool
 errorIsInvalidInput (Error code _) =
     code == "EINVAL"
 
 
+{-|
+-}
 errorIsIO : Error -> Bool
 errorIsIO (Error code _) =
     code == "EIO"
@@ -194,6 +226,8 @@ errorIsIO (Error code _) =
 -- METADATA
 
 
+{-|
+-}
 type alias Metadata =
     { entityType : EntityType
     , deviceID : Int
@@ -222,6 +256,8 @@ type EntityType
     | Pipe
 
 
+{-|
+-}
 metadata : Permission -> { resolveLink : Bool } -> Path -> Task Error Metadata
 metadata _ { resolveLink } path =
     if resolveLink then
@@ -231,17 +267,23 @@ metadata _ { resolveLink } path =
         Gren.Kernel.FileSystem.lstat path
 
 
+{-|
+-}
 type AccessPermission
     = Read
     | Write
     | Execute
 
 
+{-|
+-}
 checkAccess : Permission -> Array AccessPermission -> Path -> Task Error Path
 checkAccess _ permissions path =
     Gren.Kernel.FileSystem.access permissions path
 
 
+{-|
+-}
 changeAccess 
     : Permission
     -> { owner : Array AccessPermission 
@@ -265,6 +307,8 @@ changeAccess _ permissions path =
         Gren.Kernel.FileSystem.lchmod mode path
 
 
+{-|
+-}
 accessPermissionsToInt : Array AccessPermission -> Int
 accessPermissionsToInt values =
     let
@@ -278,6 +322,8 @@ accessPermissionsToInt values =
     numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
 
 
+{-|
+-}
 changeOwner : Permission -> { userID : Int, groupID : Int, resolveLink : Bool } -> Path -> Task Error Path
 changeOwner _ options path =
     if options.resolveLink then
@@ -287,6 +333,8 @@ changeOwner _ options path =
         Gren.Kernel.FileSystem.lchown options path
 
 
+{-|
+-}
 changeTimes : Permission -> { lastAccessed : Time.Posix, lastModified : Time.Posix, resolveLink : Bool } -> Path -> Task Error Path
 changeTimes _ { lastAccessed, lastModified, resolveLink } path =
     let
@@ -303,11 +351,15 @@ changeTimes _ { lastAccessed, lastModified, resolveLink } path =
         Gren.Kernel.FileSystem.lutimes lastAccessedSeconds lastModifiedSeconds path
 
 
+{-|
+-}
 move : Permission -> Path -> Path -> Task Error Path
 move _ new old =
     Gren.Kernel.FileSystem.rename old new
 
 
+{-|
+-}
 realPath : Permission -> Path -> Task Error Path
 realPath _ path =
     Gren.Kernel.FileSystem.realpath path
@@ -316,26 +368,36 @@ realPath _ path =
 -- FILES
 
 
+{-|
+-}
 appendToFile : Permission -> Bytes -> Path -> Task Error Path
 appendToFile _ bytes path =
     Gren.Kernel.FileSystem.appendFile bytes path
 
 
+{-|
+-}
 copyFile : Permission -> Path -> Path -> Task Error Path
 copyFile _ dest src =
     Gren.Kernel.FileSystem.copyFile src dest
 
 
+{-|
+-}
 readFile : Permission -> Path -> Task Error Bytes
 readFile _ path =
     Gren.Kernel.FileSystem.readFile path
 
 
+{-|
+-}
 writeFile : Permission -> Bytes -> Path -> Task Error Path
 writeFile _ bytes path =
     Gren.Kernel.FileSystem.writeFile bytes path
 
 
+{-|
+-}
 truncateFile : Permission -> Int -> Path -> Task Error Path
 truncateFile _ length path =
     Gren.Kernel.FileSystem.truncate length path
@@ -372,6 +434,8 @@ makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 
 
+{-|
+-}
 makeTempDirectory : Permission -> String -> Task Error Path
 makeTempDirectory _ prefix =
     Gren.Kernel.FileSystem.mkdtemp prefix
@@ -388,21 +452,29 @@ currentWorkingDirectory _ =
 -- LINKS
 
 
+{-|
+-}
 hardLink : Permission -> Path -> Path -> Task Error Path
 hardLink _ dest src =
     Gren.Kernel.FileSystem.link src dest
 
 
+{-|
+-}
 softLink : Permission -> Path -> Path -> Task Error Path
 softLink _ dest src =
     Gren.Kernel.FileSystem.symlink src dest
 
 
+{-|
+-}
 readLink : Permission -> Path -> Task Error Path
 readLink _ path =
     Gren.Kernel.FileSystem.readLink path
 
 
+{-|
+-}
 unlink : Permission -> Path -> Task Error Path
 unlink _ path =
     Gren.Kernel.FileSystem.unlink path
@@ -415,6 +487,8 @@ type FileSystemSub msg
     = Watch Path Bool (WatchEvent -> msg)
 
 
+{-|
+-}
 type WatchEvent
     = Changed (Maybe Path)
     | Moved (Maybe Path)

@@ -8,13 +8,27 @@ module FileSystem.Path exposing
     , filenameWithExtension
     , append
     , prepend
-    , concat
+    , join
     )
+
+
+{-| FileSystem.Path
+
+@docs Path
+
+@docs empty, fromPosixString, toPosixString, fromWin32String, toWin32String
+
+@docs filenameWithExtension
+
+@docs append, prepend, join
+-}
 
 
 import Gren.Kernel.FilePath
 
 
+{-|
+-}
 type alias Path =
     { root : String
     , directory : Array String
@@ -23,6 +37,8 @@ type alias Path =
     }
 
 
+{-|
+-}
 empty : Path
 empty =
     { root = ""
@@ -32,26 +48,36 @@ empty =
     }
 
 
+{-|
+-}
 fromPosixString : String -> Path
 fromPosixString =
     Gren.Kernel.FilePath.fromPosix
 
 
+{-|
+-}
 toPosixString : Path -> String
 toPosixString =
     Gren.Kernel.FilePath.toPosix
 
 
+{-|
+-}
 fromWin32String : String -> Path
 fromWin32String =
     Gren.Kernel.FilePath.fromWin32
 
 
+{-|
+-}
 toWin32String : Path -> String
 toWin32String =
     Gren.Kernel.FilePath.toWin32
 
 
+{-|
+-}
 filenameWithExtension : Path -> String
 filenameWithExtension path =
     if String.isEmpty path.extension then
@@ -61,11 +87,15 @@ filenameWithExtension path =
         path.filename ++ "." ++ path.extension
 
 
+{-|
+-}
 append : Path -> Path -> Path
 append left right =
     prepend right left
 
 
+{-|
+-}
 prepend : Path -> Path -> Path
 prepend left right =
     { left
@@ -79,6 +109,8 @@ prepend left right =
     }
 
 
-concat : Array Path -> Path
-concat paths =
+{-|
+-}
+join : Array Path -> Path
+join paths =
     Array.foldl append (fromPosixString ".") paths

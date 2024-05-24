@@ -184,11 +184,15 @@ close =
 -- METADATA
 
 
+{-|
+-}
 metadata : ReadableFileHandle a -> Task FileSystem.Error (ReadableFileHandle FileSystem.Metadata)
 metadata =
     Gren.Kernel.FileSystem.fstat
 
 
+{-|
+-}
 changeAccess 
     : { owner : Array FileSystem.AccessPermission
       , group : Array FileSystem.AccessPermission
@@ -206,11 +210,15 @@ changeAccess permissions fh =
     Gren.Kernel.FileSystem.fchmod mode fh
 
 
+{-|
+-}
 changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 changeOwner =
     Gren.Kernel.FileSystem.fchown
 
 
+{-|
+-}
 changeTimes 
     : { lastAccessed : Time.Posix
       , lastModified : Time.Posix 
@@ -258,16 +266,22 @@ writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
 
 
+{-|
+-}
 truncate : Int -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 truncate =
     Gren.Kernel.FileSystem.ftruncate
 
 
+{-|
+-}
 sync : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 sync =
     Gren.Kernel.FileSystem.fsync
 
 
+{-|
+-}
 syncData : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 syncData =
     Gren.Kernel.FileSystem.fdatasync
