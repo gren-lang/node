@@ -16,7 +16,6 @@ like bytes flowing from a server to a client, or from a file to a program.
 import Dict exposing (Dict)
 import Gren.Kernel.Stream
 import Task exposing (Task)
-import Bytes.Encode as BE
 import Bytes exposing (Bytes)
 import Process
 import Internal.Stream as Internal
@@ -39,9 +38,7 @@ send (Internal.Stream _ kernelStream) bytes =
 -}
 sendString : Stream -> String -> Task x {}
 sendString stream string =
-    send stream <|
-        BE.encode <|
-            BE.string string
+    send stream <| Bytes.fromString string
 
 
 {-| This sends string and a newline over a `Stream`.

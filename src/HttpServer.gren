@@ -216,9 +216,7 @@ toRequest
 -}
 bodyAsString : Request -> Maybe String
 bodyAsString req =
-    Decode.decode
-        (Decode.string (Bytes.width req.body))
-        req.body
+    Bytes.toString req.body
 
 
 {-| Get request body as json.
