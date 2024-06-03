@@ -9,6 +9,9 @@ module FileSystem.Path exposing
     , append
     , prepend
     , join
+    , homeDirectory
+    , tmpDirectory
+    , devNull
     )
 
 
@@ -21,9 +24,12 @@ module FileSystem.Path exposing
 @docs filenameWithExtension
 
 @docs append, prepend, join
+
+@docs homeDirectory, tmpDirectory, devNull
 -}
 
 
+import Task exposing (Task)
 import Gren.Kernel.FilePath
 
 
@@ -114,3 +120,24 @@ prepend left right =
 join : Array Path -> Path
 join paths =
     Array.foldl append (fromPosixString ".") paths
+
+
+{-|
+-}
+homeDirectory : Task Never Path
+homeDirectory =
+    Gren.Kernel.FilePath.homeDir
+
+
+{-|
+-}
+tmpDirectory : Task Never Path
+tmpDirectory =
+    Gren.Kernel.FilePath.tmpDir
+
+
+{-|
+-}
+devNull : Task Never Path
+devNull =
+    Gren.Kernel.FilePath.devNull

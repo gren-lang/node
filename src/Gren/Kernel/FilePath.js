@@ -1,8 +1,10 @@
 /*
+import Gren.Kernel.Scheduler exposing (binding, succeed)
 */
 
 var path = require("node:path");
 var process = require("node:process");
+var os = require("node:os");
 
 var _FilePath_fromPosix = function (str) {
   return _FilePath_parse(path.posix, str);
@@ -87,3 +89,15 @@ var _FilePath_format = function (pathMod, filePath) {
 
   return filePath.__$root + pathArray.join(pathMod.sep);
 };
+
+var _FilePath_homeDir = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(_FilePath_fromString(os.homedir())));
+});
+
+var _FilePath_tmpDir = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(_FilePath_fromString(os.tmpdir())));
+});
+
+var _FilePath_devNull = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(_FilePath_fromString(os.devNull)));
+});
