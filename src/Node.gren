@@ -263,7 +263,7 @@ defineSimpleProgram initTask =
                         )
             }
         , update = update (\_ _ -> { model = {}, command = Cmd.none })
-        , subscriptions = always Sub.none
+        , subscriptions = (\_ -> Sub.none)
         }
 
 
