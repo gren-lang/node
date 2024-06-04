@@ -94,6 +94,13 @@ var _FilePath_homeDir = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(_FilePath_fromString(os.homedir())));
 });
 
+var _FilePath_currentWorkingDirectory = __Scheduler_binding(function (
+  callback
+) {
+  const cwd = _FilePath_fromString(process.cwd());
+  callback(__Scheduler_succeed(cwd));
+});
+
 var _FilePath_tmpDir = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(_FilePath_fromString(os.tmpdir())));
 });

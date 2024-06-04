@@ -14,6 +14,7 @@ module FileSystem.Path exposing
     , join
     --
     , homeDirectory
+    , currentWorkingDirectory
     , tmpDirectory
     , devNull
     )
@@ -35,9 +36,9 @@ module FileSystem.Path exposing
 
 @docs append, prepend, join
 
-## Special directories
+## Special paths
 
-@docs homeDirectory, tmpDirectory, devNull
+@docs homeDirectory, currentWorkingDirectory, tmpDirectory, devNull
 -}
 
 
@@ -152,6 +153,16 @@ join paths =
 homeDirectory : Task Never Path
 homeDirectory =
     Gren.Kernel.FilePath.homeDir
+
+
+{-| Returns the current working directory of the program.
+
+This is the directory that all relative paths are relative to, and is usually the
+directory that the program was executed from.
+-}
+currentWorkingDirectory : Task x Path
+currentWorkingDirectory =
+    Gren.Kernel.FilePath.currentWorkingDirectory
 
 
 {-| Find a [Path]() that represents a directory meant to hold temporary files.

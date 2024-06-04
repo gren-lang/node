@@ -40,7 +40,6 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , listDirectory
     , makeDirectory
     , makeTempDirectory
-    , currentWorkingDirectory
     -- Links
     , hardLink
     , softLink
@@ -74,7 +73,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Directories
 
-@docs listDirectory, makeDirectory, makeTempDirectory, currentWorkingDirectory
+@docs listDirectory, makeDirectory, makeTempDirectory 
 
 ## Links
 
@@ -439,14 +438,6 @@ makeDirectory _ options path =
 makeTempDirectory : Permission -> String -> Task Error Path
 makeTempDirectory _ prefix =
     Gren.Kernel.FileSystem.mkdtemp prefix
-
-
-{-| Returns the current working directory of the program.
-This is the directory that all relative paths are relative to.
--}
-currentWorkingDirectory : Permission -> Task x Path
-currentWorkingDirectory _ =
-    Gren.Kernel.FileSystem.currentWorkingDirectory
 
 
 -- LINKS

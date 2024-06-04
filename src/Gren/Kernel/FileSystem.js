@@ -253,13 +253,6 @@ var _FileSystem_toEntityType = function (dirEnt) {
   }
 };
 
-var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (
-  callback
-) {
-  const cwd = __FilePath_fromString(process.cwd());
-  callback(__Scheduler_succeed(cwd));
-});
-
 var _FileSystem_fchmod = F2(function (mode, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchmod(fd, mode, function (err) {
