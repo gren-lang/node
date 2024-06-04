@@ -1,29 +1,41 @@
 module FileSystem.Path exposing 
     ( Path
+    --
     , empty
     , fromPosixString
     , toPosixString
     , fromWin32String
     , toWin32String
+    --
     , filenameWithExtension
+    --
     , append
     , prepend
     , join
+    --
     , homeDirectory
     , tmpDirectory
     , devNull
     )
 
 
-{-| FileSystem.Path
+{-| A path represents the location of a file or directory in a filesystem.
 
 @docs Path
 
+## Constructors
+
 @docs empty, fromPosixString, toPosixString, fromWin32String, toWin32String
+
+## Query
 
 @docs filenameWithExtension
 
+## Manipulation
+
 @docs append, prepend, join
+
+## Special directories
 
 @docs homeDirectory, tmpDirectory, devNull
 -}
@@ -33,7 +45,15 @@ import Task exposing (Task)
 import Gren.Kernel.FilePath
 
 
-{-|
+{-| A cross-platform representation of a filesystem path.
+
+If `root` is empty, it means that the path is relative to the working directory.
+On posix-compatible systems (Linux, Mac...), the root value is "/" if not empty.
+On Windows, the root refers to the specific disk that the path applies to.
+
+`filename` (and `extension`) refers to the last part of a path. It can still
+represent a directory.
+
 -}
 type alias Path =
     { root : String
@@ -43,7 +63,7 @@ type alias Path =
     }
 
 
-{-|
+{-| The empty [Path](). Normally treated as the current directory.
 -}
 empty : Path
 empty =
@@ -54,35 +74,40 @@ empty =
     }
 
 
-{-|
+{-| Build a [Path]() from a `String`. The `String` should represent a Posix-compatible path.
 -}
 fromPosixString : String -> Path
 fromPosixString =
     Gren.Kernel.FilePath.fromPosix
 
 
-{-|
+{-| String representation of a [Path]() for Posix systems.
 -}
 toPosixString : Path -> String
 toPosixString =
     Gren.Kernel.FilePath.toPosix
 
 
-{-|
+{-| Build a [Path]() from a `String`. The `String` should represent a Windows-compatible path.
 -}
 fromWin32String : String -> Path
 fromWin32String =
     Gren.Kernel.FilePath.fromWin32
 
 
-{-|
+{-| `String` representation of a [Path]() for Windows.
 -}
 toWin32String : Path -> String
 toWin32String =
     Gren.Kernel.FilePath.toWin32
 
 
-{-|
+{-| Return the filename and file extension for a [Path]().
+
+    "/home/me/file.md"
+        |> fromPosixString
+        |> filenameWithExtension
+        -- returns "file.md"
 -}
 filenameWithExtension : Path -> String
 filenameWithExtension path =
@@ -93,14 +118,14 @@ filenameWithExtension path =
         path.filename ++ "." ++ path.extension
 
 
-{-|
+{-| Join two paths by appending the first [Path]() onto the second.
 -}
 append : Path -> Path -> Path
 append left right =
     prepend right left
 
 
-{-|
+{-| Join two paths by prepending the first [Path]() onto the second.
 -}
 prepend : Path -> Path -> Path
 prepend left right =
@@ -115,28 +140,28 @@ prepend left right =
     }
 
 
-{-|
+{-| Join all paths in an `Array`.
 -}
 join : Array Path -> Path
 join paths =
     Array.foldl append (fromPosixString ".") paths
 
 
-{-|
+{-| Find the [Path]() that represents the home directory of the current user.
 -}
 homeDirectory : Task Never Path
 homeDirectory =
     Gren.Kernel.FilePath.homeDir
 
 
-{-|
+{-| Find a [Path]() that represents a directory meant to hold temporary files.
 -}
 tmpDirectory : Task Never Path
 tmpDirectory =
     Gren.Kernel.FilePath.tmpDir
 
 
-{-|
+{-| A file which is always empty. Anything written to this file will be discarded.
 -}
 devNull : Task Never Path
 devNull =
