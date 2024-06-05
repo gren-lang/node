@@ -683,3 +683,20 @@ var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
     };
   });
 });
+var _FileSystem_homeDir = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(__FilePath_fromString(os.homedir())));
+});
+
+var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (
+  callback
+) {
+  callback(__Scheduler_succeed(__FilePath_fromString(process.cwd())));
+});
+
+var _FileSystem_tmpDir = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(__FilePath_fromString(os.tmpdir())));
+});
+
+var _FileSystem_devNull = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(__FilePath_fromString(os.devNull)));
+});

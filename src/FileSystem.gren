@@ -49,6 +49,11 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , WatchEvent(..)
     , watch
     , watchRecursive
+    --
+    , homeDirectory
+    , currentWorkingDirectory
+    , tmpDirectory
+    , devNull
     )
 
 
@@ -83,6 +88,9 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 @docs WatchEvent, watch, watchRecursive
 
+## Special paths
+
+@docs homeDirectory, currentWorkingDirectory, tmpDirectory, devNull
 -}
 
 
@@ -669,3 +677,37 @@ onSelfMsg router (WatchPathChange recursive key event) state =
 
             Nothing ->
                 Task.succeed state
+
+
+-- SPECIAL PATHS
+
+
+{-| Find the [Path](FileSystem.Path#Path) that represents the home directory of the current user.
+-}
+homeDirectory : Permission -> Task Never Path
+homeDirectory _ =
+    Gren.Kernel.FileSystem.homeDir
+
+
+{-| Returns the current working directory of the program.
+
+This is the directory that all relative paths are relative to, and is usually the
+directory that the program was executed from.
+-}
+currentWorkingDirectory : Permission -> Task x Path
+currentWorkingDirectory _ =
+    Gren.Kernel.FileSystem.currentWorkingDirectory
+
+
+{-| Find a [Path](FileSystem.Path#Path) that represents a directory meant to hold temporary files.
+-}
+tmpDirectory : Permission -> Task Never Path
+tmpDirectory _ =
+    Gren.Kernel.FileSystem.tmpDir
+
+
+{-| [Path](FileSystem.Path#Path) to a file which is always empty. Anything written to this file will be discarded.
+-}
+devNull : Permission -> Task Never Path
+devNull _ =
+    Gren.Kernel.FileSystem.devNull

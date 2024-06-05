@@ -12,11 +12,6 @@ module FileSystem.Path exposing
     , append
     , prepend
     , join
-    --
-    , homeDirectory
-    , currentWorkingDirectory
-    , tmpDirectory
-    , devNull
     )
 
 
@@ -35,10 +30,6 @@ module FileSystem.Path exposing
 ## Manipulation
 
 @docs append, prepend, join
-
-## Special paths
-
-@docs homeDirectory, currentWorkingDirectory, tmpDirectory, devNull
 -}
 
 
@@ -64,7 +55,7 @@ type alias Path =
     }
 
 
-{-| The empty [Path](). Normally treated as the current directory.
+{-| The empty [Path](#Path). Normally treated as the current directory.
 -}
 empty : Path
 empty =
@@ -75,35 +66,35 @@ empty =
     }
 
 
-{-| Build a [Path]() from a `String`. The `String` should represent a Posix-compatible path.
+{-| Build a [Path](#Path) from a `String`. The `String` should represent a Posix-compatible path.
 -}
 fromPosixString : String -> Path
 fromPosixString =
     Gren.Kernel.FilePath.fromPosix
 
 
-{-| String representation of a [Path]() for Posix systems.
+{-| String representation of a [Path](#Path) for Posix systems.
 -}
 toPosixString : Path -> String
 toPosixString =
     Gren.Kernel.FilePath.toPosix
 
 
-{-| Build a [Path]() from a `String`. The `String` should represent a Windows-compatible path.
+{-| Build a [Path](#Path) from a `String`. The `String` should represent a Windows-compatible path.
 -}
 fromWin32String : String -> Path
 fromWin32String =
     Gren.Kernel.FilePath.fromWin32
 
 
-{-| `String` representation of a [Path]() for Windows.
+{-| `String` representation of a [Path](#Path) for Windows.
 -}
 toWin32String : Path -> String
 toWin32String =
     Gren.Kernel.FilePath.toWin32
 
 
-{-| Return the filename and file extension for a [Path]().
+{-| Return the filename and file extension for a [Path](#Path).
 
     "/home/me/file.md"
         |> fromPosixString
@@ -119,14 +110,14 @@ filenameWithExtension path =
         path.filename ++ "." ++ path.extension
 
 
-{-| Join two paths by appending the first [Path]() onto the second.
+{-| Join two paths by appending the first [Path](#Path) onto the second.
 -}
 append : Path -> Path -> Path
 append left right =
     prepend right left
 
 
-{-| Join two paths by prepending the first [Path]() onto the second.
+{-| Join two paths by prepending the first [Path](#Path) onto the second.
 -}
 prepend : Path -> Path -> Path
 prepend left right =
@@ -146,34 +137,3 @@ prepend left right =
 join : Array Path -> Path
 join paths =
     Array.foldl append (fromPosixString ".") paths
-
-
-{-| Find the [Path]() that represents the home directory of the current user.
--}
-homeDirectory : Task Never Path
-homeDirectory =
-    Gren.Kernel.FilePath.homeDir
-
-
-{-| Returns the current working directory of the program.
-
-This is the directory that all relative paths are relative to, and is usually the
-directory that the program was executed from.
--}
-currentWorkingDirectory : Task x Path
-currentWorkingDirectory =
-    Gren.Kernel.FilePath.currentWorkingDirectory
-
-
-{-| Find a [Path]() that represents a directory meant to hold temporary files.
--}
-tmpDirectory : Task Never Path
-tmpDirectory =
-    Gren.Kernel.FilePath.tmpDir
-
-
-{-| A file which is always empty. Anything written to this file will be discarded.
--}
-devNull : Task Never Path
-devNull =
-    Gren.Kernel.FilePath.devNull
