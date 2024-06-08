@@ -30,11 +30,14 @@ module FileSystem.FileHandle exposing
     )
 
 
-{-| This module provides access to the file system. It allows you to read and write files or directories.
+{-| This module provides access to files through FileHandles. A [FileHandle](#FileHandle) represents an open file.
+If you know you're going to perform repeated operations on a file, it will be more efficient through a [FileHandle](#FileHandle).
+
+@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly, 
 
 ## File open/close
 
-@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
+@docs openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
 
 ## File metadata
 
@@ -84,17 +87,17 @@ type ReadPermission = ReadPermission
 type WritePermission = WritePermission
 
 
-{-| A `FileHandle` that can be used in read operations.
+{-| An alias for a `FileHandle` that can be used in read operations.
 -}
 type alias ReadableFileHandle a = FileHandle ReadPermission a
 
 
-{-| A `FileHandle` that can be used in write operations.
+{-| An alias for a `FileHandle` that can be used in write operations.
 -}
 type alias WriteableFileHandle a = FileHandle a WritePermission
 
 
-{-| A `FileHandle` that can be used for both read and write operations.
+{-| An alias for a `FileHandle` that can be used for both read and write operations.
 -}
 type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
 
@@ -184,14 +187,14 @@ close =
 -- METADATA
 
 
-{-|
+{-| Retrieve [Metadata](FileSystem#Metadata) about the file represented by the [FileHandle](#FileHandle).
 -}
 metadata : ReadableFileHandle a -> Task FileSystem.Error (ReadableFileHandle FileSystem.Metadata)
 metadata =
     Gren.Kernel.FileSystem.fstat
 
 
-{-|
+{-| Change how different users can access a file.
 -}
 changeAccess 
     : { owner : Array FileSystem.AccessPermission
@@ -210,14 +213,15 @@ changeAccess permissions fh =
     Gren.Kernel.FileSystem.fchmod mode fh
 
 
-{-|
+{-| Change who owns the file. You'll need the ID of the new user and group who will own the file.
 -}
 changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 changeOwner =
     Gren.Kernel.FileSystem.fchown
 
 
-{-|
+{-| This will let you set the timestamp for when the file was last accessed, and last modified.
+The times will be rounded down to the closest second.
 -}
 changeTimes 
     : { lastAccessed : Time.Posix
@@ -266,21 +270,29 @@ writeFromOffset =
     Gren.Kernel.FileSystem.writeFromOffset
 
 
-{-|
+{-| Make sure that a file is of the given size. If the file is larger than the given size, excess bytes
+are discarded. If the file is smaller than the given size, zeroes will be added until it is of the given
+size.
 -}
 truncate : Int -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 truncate =
     Gren.Kernel.FileSystem.ftruncate
 
 
-{-|
+{-| Usually when you make changes to a file, the changes aren't actually written to disk right away.
+The changes are likely placed in an OS-level buffer, and flushed to disk when the OS decides its time
+to do so.
+
+This task, when executed, will force changes to be written to disk.
 -}
 sync : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 sync =
     Gren.Kernel.FileSystem.fsync
 
 
-{-|
+{-| Same as [sync](#sync), except it only forces the contents of the file to be written. Changes to a
+file's metadata are not synced. This operation might be a little faster than a full sync, at the risk
+of loosing changes to metadata.
 -}
 syncData : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
 syncData =
