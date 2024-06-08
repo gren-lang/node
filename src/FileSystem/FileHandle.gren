@@ -50,7 +50,6 @@ If you know you're going to perform repeated operations on a file, it will be mo
 ## Write to file
 
 @docs write, writeFromOffset, truncate, sync, syncData
-
 -}
 
 
@@ -69,7 +68,7 @@ import Time
 Having a file handle gives you access to perform certain operations, so make sure you
 only pass a file handle to code you can trust.
 
-The `FileHandle` type also contains the read and write access permissions as part of its
+The [FileHandle](#FileHandle) type also contains the read and write access permissions as part of its
 type.
 -}
 type FileHandle readAccess writeAccess
@@ -87,22 +86,22 @@ type ReadPermission = ReadPermission
 type WritePermission = WritePermission
 
 
-{-| An alias for a `FileHandle` that can be used in read operations.
+{-| An alias for a [FileHandle](#FileHandle) that can be used in read operations.
 -}
 type alias ReadableFileHandle a = FileHandle ReadPermission a
 
 
-{-| An alias for a `FileHandle` that can be used in write operations.
+{-| An alias for a [FileHandle](#FileHandle) that can be used in write operations.
 -}
 type alias WriteableFileHandle a = FileHandle a WritePermission
 
 
-{-| An alias for a `FileHandle` that can be used for both read and write operations.
+{-| An alias for a [FileHandle](#FileHandle) that can be used for both read and write operations.
 -}
 type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
 
 
-{-| This lets you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has read permission.
+{-| This lets you downgrade a [ReadWriteableFileHandle](#ReadWriteableFileHandle) to a [FileHandle](#FileHandle) that only has read permission.
 
 Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
 of your code.
@@ -112,7 +111,7 @@ makeReadOnly =
     Gren.Kernel.FileSystem.coerce
 
 
-{-| This let's you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has write permission.
+{-| This let's you downgrade a [ReadWriteableFileHandle](#ReadWriteableFileHandle) to a [FileHandle](#FileHandle) that only has write permission.
 
 Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
 of your code.
@@ -177,7 +176,7 @@ openImpl =
     Gren.Kernel.FileSystem.open
 
 
-{-| Close a file. All operations performed against the given `FileHandle` will fail.
+{-| Close a file. All operations performed against the given [FileHandle](#FileHandle) will fail.
 -}
 close : FileHandle a b -> Task FileSystem.Error {}
 close =
