@@ -8,6 +8,7 @@ module FileSystem.Path exposing
     , toWin32String
     --
     , filenameWithExtension
+    , parentPath
     --
     , append
     , prepend
@@ -25,7 +26,7 @@ module FileSystem.Path exposing
 
 ## Query
 
-@docs filenameWithExtension
+@docs filenameWithExtension, parentPath
 
 ## Manipulation
 
@@ -108,6 +109,49 @@ filenameWithExtension path =
 
     else
         path.filename ++ "." ++ path.extension
+
+
+{-| Return a [Path](#Path) that represents the directory which holds the given [Path](#Path)
+
+    "/home/me/file.md"
+        |> fromPosixString
+        |> parentPath
+        -- returns (Just "/home/me")
+-}
+parentPath : Path -> Maybe Path
+parentPath path =
+    case Array.popLast path.directory of
+        Nothing ->
+            if filenameWithExtension path == "" then
+                Nothing
+
+            else
+                Just
+                    { path
+                        | filename = ""
+                        , extension = ""
+                    }
+
+        Just { last, initial } ->
+            let
+                { filename, extension } =
+                    case String.split "." last of
+                        [ file, ext ] ->
+                            { filename = file
+                            , extension = ext
+                            }
+
+                        _ ->
+                            { filename = last
+                            , extension = ""
+                            }
+            in
+            Just
+                { path
+                    | directory = initial
+                    , filename = filename
+                    , extension = extension
+                }
 
 
 {-| Join two paths by appending the first [Path](#Path) onto the second.
