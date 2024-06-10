@@ -489,7 +489,7 @@ errorToString err =
             "Bad headers: one or more of your headers contains invalid characters."
 
         BadStatus res ->
-            "Bad status: " ++ String.fromInt res.statusCode
+            "Bad status: " ++ String.fromInt res.statusCode ++ " - " ++ res.statusText
 
         UnexpectedResponseBody message ->
             "Unexpected response body: " ++ message
