@@ -57,9 +57,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     )
 
 
-{-| This module provides access to the file system. It allows you to read and write files or directories.
-
-## Initialization
+{-| This module provides access to the file system. It allows you to read and write files, create directories and links etc.
 
 @docs Permission, initialize
 
@@ -126,104 +124,112 @@ initialize =
 -- ERRORS
 
 
-{-| The set of errors that can happen when accessing a file or directory.
+{-| Represents an error that occured when working with the file system.
+
+There are many different kinds of error depending on which operation you're performing and which
+operating system you're performing it on. To figure out which error it is, you'll need
+to use one of the helper functions below, or check the specific error code.
 -}
 type Error
     = Error String String
 
 
-{-|
+{-| A string that identifies a specific kind of error. There can be several error codes for the
+same kind of error, depending on the operating system that is in use.
 -}
 errorCode : Error -> String
 errorCode (Error code _) =
     code
 
 
-{-|
+{-| Returns a human readable description of the error.
 -}
 errorToString : Error -> String
 errorToString (Error _ message) =
     message
 
 
-{-|
+{-| If `True`, the error occured because you don't have the correct access permission to perform
+the operation.
 -}
 errorIsPermissionDenied : Error -> Bool
 errorIsPermissionDenied (Error code _) =
     code == "EACCES"
 
 
-{-|
+{-| If `True`, a file exists when it was expected not to.
 -}
 errorIsFileExists : Error -> Bool
 errorIsFileExists (Error code _) =
     code == "EEXIST"
 
 
-{-|
+{-| If `True`, a file operation was attempted on a directory.
 -}
 errorIsDirectoryFound : Error -> Bool
 errorIsDirectoryFound (Error code _) =
     code == "EISDIR"
 
 
-{-|
+{-| If `True`, the application has too many open files.
 -}
 errorIsTooManyOpenFiles : Error -> Bool
 errorIsTooManyOpenFiles (Error code _) =
     code == "EMFILE"
 
 
-{-|
+{-| If `True`, the code was passed a [Path](FileSystem.Path#Path) which points to a file or directory
+that doesn't exist.
 -}
 errorIsNoSuchFileOrDirectory : Error -> Bool
 errorIsNoSuchFileOrDirectory (Error code _) =
     code == "ENOENT"
 
 
-{-|
+{-| If `True`, a directory was expected but it found a file or some other entity.
 -}
 errorIsNotADirectory : Error -> Bool
 errorIsNotADirectory (Error code _) =
     code == "ENOTDIR"
 
 
-{-|
+{-| If `True`, the operation expected an empty directory, but the directory is not empty.
 -}
 errorIsDirectoryNotEmpty : Error -> Bool
 errorIsDirectoryNotEmpty (Error code _) =
     code == "ENOTEMPTY"
 
 
-{-|
+{-| If `True`, the operation was rejected because of missing privileges.
 -}
 errorIsNotPermitted : Error -> Bool
 errorIsNotPermitted (Error code _) =
     code == "EPERM"
 
 
-{-|
+{-| If `True`, we seem to be stuck in a loop following link after link after...
 -}
 errorIsLinkLoop : Error -> Bool
 errorIsLinkLoop (Error code _) =
     code == "ELOOP"
 
 
-{-|
+{-| If `True`, the [Path](FileSystem.Path#Path) is too long.
 -}
 errorIsPathTooLong : Error -> Bool
 errorIsPathTooLong (Error code _) =
     code == "ENAMETOOLONG"
 
 
-{-|
+{-| If `True`, the arguments passed to the function is invalid somehow.
 -}
 errorIsInvalidInput : Error -> Bool
 errorIsInvalidInput (Error code _) =
     code == "EINVAL"
 
 
-{-|
+{-| If `True`, the operation failed due to an IO error. This could be that the disk is
+busy, or even corrupt.
 -}
 errorIsIO : Error -> Bool
 errorIsIO (Error code _) =
@@ -233,7 +239,7 @@ errorIsIO (Error code _) =
 -- METADATA
 
 
-{-|
+{-| Represents extra information about an entity in the file system.
 -}
 type alias Metadata =
     { entityType : EntityType
@@ -250,9 +256,7 @@ type alias Metadata =
     }
 
 
-{-| Represents entries in a directory.
-
-Variants for each type of entry, with a `String` representing the relative path.
+{-| The type of an entity in the file system.
 -}
 type EntityType
     = File
@@ -263,7 +267,10 @@ type EntityType
     | Pipe
 
 
-{-|
+{-| Return metadata for the entity represented by [Path](FileSystem.Path#Path).
+
+If `resolveLink` is `False`, you will receive metadata for the link itself, not the entity
+pointed at by the link.
 -}
 metadata : Permission -> { resolveLink : Bool } -> Path -> Task Error Metadata
 metadata _ { resolveLink } path =
@@ -274,7 +281,10 @@ metadata _ { resolveLink } path =
         Gren.Kernel.FileSystem.lstat path
 
 
-{-|
+{-| Represents the permission to access an entity for a specific operation.
+
+For example: if you, or your group, doesn't have the `Read` permission for a file,
+you're not allowed to read from it.
 -}
 type AccessPermission
     = Read
@@ -282,14 +292,20 @@ type AccessPermission
     | Execute
 
 
-{-|
+{-| Check if the user running this application has the given access permissions for the
+entity represented by [Path](FileSystem.Path#Path).
+
+Passing an empty `Array` will check that the entity exists.
 -}
 checkAccess : Permission -> Array AccessPermission -> Path -> Task Error Path
 checkAccess _ permissions path =
     Gren.Kernel.FileSystem.access permissions path
 
 
-{-|
+{-| Change the access permissions for the entity's owner, group and everyone else.
+
+If `resolveLink` is `False`, you'll change the permissions of the link itself, not
+the entity it points to.
 -}
 changeAccess 
     : Permission
@@ -314,7 +330,9 @@ changeAccess _ permissions path =
         Gren.Kernel.FileSystem.lchmod mode path
 
 
-{-|
+{-| The integer representation of a set of access permissions in a posix system.
+
+    accessPermissionsToInt [ Read, Write ] == 6
 -}
 accessPermissionsToInt : Array AccessPermission -> Int
 accessPermissionsToInt values =
@@ -329,7 +347,12 @@ accessPermissionsToInt values =
     numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
 
 
-{-|
+{-| Change the user and group that owns a file.
+
+You'll need the ID of the owner and group to perform this operation.
+
+If `resolveLink` is `False`, you're changing the owner of the link itself,
+not the entity it points to.
 -}
 changeOwner : Permission -> { userID : Int, groupID : Int, resolveLink : Bool } -> Path -> Task Error Path
 changeOwner _ options path =
@@ -340,7 +363,10 @@ changeOwner _ options path =
         Gren.Kernel.FileSystem.lchown options path
 
 
-{-|
+{-| Change the registered time (down to the second) an entity was accessed and modified.
+
+If `resolveLink` is `False`, you're changing the last access and modification time of the link itself,
+not the entity it points to.
 -}
 changeTimes : Permission -> { lastAccessed : Time.Posix, lastModified : Time.Posix, resolveLink : Bool } -> Path -> Task Error Path
 changeTimes _ { lastAccessed, lastModified, resolveLink } path =
@@ -358,14 +384,18 @@ changeTimes _ { lastAccessed, lastModified, resolveLink } path =
         Gren.Kernel.FileSystem.lutimes lastAccessedSeconds lastModifiedSeconds path
 
 
-{-|
+{-| Move the entity represented by the last [Path](FileSystem.Path#Path), to the location
+represented by the first [Path](FileSystem.Path#Path). This can also be used to rename an
+entity.
 -}
 move : Permission -> Path -> Path -> Task Error Path
 move _ new old =
     Gren.Kernel.FileSystem.rename old new
 
 
-{-|
+{-| If you have a [Path](FileSystem.Path#Path) that is relative to the current directory,
+or points at a link, you can use this find the true [Path](FileSystem.Path#Path) of the
+entity.
 -}
 realPath : Permission -> Path -> Task Error Path
 realPath _ path =
@@ -375,35 +405,39 @@ realPath _ path =
 -- FILES
 
 
-{-|
+{-| Add `Bytes` to the end of a file.
 -}
 appendToFile : Permission -> Bytes -> Path -> Task Error Path
 appendToFile _ bytes path =
     Gren.Kernel.FileSystem.appendFile bytes path
 
 
-{-|
+{-| Copy the file represented by the last [Path](FileSystem.Path#Path), to the location
+represented by the first [Path](FileSystem.Path#Path).
 -}
 copyFile : Permission -> Path -> Path -> Task Error Path
 copyFile _ dest src =
     Gren.Kernel.FileSystem.copyFile src dest
 
 
-{-|
+{-| Read the entire contents of a file.
 -}
 readFile : Permission -> Path -> Task Error Bytes
 readFile _ path =
     Gren.Kernel.FileSystem.readFile path
 
 
-{-|
+{-| Write the given `Bytes` into a file. The file will be created if it doesn't exist,
+and overwritten if it does.
 -}
 writeFile : Permission -> Bytes -> Path -> Task Error Path
 writeFile _ bytes path =
     Gren.Kernel.FileSystem.writeFile bytes path
 
 
-{-|
+{-| Make sure the given file is of a specific length. If the file is smaller than
+the given length, zeroes is added to the file until it is the correct length. If the file
+is larger than the given length, the excess bytes are removed.
 -}
 truncateFile : Permission -> Int -> Path -> Task Error Path
 truncateFile _ length path =
@@ -423,25 +457,27 @@ remove _ options path =
 -- DIRECTORIES
 
 
-{-| Returns an `Array` of `DirEntry` variants holding names of the files in the
-directory at the given path.
+{-| List the contents of a directory. The returned [Paths](FileSystem.Path#Path) are relative to
+the directory being listed.
 -}
 listDirectory : Permission -> Path -> Task Error (Array { path : Path, entityType : EntityType })
 listDirectory _ path =
     Gren.Kernel.FileSystem.listDirectory path
 
 
-{-| Create a new directory at the given path.
+{-| Create a new directory at the given [Path](FileSystem.Path#Path).
 
 If `recursive` is `True`, then a directory will be created for every section of the
-given path.
+given [Path](FileSystem.Path#Path).
 -}
 makeDirectory : Permission -> { recursive : Bool } -> Path -> Task Error Path
 makeDirectory _ options path =
     Gren.Kernel.FileSystem.makeDirectory options path
 
 
-{-|
+{-| Create a directory, prefixed by a given name, that ends up in a section of the
+file system reserved for temporary files. You're given the [Path](FileSystem.Path#Path)
+to this new directory.
 -}
 makeTempDirectory : Permission -> String -> Task Error Path
 makeTempDirectory _ prefix =
@@ -451,28 +487,39 @@ makeTempDirectory _ prefix =
 -- LINKS
 
 
-{-|
+{-| Creates a hard link from the last [Path](FileSystem.Path#Path) to
+the first.
+
+A hard link is an alias for a specific location. The link has the same
+ownership and access permissions, and it's impossible to tell which is
+the "real" entity and which is the link.
 -}
 hardLink : Permission -> Path -> Path -> Task Error Path
 hardLink _ dest src =
     Gren.Kernel.FileSystem.link src dest
 
 
-{-|
+{-| Creates a soft link from the last [Path](FileSystem.Path#Path) to
+the first.
+
+A soft link, also known as a symoblic link or symlink, is a special file
+that contains the path to some other location. Resolving a soft link will
+redirect to this other location.
 -}
 softLink : Permission -> Path -> Path -> Task Error Path
 softLink _ dest src =
     Gren.Kernel.FileSystem.symlink src dest
 
 
-{-|
+{-| Returns the [Path](FileSystem.Path#Path) pointed to by a soft link.
 -}
 readLink : Permission -> Path -> Task Error Path
 readLink _ path =
     Gren.Kernel.FileSystem.readLink path
 
 
-{-|
+{-| Removes a link, hard or soft, from the file system. If the
+[Path](FileSystem.Path#Path) refers to a file, the file is removed.
 -}
 unlink : Permission -> Path -> Task Error Path
 unlink _ path =
@@ -486,7 +533,13 @@ type FileSystemSub msg
     = Watch Path Bool (WatchEvent -> msg)
 
 
-{-|
+{-| Represents a change within a watched directory.
+
+* `Changed` means that the contents of a file has changed in some way.
+* `Moved` means that an entity has been added or removed. A rename is usually two `Moved` events.
+
+On most operating systems, each event will be associated with a [Path](FileSystem.Path#Path)
+relative to the watched directory, but some operating systems will not provide that information.
 -}
 type WatchEvent
     = Changed (Maybe Path)
@@ -500,14 +553,15 @@ subMap mapFn sub =
             Watch path recursive (mapFn << msgMap)
 
 
-{-| This notifies your application every time bytes have arrived over the `Stream`.
+{-| This notifies your application every time there is a change within the directory
+represented by the given [Path](FileSystem.Path#Path).
 -}
 watch : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
 watch _ msgMap path =
     subscription (Watch path False msgMap)
 
 
-{-| This notifies your application every time bytes have arrived over the `Stream`.
+{-| Same as [watch](#watch), but this will also watch for changes in sub-directories.
 -}
 watchRecursive : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
 watchRecursive _ msgMap path =
