@@ -154,7 +154,7 @@ tests =
                             |> Path.append (Path.fromPosixString "two/three")
                             |> Path.append (Path.fromPosixString "/file.md")
                         )
-                        (Path.concat
+                        (Path.join
                             [ Path.fromPosixString "one"
                             , Path.fromPosixString "two/three"
                             , Path.fromPosixString "/file.md"
