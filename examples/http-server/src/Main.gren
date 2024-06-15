@@ -6,6 +6,7 @@ import Dict
 import Stream exposing (Stream)
 import Node exposing (Environment, Program)
 import FileSystem
+import FileSystem.Path as Path
 import HttpServer as Http exposing (ServerError(..), Method(..))
 import HttpServer.Response as Response exposing (Response)
 import Init
@@ -22,11 +23,6 @@ main =
         }
 
 
-type ReadFileError
-    = AccessError FileSystem.AccessError
-    | UnknownFileSystemError FileSystem.UnknownFileSystemError
-
-
 type alias Model =
     { stdout : Stream
     , stderr : Stream
@@ -38,18 +34,7 @@ type alias Model =
 type Msg
     = CreateServerResult (Result Http.ServerError Http.Server)
     | GotRequest Http.Request Response
-    | GotJpeg Response (Result ReadFileError Bytes)
-
-
-readFileAsBytes : FileSystem.Permission -> String -> Task ReadFileError Bytes
-readFileAsBytes fsPermission fileName =
-    FileSystem.openForRead fsPermission fileName
-        |> Task.mapError AccessError
-        |> Task.andThen
-                (\permission ->
-                    FileSystem.read permission
-                        |> Task.mapError UnknownFileSystemError
-                )
+    | GotJpeg Response (Result FileSystem.Error Bytes)
 
 
 init : Environment -> Init.Task { model : Model, command : Cmd Msg }
@@ -79,20 +64,23 @@ update msg model =
             case result of
                 Ok server ->
                     { model = { model | server = Just server }
-                    , command = Stream.sendLine model.stdout
-                        "Server started"
+                    , command = 
+                        Stream.sendLine model.stdout "Server started"
+                            |> Task.execute
                     }
                 Err (ServerError code message) ->
                     { model = model
-                    , command = Stream.sendLine model.stderr <|
+                    , command =
                         "Server failed to start: " ++ code ++ "\n" ++ message
+                            |> Stream.sendLine model.stderr
+                            |> Task.execute
                     }
         
         GotRequest req res ->
             { model = model
             , command = 
                 if req.url.path == "/george.jpeg" then
-                    readFileAsBytes model.fsPermission "./public/george.jpeg"
+                    FileSystem.readFile model.fsPermission (Path.fromPosixString "./public/george.jpeg")
                         |> Task.attempt (GotJpeg res)
                 else
                     htmlResponse req res

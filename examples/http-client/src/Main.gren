@@ -51,7 +51,7 @@ init env =
                 , "\"Was chunked as bytes\""
                 , " }"
                 ]
-                |> Array.map (Bytes.Encode.encode << Bytes.Encode.string)
+                |> Array.map Bytes.fromString
         in
         Node.startProgram
             { model = 
@@ -72,7 +72,7 @@ init env =
                         HttpClient.post "http://localhost:8080/mocked-path"
                             |> HttpClient.withBytesBody "application/json"
                                 -- Overly complicated, but it's for testing bytes support
-                                (Bytes.Encode.encode (Bytes.Encode.string "{ \"secret\": \"Hello, POST!\" }"))
+                                (Bytes.fromString "{ \"secret\": \"Hello, POST!\" }")
                             |> HttpClient.expectJson
                                 ( Json.Decode.map (\s -> { response = s })
                                     (Json.Decode.field "response" Json.Decode.string)
@@ -114,6 +114,7 @@ init env =
                     
                     _ ->
                         Stream.sendLine env.stdout "Invalid start argument"
+                            |> Task.execute
             }
 
 
@@ -122,22 +123,30 @@ update msg model =
     case msg of
         Response (Ok response) ->
             { model = model
-            , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data)
+            , command = 
+                Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data)
+                    |> Task.execute
             }
 
         Response (Err err) ->
             { model = model
-            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            , command =
+                Stream.sendLine model.stdout (HttpClient.errorToString err)
+                    |> Task.execute
             }
         
         JsonResponse (Ok response) ->
             { model = model
-            , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data.response)
+            , command =
+                Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ response.data.response)
+                    |> Task.execute
             }
 
         JsonResponse (Err err) ->
             { model = model
-            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            , command =
+                Stream.sendLine model.stdout (HttpClient.errorToString err)
+                    |> Task.execute
             }
         
         BytesResponse (Ok response) ->
@@ -150,18 +159,24 @@ update msg model =
             case Bytes.Decode.decode decoder response.data of
                 Just { i1, i2 } ->
                     { model = model
-                    , command = Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ String.fromInt i1 ++ " & " ++ String.fromInt i2)
+                    , command = 
+                        Stream.sendLine model.stdout (String.fromInt response.statusCode ++ ": " ++ String.fromInt i1 ++ " & " ++ String.fromInt i2)
+                            |> Task.execute
                     }
 
                 Nothing ->
                     { model = model
-                    , command = Stream.sendLine model.stdout "Failed to decode byte sequence"
+                    , command =
+                        Stream.sendLine model.stdout "Failed to decode byte sequence"
+                            |> Task.execute
                     }
                     
 
         BytesResponse (Err err) ->
             { model = model
-            , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+            , command =
+                Stream.sendLine model.stdout (HttpClient.errorToString err)
+                    |> Task.execute
             }
 
         StreamResponse progress ->
@@ -194,16 +209,20 @@ update msg model =
                 
                 HttpClient.Error err ->
                     { model = model
-                    , command = Stream.sendLine model.stdout (HttpClient.errorToString err)
+                    , command =
+                        Stream.sendLine model.stdout (HttpClient.errorToString err)
+                            |> Task.execute
                     }
                 
                 HttpClient.Aborted ->
                     { model = model
-                    , command = Stream.sendLine model.stdout "Aborted"
+                    , command =
+                        Stream.sendLine model.stdout "Aborted"
+                            |> Task.execute
                     }
                 
                 HttpClient.Done ->
                     { model = model
-                    , command = Stream.sendLine model.stdout <| String.fromInt model.streamStatusCode ++ ": Streaming done!"
+                    , command = Task.execute <| Stream.sendLine model.stdout <| String.fromInt model.streamStatusCode ++ ": Streaming done!"
                     }
             
