@@ -738,7 +738,7 @@ onSelfMsg router (WatchPathChange recursive key event) state =
 
 {-| Find the [Path](FileSystem.Path#Path) that represents the home directory of the current user.
 -}
-homeDirectory : Permission -> Task Never Path
+homeDirectory : Permission -> Task x Path
 homeDirectory _ =
     Gren.Kernel.FileSystem.homeDir
 
@@ -755,13 +755,13 @@ currentWorkingDirectory _ =
 
 {-| Find a [Path](FileSystem.Path#Path) that represents a directory meant to hold temporary files.
 -}
-tmpDirectory : Permission -> Task Never Path
+tmpDirectory : Permission -> Task x Path
 tmpDirectory _ =
     Gren.Kernel.FileSystem.tmpDir
 
 
 {-| [Path](FileSystem.Path#Path) to a file which is always empty. Anything written to this file will be discarded.
 -}
-devNull : Permission -> Task Never Path
+devNull : Permission -> Task x Path
 devNull _ =
     Gren.Kernel.FileSystem.devNull

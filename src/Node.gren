@@ -188,7 +188,7 @@ archFromString arch =
 
 {-| Get a `Dict` of environment variables.
 -}
-getEnvironmentVariables : Task Never (Dict String String)
+getEnvironmentVariables : Task x (Dict String String)
 getEnvironmentVariables =
     Gren.Kernel.Node.getEnvironmentVariables
 
@@ -358,7 +358,7 @@ This function is equivalent to:
 
     exitWithCode 0
 -}
-exit : Task Never {}
+exit : Task x {}
 exit =
     exitWithCode 0
 
@@ -372,7 +372,7 @@ The exit code can be read by other processes on your system. Any value other tha
 makes an exit code. If all you want is to signalize that your application exited
 due to an error, -1 is a good option.
 -}
-exitWithCode : Int -> Task Never {}
+exitWithCode : Int -> Task x {}
 exitWithCode code =
     Gren.Kernel.Node.exitWithCode code
 

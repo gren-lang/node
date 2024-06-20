@@ -96,7 +96,7 @@ combinations like `Ctrl-C` will no longer trigger the kill signal.
 
 Enable this when you need full control over how input is handled.
 -}
-setStdInRawMode : Permission -> Bool -> Task Never {}
+setStdInRawMode : Permission -> Bool -> Task x {}
 setStdInRawMode _ toggle =
     Gren.Kernel.Terminal.setStdInRawMode toggle
 
@@ -104,7 +104,7 @@ setStdInRawMode _ toggle =
 {-| Set the title of the running process. This will usually display in
 activity monitors or in the title bar of your terminal emulator.
 -}
-setProcessTitle : Permission -> String -> Task Never {}
+setProcessTitle : Permission -> String -> Task x {}
 setProcessTitle _ title =
     Gren.Kernel.Terminal.setProcessTitle title
 
