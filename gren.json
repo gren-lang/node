@@ -10,8 +10,10 @@
         "Init",
         "Stream",
         "Terminal",
-        "FileSystem",
         "ChildProcess",
+        "FileSystem",
+        "FileSystem.FileHandle",
+        "FileSystem.Path",
         "HttpClient",
         "HttpServer",
         "HttpServer.Response"

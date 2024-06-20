@@ -1,0 +1,298 @@
+module FileSystem.FileHandle exposing
+    ( FileHandle
+    , ReadableFileHandle
+    , WriteableFileHandle
+    , ReadWriteableFileHandle
+    , ReadPermission
+    , WritePermission
+    , makeReadOnly
+    , makeWriteOnly
+    --
+    , openForRead
+    , OpenForWriteBehaviour(..)
+    , openForWrite
+    , openForReadAndWrite
+    , close
+    --
+    , metadata
+    , changeAccess
+    , changeOwner
+    , changeTimes
+    --
+    , read
+    , readFromOffset
+    --
+    , write
+    , writeFromOffset
+    , truncate
+    , sync
+    , syncData
+    )
+
+
+{-| This module provides access to files through FileHandles. A [FileHandle](#FileHandle) represents an open file.
+If you know you're going to perform repeated operations on a file, it will be more efficient through a [FileHandle](#FileHandle).
+
+@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly
+
+## File open/close
+
+@docs openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
+
+## File metadata
+
+@docs metadata, changeAccess, changeOwner, changeTimes
+
+## Read from file
+
+@docs read, readFromOffset
+
+## Write to file
+
+@docs write, writeFromOffset, truncate, sync, syncData
+-}
+
+
+import Gren.Kernel.FileSystem
+import Bytes exposing (Bytes)
+import Task exposing (Task)
+import FileSystem.Path exposing (Path)
+import FileSystem exposing (Permission)
+import Init
+import Internal.Init
+import Time
+
+
+{-| A file handle is used to perform operations on a file, like reading and writing.
+
+Having a file handle gives you access to perform certain operations, so make sure you
+only pass a file handle to code you can trust.
+
+The [FileHandle](#FileHandle) type also contains the read and write access permissions as part of its
+type.
+-}
+type FileHandle readAccess writeAccess
+    -- Note: Actual implementation in kernel code
+    = FileHandle
+
+
+{-| A type that represents the permission to read from a file.
+-}
+type ReadPermission = ReadPermission
+
+
+{-| A type that represents the permission to write to a file.
+-}
+type WritePermission = WritePermission
+
+
+{-| An alias for a [FileHandle](#FileHandle) that can be used in read operations.
+-}
+type alias ReadableFileHandle a = FileHandle ReadPermission a
+
+
+{-| An alias for a [FileHandle](#FileHandle) that can be used in write operations.
+-}
+type alias WriteableFileHandle a = FileHandle a WritePermission
+
+
+{-| An alias for a [FileHandle](#FileHandle) that can be used for both read and write operations.
+-}
+type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
+
+
+{-| This lets you downgrade a [ReadWriteableFileHandle](#ReadWriteableFileHandle) to a [FileHandle](#FileHandle) that only has read permission.
+
+Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
+of your code.
+-}
+makeReadOnly : ReadWriteableFileHandle -> FileHandle ReadPermission Never
+makeReadOnly =
+    Gren.Kernel.FileSystem.coerce
+
+
+{-| This let's you downgrade a [ReadWriteableFileHandle](#ReadWriteableFileHandle) to a [FileHandle](#FileHandle) that only has write permission.
+
+Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
+of your code.
+-}
+makeWriteOnly : ReadWriteableFileHandle -> FileHandle Never WritePermission
+makeWriteOnly =
+    Gren.Kernel.FileSystem.coerce
+
+
+-- OPEN
+
+
+{-| Open the file at the provided path with read permissions.
+-}
+openForRead : Permission -> Path -> Task FileSystem.Error (FileHandle ReadPermission Never)
+openForRead _ path =
+    openImpl "r" path
+
+
+{-| There are several ways to open a file for writing.
+
+* `EnsureEmpty` will create an empty file if it doesn't exist, or remove all contents of a file if it does exist.
+* `ExpectExisting` will fail the task if it doesn't exist.
+* `ExpectNotExisting` will fail the task if the file does exist.
+-}
+type OpenForWriteBehaviour
+    = EnsureEmpty
+    | ExpectExisting
+    | ExpectNotExisting
+
+
+{-| Open a file at the provided path with write permissions.
+-}
+openForWrite : Permission -> OpenForWriteBehaviour -> Path -> Task FileSystem.Error (FileHandle Never WritePermission)
+openForWrite _ behaviour path =
+    let
+        access =
+            case behaviour of
+                EnsureEmpty -> "w"
+                ExpectExisting -> "r+"
+                ExpectNotExisting -> "wx"
+    in
+    openImpl access path
+
+
+{-| Open a file for at the provided path with both read and write permissions.
+-}
+openForReadAndWrite : Permission -> OpenForWriteBehaviour -> Path -> Task FileSystem.Error ReadWriteableFileHandle
+openForReadAndWrite _ behaviour path =
+    let
+        access =
+            case behaviour of
+                EnsureEmpty -> "w+"
+                ExpectExisting -> "r+"
+                ExpectNotExisting -> "wx+"
+    in
+    openImpl access path
+
+
+openImpl : String -> Path -> Task FileSystem.Error (FileHandle a b)
+openImpl =
+    Gren.Kernel.FileSystem.open
+
+
+{-| Close a file. All operations performed against the given [FileHandle](#FileHandle) will fail.
+-}
+close : FileHandle a b -> Task FileSystem.Error {}
+close =
+    Gren.Kernel.FileSystem.close
+
+
+-- METADATA
+
+
+{-| Retrieve [Metadata](FileSystem#Metadata) about the file represented by the [FileHandle](#FileHandle).
+-}
+metadata : ReadableFileHandle a -> Task FileSystem.Error (ReadableFileHandle FileSystem.Metadata)
+metadata =
+    Gren.Kernel.FileSystem.fstat
+
+
+{-| Change how different users can access a file.
+-}
+changeAccess 
+    : { owner : Array FileSystem.AccessPermission
+      , group : Array FileSystem.AccessPermission
+      , others : Array FileSystem.AccessPermission
+      }
+    -> WriteableFileHandle a
+    -> Task FileSystem.Error (WriteableFileHandle a)
+changeAccess permissions fh =
+    let
+        mode =
+            (String.fromInt <| FileSystem.accessPermissionsToInt permissions.owner)
+            ++ (String.fromInt <| FileSystem.accessPermissionsToInt permissions.group)
+            ++ (String.fromInt <| FileSystem.accessPermissionsToInt permissions.others)
+    in
+    Gren.Kernel.FileSystem.fchmod mode fh
+
+
+{-| Change who owns the file. You'll need the ID of the new user and group who will own the file.
+-}
+changeOwner : { userID : Int, groupID : Int } -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
+changeOwner =
+    Gren.Kernel.FileSystem.fchown
+
+
+{-| This will let you set the timestamp for when the file was last accessed, and last modified.
+The times will be rounded down to the closest second.
+-}
+changeTimes 
+    : { lastAccessed : Time.Posix
+      , lastModified : Time.Posix 
+      }
+    -> WriteableFileHandle a
+    -> Task FileSystem.Error (WriteableFileHandle a)
+changeTimes { lastAccessed, lastModified } fh =
+    Gren.Kernel.FileSystem.futimes
+        (Time.posixToMillis lastAccessed // 1000)
+        (Time.posixToMillis lastModified // 1000)
+        fh
+
+
+-- READING
+
+
+{-| Read all bytes in a file.
+-}
+read : ReadableFileHandle a -> Task FileSystem.Error Bytes
+read fh =
+    readFromOffset fh { offset = 0, length = -1 }
+
+
+{-| Read `length` number of bytes from a file, starting at `offset` bytes.
+-}
+readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task FileSystem.Error Bytes
+readFromOffset =
+    Gren.Kernel.FileSystem.readFromOffset
+
+
+-- WRITING
+
+
+{-| Write the provided bytes into the file. If the file is not empty, bytes will be overwritten.
+-}
+write : WriteableFileHandle a -> Bytes -> Task FileSystem.Error (WriteableFileHandle a)
+write fh bytes =
+    writeFromOffset fh 0 bytes
+
+
+{-| Write bytes into a specific location of a file.
+-}
+writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task FileSystem.Error (WriteableFileHandle a)
+writeFromOffset =
+    Gren.Kernel.FileSystem.writeFromOffset
+
+
+{-| Make sure that a file is of the given size. If the file is larger than the given size, excess bytes
+are discarded. If the file is smaller than the given size, zeroes will be added until it is of the given
+size.
+-}
+truncate : Int -> WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
+truncate =
+    Gren.Kernel.FileSystem.ftruncate
+
+
+{-| Usually when you make changes to a file, the changes aren't actually written to disk right away.
+The changes are likely placed in an OS-level buffer, and flushed to disk when the OS decides its time
+to do so.
+
+This task, when executed, will force changes to be written to disk.
+-}
+sync : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
+sync =
+    Gren.Kernel.FileSystem.fsync
+
+
+{-| Same as [sync](#sync), except it only forces the contents of the file to be written. Changes to a
+file's metadata are not synced. This operation might be a little faster than a full sync, at the risk
+of loosing changes to metadata.
+-}
+syncData : WriteableFileHandle a -> Task FileSystem.Error (WriteableFileHandle a)
+syncData =
+    Gren.Kernel.FileSystem.fdatasync

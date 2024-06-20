@@ -1,85 +1,107 @@
-module FileSystem exposing
+effect module FileSystem where { subscription = FileSystemSub } exposing
     ( Permission
     , initialize
-    --
-    , FileHandle
-    , ReadableFileHandle
-    , WriteableFileHandle
-    , ReadWriteableFileHandle
-    , ReadPermission
-    , WritePermission
-    , makeReadOnly
-    , makeWriteOnly
-    --
-    , UnknownFileSystemError(..)
-    , AccessError(..)
-    --
-    , openForRead
-    , OpenForWriteBehaviour (..)
-    , openForWrite
-    , openForReadAndWrite
-    , close
-    --
-    , read
-    , readFromOffset
-    --
-    , write
-    , writeFromOffset
-    --
-    , RemoveOptions
+    -- Errors
+    , Error
+    , errorCode
+    , errorToString
+    , errorIsPermissionDenied
+    , errorIsFileExists
+    , errorIsDirectoryFound
+    , errorIsTooManyOpenFiles
+    , errorIsNoSuchFileOrDirectory
+    , errorIsNotADirectory
+    , errorIsDirectoryNotEmpty
+    , errorIsNotPermitted
+    , errorIsLinkLoop
+    , errorIsPathTooLong
+    , errorIsInvalidInput
+    , errorIsIO
+    -- Metadata
+    , Metadata
+    , EntityType(..)
+    , metadata
+    , AccessPermission(..)
+    , checkAccess
+    , changeAccess
+    , accessPermissionsToInt
+    , changeOwner
+    , changeTimes
+    , move
+    , realPath
+    -- Files
+    , appendToFile
+    , copyFile
+    , readFile
+    , writeFile
+    , truncateFile
     , remove
-    --
-    , makeDirectory
-    , DirEntry(..)
+    -- Directories
     , listDirectory
+    , makeDirectory
+    , makeTempDirectory
+    -- Links
+    , hardLink
+    , softLink
+    , readLink
+    , unlink
+    -- Watch
+    , WatchEvent(..)
+    , watch
+    , watchRecursive
     --
-    , buildPath
-    , normalizePath
+    , homeDirectory
     , currentWorkingDirectory
+    , tmpDirectory
+    , devNull
     )
 
 
-{-| This module provides access to the file system. It allows you to read and write files or directories.
-
-## Initialization
+{-| This module provides access to the file system. It allows you to read and write files, create directories and links etc.
 
 @docs Permission, initialize
 
 ## Errors
 
-@docs AccessError, UnknownFileSystemError
+@docs Error, errorCode, errorToString
+@docs errorIsPermissionDenied, errorIsFileExists, errorIsDirectoryFound, errorIsTooManyOpenFiles, errorIsNoSuchFileOrDirectory, errorIsNotADirectory, errorIsDirectoryNotEmpty, errorIsNotPermitted, errorIsLinkLoop, errorIsPathTooLong, errorIsInvalidInput, errorIsIO
 
-## File open/close
+## Metadata
 
-@docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly, openForRead, OpenForWriteBehaviour, openForWrite, openForReadAndWrite, close
+@docs Metadata, EntityType, metadata, AccessPermission, checkAccess, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, move, realPath
 
-## Read from file
+## Files
 
-@docs read, readFromOffset
-
-## Write to file
-
-@docs write, writeFromOffset
-
-## Remove files and directories
-
-@docs RemoveOptions, remove
+@docs copyFile, appendToFile, readFile, writeFile, truncateFile, remove
 
 ## Directories
 
-@docs makeDirectory, DirEntry, listDirectory
+@docs listDirectory, makeDirectory, makeTempDirectory 
 
-## Paths
+## Links
 
-@docs buildPath, normalizePath, currentWorkingDirectory
+@docs hardLink, softLink, readLink, unlink
+
+## Watch for changes
+
+@docs WatchEvent, watch, watchRecursive
+
+## Special paths
+
+@docs homeDirectory, currentWorkingDirectory, tmpDirectory, devNull
 -}
 
 
 import Gren.Kernel.FileSystem
+import Gren.Kernel.FilePath
 import Bytes exposing (Bytes)
+import Dict exposing (Dict)
 import Task exposing (Task)
+import FileSystem.Path exposing (Path)
 import Init
 import Internal.Init
+import Time
+import Process
 
 
 {-| This value represents the permission to perform file system operations.
@@ -99,272 +121,647 @@ initialize =
         |> Internal.Init.Task
 
 
--- FILES
-
-
-{-| A file handle is used to perform operations on a file, like reading and writing.
-
-Having a file handle gives you access to perform certain operations, so make sure you
-only pass a file handle to code you can trust.
-
-The `FileHandle` type also contains the read and write access permissions as part of its
-type.
--}
-type FileHandle readAccess writeAccess
-    -- Note: Actual implementation in kernel code
-    = FileHandle
-
-
-{-| A type that represents the permission to read from a file.
--}
-type ReadPermission = ReadPermission
-
-
-{-| A type that represents the permission to write to a file.
--}
-type WritePermission = WritePermission
-
-
-{-| A `FileHandle` that can be used in read operations.
--}
-type alias ReadableFileHandle a = FileHandle ReadPermission a
-
-
-{-| A `FileHandle` that can be used in write operations.
--}
-type alias WriteableFileHandle a = FileHandle a WritePermission
-
-
-{-| A `FileHandle` that can be used for both read and write operations.
--}
-type alias ReadWriteableFileHandle = FileHandle ReadPermission WritePermission
-
-
-{-| This lets you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has read permission.
-
-Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
-of your code.
--}
-makeReadOnly : ReadWriteableFileHandle -> FileHandle ReadPermission Never
-makeReadOnly =
-    Gren.Kernel.FileSystem.coerce
-
-
-{-| This let's you downgrade a `ReadWriteableFileHandle` to a `FileHandle` that only has write permission.
-
-Comes in handy when you want full access to a file in some parts of your code, but limited access in other parts
-of your code.
--}
-makeWriteOnly : ReadWriteableFileHandle -> FileHandle Never WritePermission
-makeWriteOnly =
-    Gren.Kernel.FileSystem.coerce
-
-
--- DIRECTORY
-
-
-{-| Represents entries in a directory.
-
-Variants for each type of entry, with a `String` representing the relative path.
-
-As returned by `FileSystem.listDirectory`.
--}
-type DirEntry
-    = File String
-    | Directory String
-    | Socket String
-    | Symlink String
-    | Device String
-    | Pipe String
-
-
 -- ERRORS
 
 
-{-| The set of errors that can happen when accessing a file or directory.
+{-| Represents an error that occured when working with the file system.
+
+There are many different kinds of error depending on which operation you're performing and which
+operating system you're performing it on. To figure out which error it is, you'll need
+to use one of the helper functions below, or check the specific error code.
 -}
-type AccessError
-    = AccessErrorNotFound
-    | AccessErrorNoAccess
-    | AccessErrorNotADirectory
-    | AccessErrorUnknown String
+type Error
+    = Error String String
 
 
-{-| An error thrown by the OS, in situations where we don't expect errors to happen,
-or have been unable to reproduce such an error in development.
+{-| A string that identifies a specific kind of error. There can be several error codes for the
+same kind of error, depending on the operating system that is in use.
 -}
-type UnknownFileSystemError
-    = UnknownFileSystemError String
+errorCode : Error -> String
+errorCode (Error code _) =
+    code
 
 
--- OPEN
-
-
-{-| Open the file at the provided path with read permissions.
+{-| Returns a human readable description of the error.
 -}
-openForRead : Permission -> String -> Task AccessError (FileHandle ReadPermission Never)
-openForRead _ path =
-    openImpl "r" path
+errorToString : Error -> String
+errorToString (Error _ message) =
+    message
 
 
-{-| There are several ways to open a file for writing.
-
-* `EnsureEmpty` will create an empty file if it doesn't exist, or remove all contents of a file if it does exist.
-* `ExpectExisting` will fail the task if it doesn't exist.
-* `ExpectNotExisting` will fail the task if the file does exist.
+{-| If `True`, the error occured because you don't have the correct access permission to perform
+the operation.
 -}
-type OpenForWriteBehaviour
-    = EnsureEmpty
-    | ExpectExisting
-    | ExpectNotExisting
+errorIsPermissionDenied : Error -> Bool
+errorIsPermissionDenied (Error code _) =
+    code == "EACCES"
 
 
-{-| Open a file at the provided path with write permissions.
+{-| If `True`, a file exists when it was expected not to.
 -}
-openForWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError (FileHandle Never WritePermission)
-openForWrite _ behaviour path =
+errorIsFileExists : Error -> Bool
+errorIsFileExists (Error code _) =
+    code == "EEXIST"
+
+
+{-| If `True`, a file operation was attempted on a directory.
+-}
+errorIsDirectoryFound : Error -> Bool
+errorIsDirectoryFound (Error code _) =
+    code == "EISDIR"
+
+
+{-| If `True`, the application has too many open files.
+-}
+errorIsTooManyOpenFiles : Error -> Bool
+errorIsTooManyOpenFiles (Error code _) =
+    code == "EMFILE"
+
+
+{-| If `True`, the code was passed a [Path](FileSystem.Path#Path) which points to a file or directory
+that doesn't exist.
+-}
+errorIsNoSuchFileOrDirectory : Error -> Bool
+errorIsNoSuchFileOrDirectory (Error code _) =
+    code == "ENOENT"
+
+
+{-| If `True`, a directory was expected but it found a file or some other entity.
+-}
+errorIsNotADirectory : Error -> Bool
+errorIsNotADirectory (Error code _) =
+    code == "ENOTDIR"
+
+
+{-| If `True`, the operation expected an empty directory, but the directory is not empty.
+-}
+errorIsDirectoryNotEmpty : Error -> Bool
+errorIsDirectoryNotEmpty (Error code _) =
+    code == "ENOTEMPTY"
+
+
+{-| If `True`, the operation was rejected because of missing privileges.
+-}
+errorIsNotPermitted : Error -> Bool
+errorIsNotPermitted (Error code _) =
+    code == "EPERM"
+
+
+{-| If `True`, we seem to be stuck in a loop following link after link after...
+-}
+errorIsLinkLoop : Error -> Bool
+errorIsLinkLoop (Error code _) =
+    code == "ELOOP"
+
+
+{-| If `True`, the [Path](FileSystem.Path#Path) is too long.
+-}
+errorIsPathTooLong : Error -> Bool
+errorIsPathTooLong (Error code _) =
+    code == "ENAMETOOLONG"
+
+
+{-| If `True`, the arguments passed to the function is invalid somehow.
+-}
+errorIsInvalidInput : Error -> Bool
+errorIsInvalidInput (Error code _) =
+    code == "EINVAL"
+
+
+{-| If `True`, the operation failed due to an IO error. This could be that the disk is
+busy, or even corrupt.
+-}
+errorIsIO : Error -> Bool
+errorIsIO (Error code _) =
+    code == "EIO"
+
+
+-- METADATA
+
+
+{-| Represents extra information about an entity in the file system.
+-}
+type alias Metadata =
+    { entityType : EntityType
+    , deviceID : Int
+    , userID : Int
+    , groupID : Int
+    , byteSize : Int
+    , blockSize : Int
+    , blocks : Int
+    , lastAccessed : Time.Posix
+    , lastModified : Time.Posix
+    , lastChanged : Time.Posix
+    , created : Time.Posix
+    }
+
+
+{-| The type of an entity in the file system.
+-}
+type EntityType
+    = File
+    | Directory
+    | Socket
+    | Symlink
+    | Device
+    | Pipe
+
+
+{-| Return metadata for the entity represented by [Path](FileSystem.Path#Path).
+
+If `resolveLink` is `False`, you will receive metadata for the link itself, not the entity
+pointed at by the link.
+-}
+metadata : Permission -> { resolveLink : Bool } -> Path -> Task Error Metadata
+metadata _ { resolveLink } path =
+    if resolveLink then
+        Gren.Kernel.FileSystem.stat path
+
+    else
+        Gren.Kernel.FileSystem.lstat path
+
+
+{-| Represents the permission to access an entity for a specific operation.
+
+For example: if you, or your group, doesn't have the `Read` permission for a file,
+you're not allowed to read from it.
+-}
+type AccessPermission
+    = Read
+    | Write
+    | Execute
+
+
+{-| Check if the user running this application has the given access permissions for the
+entity represented by [Path](FileSystem.Path#Path).
+
+Passing an empty `Array` will check that the entity exists.
+-}
+checkAccess : Permission -> Array AccessPermission -> Path -> Task Error Path
+checkAccess _ permissions path =
+    Gren.Kernel.FileSystem.access permissions path
+
+
+{-| Change the access permissions for the entity's owner, group and everyone else.
+
+If `resolveLink` is `False`, you'll change the permissions of the link itself, not
+the entity it points to.
+-}
+changeAccess 
+    : Permission
+    -> { owner : Array AccessPermission 
+       , group : Array AccessPermission
+       , others : Array AccessPermission
+       , resolveLink : Bool
+       }
+    -> Path
+    -> Task Error Path
+changeAccess _ permissions path =
     let
-        access =
-            case behaviour of
-                EnsureEmpty -> "w"
-                ExpectExisting -> "r+"
-                ExpectNotExisting -> "wx"
+        mode =
+            (String.fromInt <| accessPermissionsToInt permissions.owner)
+            ++ (String.fromInt <| accessPermissionsToInt permissions.group)
+            ++ (String.fromInt <| accessPermissionsToInt permissions.others)
     in
-    openImpl access path
+    if permissions.resolveLink then
+        Gren.Kernel.FileSystem.chmod mode path
+
+    else
+        Gren.Kernel.FileSystem.lchmod mode path
 
 
-{-| Open a file for at the provided path with both read and write permissions.
+{-| The integer representation of a set of access permissions in a posix system.
+
+    accessPermissionsToInt [ Read, Write ] == 6
 -}
-openForReadAndWrite : Permission -> OpenForWriteBehaviour -> String -> Task AccessError ReadWriteableFileHandle
-openForReadAndWrite _ behaviour path =
+accessPermissionsToInt : Array AccessPermission -> Int
+accessPermissionsToInt values =
     let
-        access =
-            case behaviour of
-                EnsureEmpty -> "w+"
-                ExpectExisting -> "r+"
-                ExpectNotExisting -> "wx+"
+        numberFor num a =
+            if Array.member a values then
+                num
+
+            else
+                0
     in
-    openImpl access path
+    numberFor 4 Read + numberFor 2 Write + numberFor 1 Execute
 
 
-openImpl : String -> String -> Task AccessError (FileHandle a b)
-openImpl =
-    Gren.Kernel.FileSystem.open
+{-| Change the user and group that owns a file.
 
+You'll need the ID of the owner and group to perform this operation.
 
--- CLOSE
-
-{-| Close a file. All operations performed against the given `FileHandle` will fail.
+If `resolveLink` is `False`, you're changing the owner of the link itself,
+not the entity it points to.
 -}
-close : FileHandle a b -> Task UnknownFileSystemError {}
-close =
-    Gren.Kernel.FileSystem.close
+changeOwner : Permission -> { userID : Int, groupID : Int, resolveLink : Bool } -> Path -> Task Error Path
+changeOwner _ options path =
+    if options.resolveLink then
+        Gren.Kernel.FileSystem.chown options path
+
+    else
+        Gren.Kernel.FileSystem.lchown options path
 
 
--- READING
+{-| Change the registered time (down to the second) an entity was accessed and modified.
 
-
-{-| Read all bytes in a file.
+If `resolveLink` is `False`, you're changing the last access and modification time of the link itself,
+not the entity it points to.
 -}
-read : ReadableFileHandle a -> Task UnknownFileSystemError Bytes
-read fh =
-    readFromOffset fh { offset = 0, length = -1 }
+changeTimes : Permission -> { lastAccessed : Time.Posix, lastModified : Time.Posix, resolveLink : Bool } -> Path -> Task Error Path
+changeTimes _ { lastAccessed, lastModified, resolveLink } path =
+    let
+        lastAccessedSeconds = 
+            Time.posixToMillis lastAccessed // 1000
+        
+        lastModifiedSeconds = 
+            Time.posixToMillis lastModified // 1000
+    in
+    if resolveLink then
+        Gren.Kernel.FileSystem.utimes lastAccessedSeconds lastModifiedSeconds path
+
+    else
+        Gren.Kernel.FileSystem.lutimes lastAccessedSeconds lastModifiedSeconds path
 
 
-{-| Read `length` number of bytes from a file, starting at `offset` bytes.
+{-| Move the entity represented by the last [Path](FileSystem.Path#Path), to the location
+represented by the first [Path](FileSystem.Path#Path). This can also be used to rename an
+entity.
 -}
-readFromOffset : ReadableFileHandle a -> { offset : Int, length : Int } -> Task UnknownFileSystemError Bytes
-readFromOffset =
-    Gren.Kernel.FileSystem.readFromOffset
+move : Permission -> Path -> Path -> Task Error Path
+move _ new old =
+    Gren.Kernel.FileSystem.rename old new
 
 
--- WRITING
-
-
-{-| Write the provided bytes into the file. If the file is not empty, bytes will be overwritten.
+{-| If you have a [Path](FileSystem.Path#Path) that is relative to the current directory,
+or points at a link, you can use this find the true [Path](FileSystem.Path#Path) of the
+entity.
 -}
-write : WriteableFileHandle a -> Bytes -> Task UnknownFileSystemError {}
-write fh bytes =
-    writeFromOffset fh 0 bytes
+realPath : Permission -> Path -> Task Error Path
+realPath _ path =
+    Gren.Kernel.FileSystem.realpath path
 
 
-{-| Write bytes into a specific location of a file.
+-- FILES
+
+
+{-| Add `Bytes` to the end of a file.
 -}
-writeFromOffset : WriteableFileHandle a -> Int -> Bytes -> Task UnknownFileSystemError {}
-writeFromOffset =
-    Gren.Kernel.FileSystem.writeFromOffset
+appendToFile : Permission -> Bytes -> Path -> Task Error Path
+appendToFile _ bytes path =
+    Gren.Kernel.FileSystem.appendFile bytes path
 
 
--- REMOVE
+{-| Copy the file represented by the last [Path](FileSystem.Path#Path), to the location
+represented by the first [Path](FileSystem.Path#Path).
+-}
+copyFile : Permission -> Path -> Path -> Task Error Path
+copyFile _ dest src =
+    Gren.Kernel.FileSystem.copyFile src dest
 
 
-{-| This record allows you to customize the behaviour of `remove`.
+{-| Read the entire contents of a file.
+-}
+readFile : Permission -> Path -> Task Error Bytes
+readFile _ path =
+    Gren.Kernel.FileSystem.readFile path
+
+
+{-| Write the given `Bytes` into a file. The file will be created if it doesn't exist,
+and overwritten if it does.
+-}
+writeFile : Permission -> Bytes -> Path -> Task Error Path
+writeFile _ bytes path =
+    Gren.Kernel.FileSystem.writeFile bytes path
+
+
+{-| Make sure the given file is of a specific length. If the file is smaller than
+the given length, zeroes is added to the file until it is the correct length. If the file
+is larger than the given length, the excess bytes are removed.
+-}
+truncateFile : Permission -> Int -> Path -> Task Error Path
+truncateFile _ length path =
+    Gren.Kernel.FileSystem.truncate length path
+
+
+{-| Remove the file or directory at the given path.
 
 * `recursive` will delete everything inside a directory.
 * `ignoreErrors` will... ignore any errors related to a remove operation.
 -}
-type alias RemoveOptions =
-    { recursive : Bool
-    , ignoreErrors : Bool
-    }
-
-
-{-| Remove the file or directory at the given path.
--}
-remove : Permission -> String -> RemoveOptions -> Task AccessError {}
-remove _ path options =
+remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task Error Path
+remove _ options path =
     Gren.Kernel.FileSystem.remove options path
 
 
 -- DIRECTORIES
 
 
-{-| Create a new directory at the given path.
-
-If `recursive` is `True`, then a directory will be created for every section of the
-given path.
+{-| List the contents of a directory. The returned [Paths](FileSystem.Path#Path) are relative to
+the directory being listed.
 -}
-makeDirectory : Permission -> String -> { recursive : Bool } -> Task AccessError {}
-makeDirectory _ path options =
-    Gren.Kernel.FileSystem.makeDirectory options path
-
-
-{-| Returns an `Array` of `DirEntry` variants holding names of the files in the
-directory at the given path.
--}
-listDirectory : Permission -> String -> Task AccessError (Array DirEntry)
+listDirectory : Permission -> Path -> Task Error (Array { path : Path, entityType : EntityType })
 listDirectory _ path =
     Gren.Kernel.FileSystem.listDirectory path
 
 
--- PATHS
+{-| Create a new directory at the given [Path](FileSystem.Path#Path).
 
-
-{-| Joins an array of strings using the filesystem's path seperator, then normalizes the result.
-An empty array will result in ".", a path to the current working directory.
-
-    buildPath [] == "."
-    buildPath [ "one", "two", "three" ] == "one/two/three" -- On Unix based operating systems
-
+If `recursive` is `True`, then a directory will be created for every section of the
+given [Path](FileSystem.Path#Path).
 -}
-buildPath : Array String -> String
-buildPath =
-    Gren.Kernel.FileSystem.buildPath
+makeDirectory : Permission -> { recursive : Bool } -> Path -> Task Error Path
+makeDirectory _ options path =
+    Gren.Kernel.FileSystem.makeDirectory options path
 
 
-{-| Removes redundant symbols from the path.
-
-    normalizePath "one/two/.." == "one/two"
-
+{-| Create a directory, prefixed by a given name, that ends up in a section of the
+file system reserved for temporary files. You're given the [Path](FileSystem.Path#Path)
+to this new directory.
 -}
-normalizePath : String -> String
-normalizePath =
-    Gren.Kernel.FileSystem.normalizePath
+makeTempDirectory : Permission -> String -> Task Error Path
+makeTempDirectory _ prefix =
+    Gren.Kernel.FileSystem.mkdtemp prefix
+
+
+-- LINKS
+
+
+{-| Creates a hard link from the last [Path](FileSystem.Path#Path) to
+the first.
+
+A hard link is an alias for a specific location. The link has the same
+ownership and access permissions, and it's impossible to tell which is
+the "real" entity and which is the link.
+-}
+hardLink : Permission -> Path -> Path -> Task Error Path
+hardLink _ dest src =
+    Gren.Kernel.FileSystem.link src dest
+
+
+{-| Creates a soft link from the last [Path](FileSystem.Path#Path) to
+the first.
+
+A soft link, also known as a symoblic link or symlink, is a special file
+that contains the path to some other location. Resolving a soft link will
+redirect to this other location.
+-}
+softLink : Permission -> Path -> Path -> Task Error Path
+softLink _ dest src =
+    Gren.Kernel.FileSystem.symlink src dest
+
+
+{-| Returns the [Path](FileSystem.Path#Path) pointed to by a soft link.
+-}
+readLink : Permission -> Path -> Task Error Path
+readLink _ path =
+    Gren.Kernel.FileSystem.readLink path
+
+
+{-| Removes a link, hard or soft, from the file system. If the
+[Path](FileSystem.Path#Path) refers to a file, the file is removed.
+-}
+unlink : Permission -> Path -> Task Error Path
+unlink _ path =
+    Gren.Kernel.FileSystem.unlink path
+
+
+-- SUBSCRIPTION
+
+
+type FileSystemSub msg
+    = Watch Path Bool (WatchEvent -> msg)
+
+
+{-| Represents a change within a watched directory.
+
+* `Changed` means that the contents of a file has changed in some way.
+* `Moved` means that an entity has been added or removed. A rename is usually two `Moved` events.
+
+On most operating systems, each event will be associated with a [Path](FileSystem.Path#Path)
+relative to the watched directory, but some operating systems will not provide that information.
+-}
+type WatchEvent
+    = Changed (Maybe Path)
+    | Moved (Maybe Path)
+
+
+subMap : (a -> b) -> FileSystemSub a -> FileSystemSub b
+subMap mapFn sub =
+    case sub of
+        Watch path recursive msgMap ->
+            Watch path recursive (mapFn << msgMap)
+
+
+{-| This notifies your application every time there is a change within the directory
+represented by the given [Path](FileSystem.Path#Path).
+-}
+watch : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
+watch _ msgMap path =
+    subscription (Watch path False msgMap)
+
+
+{-| Same as [watch](#watch), but this will also watch for changes in sub-directories.
+-}
+watchRecursive : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
+watchRecursive _ msgMap path =
+    subscription (Watch path True msgMap)
+
+
+-- LOOP
+
+
+type alias State msg =
+    { watchers : Dict String (Taggers msg)
+    , recursiveWatchers : Dict String (Taggers msg)
+    , processes : Dict String Process.Id
+    }
+
+
+type alias Taggers msg =
+    Array (WatchEvent -> msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed
+        { watchers = Dict.empty
+        , recursiveWatchers = Dict.empty
+        , processes = Dict.empty
+        }
+
+
+onEffects
+    : Platform.Router msg SelfMsg
+    -> Array (FileSystemSub msg)
+    -> State msg
+    -> Task.Task Never (State msg)
+onEffects router subs state =
+    let
+        newWatchers =
+            subs
+                |> Array.filter (\(Watch _ bool _) -> not bool)
+                |> Array.foldl subToWatcher Dict.empty
+
+        newRecursiveWatchers =
+            subs
+                |> Array.filter (\(Watch _ bool _) -> bool)
+                |> Array.foldl subToWatcher Dict.empty
+
+        toSpawn =
+            Dict.diff newWatchers state.watchers
+                |> Dict.keys
+        
+        recursiveToSpawn =
+            Dict.diff newRecursiveWatchers state.recursiveWatchers
+                |> Dict.keys
+        
+        toStop =
+            Dict.diff state.watchers newWatchers
+                |> Dict.keys
+        
+        recursiveToStop =
+            Dict.diff state.recursiveWatchers newRecursiveWatchers
+                |> Dict.keys
+
+        asRecursiveKey key =
+            key ++ "$recursive"
+
+        flipFold fn array initial =
+            Array.foldl fn initial array
+
+        taskStopper keyMapper =
+            (\key accTask ->
+                Task.andThen 
+                    (\processes ->
+                        let
+                            realKey = 
+                                keyMapper key
+                        in
+                        case Dict.get realKey processes of
+                            Just processId ->
+                                Process.kill processId
+                                    |> Task.map (\_ -> Dict.remove realKey processes)
+
+                            Nothing ->
+                                accTask
+                    )
+                    accTask
+            )
+
+        taskSpawner keyMapper isRecursive =
+            (\key accTask ->
+                accTask
+                    |> Task.andThen 
+                        (\processes ->
+                            Process.spawn (attachWatcher key isRecursive (Platform.sendToSelf router << WatchPathChange isRecursive key))
+                                |> Task.map (\id -> Dict.set (keyMapper key) id processes)
+                        )
+            )
+    in
+    Array.foldl 
+        (taskStopper identity)
+        (Task.succeed state.processes)
+        toStop
+    |> flipFold (taskStopper asRecursiveKey) recursiveToStop
+    |> flipFold (taskSpawner identity False) toSpawn
+    |> flipFold (taskSpawner asRecursiveKey True) recursiveToSpawn
+    |> Task.map
+        (\newProcesses ->
+            { watchers = newWatchers
+            , recursiveWatchers = newRecursiveWatchers
+            , processes = newProcesses
+            }
+        )
+
+
+subToWatcher : FileSystemSub msg -> Dict String (Taggers msg) -> Dict String (Taggers msg)
+subToWatcher sub taggers =
+    case sub of
+        Watch path _ tagger ->
+            let
+                key =
+                    Gren.Kernel.FilePath.toString path
+            in
+            case Dict.get key taggers of
+                Just data ->
+                    Dict.set 
+                        key
+                        (Array.pushLast tagger data)
+                        taggers
+
+                Nothing ->
+                    Dict.set key [ tagger ] taggers
+
+
+attachWatcher : String -> Bool -> (WatchEvent -> Task.Task Never {}) -> Task.Task x {}
+attachWatcher =
+  Gren.Kernel.FileSystem.watch
+
+
+type SelfMsg
+    = WatchPathChange Bool String WatchEvent
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task.Task Never (State msg)
+onSelfMsg router (WatchPathChange recursive key event) state =
+    let
+        notifyApplication taggers =
+            Array.foldl 
+                (\tagger tasks -> 
+                    tasks
+                        |> Task.andThen (\{} -> Platform.sendToApp router (tagger event))
+                )
+                (Task.succeed {})
+                taggers
+                |> Task.map (\{} -> state)
+    in
+    if recursive then
+        case Dict.get key state.recursiveWatchers of
+            Just taggers ->
+                notifyApplication taggers
+
+            Nothing ->
+                Task.succeed state
+
+    else
+        case Dict.get key state.watchers of
+            Just taggers ->
+                notifyApplication taggers
+
+            Nothing ->
+                Task.succeed state
+
+
+-- SPECIAL PATHS
+
+
+{-| Find the [Path](FileSystem.Path#Path) that represents the home directory of the current user.
+-}
+homeDirectory : Permission -> Task x Path
+homeDirectory _ =
+    Gren.Kernel.FileSystem.homeDir
 
 
 {-| Returns the current working directory of the program.
-This is the directory that all relative paths are relative to.
+
+This is the directory that all relative paths are relative to, and is usually the
+directory that the program was executed from.
 -}
-currentWorkingDirectory : Permission -> Task Never String
+currentWorkingDirectory : Permission -> Task x Path
 currentWorkingDirectory _ =
     Gren.Kernel.FileSystem.currentWorkingDirectory
+
+
+{-| Find a [Path](FileSystem.Path#Path) that represents a directory meant to hold temporary files.
+-}
+tmpDirectory : Permission -> Task x Path
+tmpDirectory _ =
+    Gren.Kernel.FileSystem.tmpDir
+
+
+{-| [Path](FileSystem.Path#Path) to a file which is always empty. Anything written to this file will be discarded.
+-}
+devNull : Permission -> Task x Path
+devNull _ =
+    Gren.Kernel.FileSystem.devNull

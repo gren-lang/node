@@ -5,13 +5,14 @@ import HttpClient exposing (BadUrl, Timeout, BadStatus, BadHeaders, UnexpectedRe
 import Json.Decode as Decode exposing (decodeString, errorToString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
-import Dict exposing (empty, insert, foldl)
+import Dict exposing (empty, set, foldl)
 import Platform exposing (sendToApp)
 
 */
 
 const http = require("node:http");
 const https = require("node:https");
+var buffer = require("node:buffer").Buffer;
 
 function _HttpClient_clientForProtocol(config) {
   if (config.__$url.startsWith("http://")) {
@@ -69,18 +70,27 @@ var _HttpClient_request = function (config) {
     req.on("response", (res) => {
       const expectType = config.__$expectType;
 
+      let rawData = null;
+
       if (expectType === "STRING" || expectType === "JSON") {
         res.setEncoding("utf8");
-      }
 
-      let rawData = null;
-      res.on("data", (chunk) => {
-        if (rawData === null) {
-          rawData = chunk;
-        } else {
-          rawData += chunk;
-        }
-      });
+        res.on("data", (chunk) => {
+          if (rawData === null) {
+            rawData = chunk;
+          } else {
+            rawData += chunk;
+          }
+        });
+      } else {
+        res.on("data", (chunk) => {
+          if (rawData === null) {
+            rawData = [chunk];
+          } else {
+            rawData.push(chunk);
+          }
+        });
+      }
 
       res.on("error", (e) => {
         return callback(
@@ -140,15 +150,26 @@ var _HttpClient_request = function (config) {
             } else {
               return callback(
                 __Scheduler_fail(
-                  __HttpClient_UnexpectedResponseBody(__Decode_errorToString(jsonResult.a))
+                  __HttpClient_UnexpectedResponseBody(
+                    __Decode_errorToString(jsonResult.a)
+                  )
                 )
               );
             }
 
           case "BYTES":
+            const finalBuffer = buffer.concat(rawData);
+
             return callback(
               __Scheduler_succeed(
-                _HttpClient_formatResponse(res, new DataView(rawData.buffer))
+                _HttpClient_formatResponse(
+                  res,
+                  new DataView(
+                    finalBuffer.buffer,
+                    finalBuffer.byteOffset,
+                    finalBuffer.length
+                  )
+                )
               )
             );
         }
@@ -275,7 +296,10 @@ var _HttpClient_startReceive = F4(function (
             A2(
               __HttpClient_ReceivedChunk,
               request,
-              _HttpClient_formatResponse(res, new DataView(bytes.buffer))
+              _HttpClient_formatResponse(
+                res,
+                new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
+              )
             )
           )
         );
@@ -348,7 +372,7 @@ var _HttpClient_CustomTimeoutError = new Error();
 var _HttpClient_formatResponse = function (res, data) {
   let headerDict = __Dict_empty;
   for (const [key, value] of Object.entries(res.headersDistinct)) {
-    headerDict = A3(__Dict_insert, key, value, headerDict);
+    headerDict = A3(__Dict_set, key.toLowerCase(), value, headerDict);
   }
 
   return {

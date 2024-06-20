@@ -1,13 +1,15 @@
 /*
 
-import Gren.Kernel.Scheduler exposing (binding, rawSpawn)
+import Gren.Kernel.Scheduler exposing (binding, rawSpawn, succeed)
 
 */
 
 var _Stream_attachListener = F2(function (stream, sendToApp) {
   return __Scheduler_binding(function (_callback) {
     var listener = function (data) {
-      __Scheduler_rawSpawn(sendToApp(new DataView(data.buffer)));
+      __Scheduler_rawSpawn(
+        sendToApp(new DataView(data.buffer, data.byteOffset, data.length))
+      );
     };
 
     stream.on("data", listener);
@@ -20,6 +22,8 @@ var _Stream_attachListener = F2(function (stream, sendToApp) {
 });
 
 var _Stream_send = F2(function (stream, data) {
-  stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-  return {};
+  return __Scheduler_binding(function (callback) {
+    stream.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    callback(__Scheduler_succeed({}));
+  });
 });

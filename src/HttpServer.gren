@@ -11,6 +11,7 @@ effect module HttpServer where { subscription = HttpSub } exposing
     -- Requests
     , Request
     , Method(..)
+    , methodToString
     , bodyAsString
     , bodyFromJson
     , requestInfo
@@ -30,7 +31,7 @@ See [examples/http-server](https://github.com/gren-lang/node/tree/main/examples/
 
 ## Requests
 
-@docs Request, Method, bodyAsString, bodyFromJson, requestInfo
+@docs Request, Method, methodToString, bodyAsString, bodyFromJson, requestInfo
 
 ## Responding to requests
 
@@ -105,7 +106,7 @@ type alias Request =
     , method : Method
     , body : Bytes
     , url : Url
-    }
+   }
 
 
 {-| HTTP request methods.
@@ -120,6 +121,39 @@ type Method
     | TRACE
     | PATCH
     | UNKNOWN String
+
+
+{-| String representation of method
+-}
+methodToString : Method -> String
+methodToString method =
+    case method of
+        GET ->
+            "GET"
+        
+        HEAD ->
+            "HEAD"
+        
+        POST ->
+            "POST"
+        
+        PUT ->
+            "PUT"
+        
+        DELETE ->
+            "DELETE"
+        
+        CONNECT ->
+            "CONNECT"
+        
+        TRACE ->
+            "TRACE"
+        
+        PATCH ->
+            "PATCH"
+        
+        UNKNOWN value ->
+            value
 
 
 {-| Turn the pieces of a request into a [`Request`](HttpServer.Request) record.
@@ -182,9 +216,7 @@ toRequest
 -}
 bodyAsString : Request -> Maybe String
 bodyAsString req =
-    Decode.decode
-        (Decode.string (Bytes.width req.body))
-        req.body
+    Bytes.toString req.body
 
 
 {-| Get request body as json.
@@ -290,18 +322,15 @@ arrayPairs a =
 dictFromPairs : Array (Array String) -> Dict String String
 dictFromPairs pairs =
     let
-        mapper p =
+        mapper p dict =
             case p of
                 [a, b] ->
-                    Just { key = a, value = b }
+                    Dict.set a b dict
                 
                 _ ->
-                    Nothing
-        
-        array =
-            Array.filterMap mapper pairs
+                    dict
     in
-    Dict.fromArray array
+    Array.foldl mapper Dict.empty pairs
 
 
 -- EFFECT STUFF

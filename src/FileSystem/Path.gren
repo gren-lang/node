@@ -1,0 +1,183 @@
+module FileSystem.Path exposing 
+    ( Path
+    --
+    , empty
+    , fromPosixString
+    , toPosixString
+    , fromWin32String
+    , toWin32String
+    --
+    , filenameWithExtension
+    , parentPath
+    --
+    , append
+    , prepend
+    , join
+    )
+
+
+{-| A path represents the location of a file or directory in a filesystem.
+
+@docs Path
+
+## Constructors
+
+@docs empty, fromPosixString, toPosixString, fromWin32String, toWin32String
+
+## Query
+
+@docs filenameWithExtension, parentPath
+
+## Manipulation
+
+@docs append, prepend, join
+-}
+
+
+import Task exposing (Task)
+import Gren.Kernel.FilePath
+
+
+{-| A cross-platform representation of a filesystem path.
+
+If `root` is empty, it means that the path is relative to the working directory.
+On posix-compatible systems (Linux, Mac...), the root value is "/" if not empty.
+On Windows, the root refers to the specific disk that the path applies to.
+
+`filename` (and `extension`) refers to the last part of a path. It can still
+represent a directory.
+
+-}
+type alias Path =
+    { root : String
+    , directory : Array String
+    , filename : String
+    , extension : String
+    }
+
+
+{-| The empty [Path](#Path). Normally treated as the current directory.
+-}
+empty : Path
+empty =
+    { root = ""
+    , directory = []
+    , filename = ""
+    , extension = ""
+    }
+
+
+{-| Build a [Path](#Path) from a `String`. The `String` should represent a Posix-compatible path.
+-}
+fromPosixString : String -> Path
+fromPosixString =
+    Gren.Kernel.FilePath.fromPosix
+
+
+{-| String representation of a [Path](#Path) for Posix systems.
+-}
+toPosixString : Path -> String
+toPosixString =
+    Gren.Kernel.FilePath.toPosix
+
+
+{-| Build a [Path](#Path) from a `String`. The `String` should represent a Windows-compatible path.
+-}
+fromWin32String : String -> Path
+fromWin32String =
+    Gren.Kernel.FilePath.fromWin32
+
+
+{-| `String` representation of a [Path](#Path) for Windows.
+-}
+toWin32String : Path -> String
+toWin32String =
+    Gren.Kernel.FilePath.toWin32
+
+
+{-| Return the filename and file extension for a [Path](#Path).
+
+    "/home/me/file.md"
+        |> fromPosixString
+        |> filenameWithExtension
+        -- returns "file.md"
+-}
+filenameWithExtension : Path -> String
+filenameWithExtension path =
+    if String.isEmpty path.extension then
+        path.filename
+
+    else
+        path.filename ++ "." ++ path.extension
+
+
+{-| Return a [Path](#Path) that represents the directory which holds the given [Path](#Path)
+
+    "/home/me/file.md"
+        |> fromPosixString
+        |> parentPath
+        -- returns (Just "/home/me")
+-}
+parentPath : Path -> Maybe Path
+parentPath path =
+    case Array.popLast path.directory of
+        Nothing ->
+            if filenameWithExtension path == "" then
+                Nothing
+
+            else
+                Just
+                    { path
+                        | filename = ""
+                        , extension = ""
+                    }
+
+        Just { last, initial } ->
+            let
+                { filename, extension } =
+                    case String.split "." last of
+                        [ file, ext ] ->
+                            { filename = file
+                            , extension = ext
+                            }
+
+                        _ ->
+                            { filename = last
+                            , extension = ""
+                            }
+            in
+            Just
+                { path
+                    | directory = initial
+                    , filename = filename
+                    , extension = extension
+                }
+
+
+{-| Join two paths by appending the first [Path](#Path) onto the second.
+-}
+append : Path -> Path -> Path
+append left right =
+    prepend right left
+
+
+{-| Join two paths by prepending the first [Path](#Path) onto the second.
+-}
+prepend : Path -> Path -> Path
+prepend left right =
+    { left
+        | directory =
+            left.directory
+                |> Array.pushLast (filenameWithExtension left)
+                |> Array.append right.directory
+                |> Array.filter (\dir -> dir /= "")
+        , filename = right.filename
+        , extension = right.extension
+    }
+
+
+{-| Join all paths in an `Array`.
+-}
+join : Array Path -> Path
+join paths =
+    Array.foldl append (fromPosixString ".") paths

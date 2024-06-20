@@ -1,0 +1,164 @@
+module Test.FileSystemPath exposing (tests)
+
+import FileSystem.Path as Path
+import Test exposing (Test, describe, test)
+import Expect
+
+
+tests : Test
+tests =
+    describe "FileSystem.Path Tests"
+        [ describe "fromPosixString"
+            [ test "absolute file" <| 
+                \{} ->
+                    Path.fromPosixString "/some/long/path.js"
+                        |> Expect.equal
+                            { root = "/"
+                            , directory = [ "some", "long" ]
+                            , filename = "path"
+                            , extension = "js"
+                            }
+            , test "absolute file without extension" <| 
+                \{} ->
+                    Path.fromPosixString "/some/long"
+                        |> Expect.equal
+                            { root = "/"
+                            , directory = [ "some" ]
+                            , filename = "long"
+                            , extension = ""
+                            }
+            , test "relative file" <| 
+                \{} ->
+                    Path.fromPosixString "some/other/file"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "just a file name" <|
+                \{} ->
+                    Path.fromPosixString "file.md"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "file"
+                            , extension = "md"
+                            }
+            , test "paths are normalized" <| 
+                \{} ->
+                    Path.fromPosixString "some/other/file/."
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "paths are normalized, even in extreme cases" <| 
+                \{} ->
+                    Path.fromPosixString "some/other//file/other/.."
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "empty path" <|
+                \{} ->
+                    Path.fromPosixString ""
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = ""
+                            , extension = ""
+                            }
+            , test "current path" <|
+                \{} ->
+                    Path.fromPosixString ""
+                        |> Expect.equal (Path.fromPosixString ".")
+            ]
+        , describe "fromWin32String"
+            [ test "absolute file" <| 
+                \{} ->
+                    Path.fromWin32String "C:\\some\\long\\path.js"
+                        |> Expect.equal
+                            { root = "C:\\"
+                            , directory = [ "some", "long" ]
+                            , filename = "path"
+                            , extension = "js"
+                            }
+            ]
+        , describe "to*String"
+            [ test "toPosixString is the inverse of fromPosixString" <|
+                \{} ->
+                    let
+                        pathStr =
+                            "/some/specific/file.md"
+
+                        path =
+                            Path.fromPosixString pathStr
+                    in
+                    Expect.equal pathStr (Path.toPosixString path)
+            , test "toPosixString works on simple file name" <|
+                \{} ->
+                    let
+                        pathStr =
+                            "file.md"
+
+                        path =
+                            Path.fromPosixString pathStr
+                    in
+                    Expect.equal pathStr (Path.toPosixString path)
+            , test "toWin32String is the inverse of fromWin32String" <|
+                \{} ->
+                    let
+                        pathStr =
+                            "C:\\some\\specific\\file.md"
+
+                        path =
+                            Path.fromWin32String pathStr
+                    in
+                    Expect.equal pathStr (Path.toWin32String path)
+            , test "Path is platform agnostic" <|
+                \{} ->
+                    let
+                        pathStr =
+                            "C:\\some\\specific\\file.md"
+
+                        path =
+                            Path.fromWin32String pathStr
+                    in
+                    Expect.equal "/some/specific/file.md" (Path.toPosixString path)
+            ]
+        , describe "filenameWithExtension"
+            [ test "Returns the filename with extension" <|
+                \{} ->
+                    Expect.equal "file.md" (Path.filenameWithExtension (Path.fromPosixString "/dir/file.md"))
+            , test "Or just the filename if no extension is set" <|
+                \{} ->
+                    Expect.equal "file" (Path.filenameWithExtension (Path.fromPosixString "/dir/file"))
+            ]
+        , describe "append"
+            [ test "Joins two paths" <|
+                \{} ->
+                    Path.fromPosixString "/some/longer/file.md"
+                        |> Path.append (Path.fromPosixString "/with/more")
+                        |> Path.toPosixString
+                        |> Expect.equal "/some/longer/file.md/with/more"
+            ]
+        , describe "concat"
+            [ test "Easier way to join many paths" <|
+                \{} ->
+                    Expect.equal
+                        (Path.fromPosixString "one"
+                            |> Path.append (Path.fromPosixString "two/three")
+                            |> Path.append (Path.fromPosixString "/file.md")
+                        )
+                        (Path.join
+                            [ Path.fromPosixString "one"
+                            , Path.fromPosixString "two/three"
+                            , Path.fromPosixString "/file.md"
+                            ]
+                        )
+            ]
+        ]

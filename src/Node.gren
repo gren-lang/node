@@ -52,6 +52,7 @@ import Internal.Init
 import Task exposing ( Task )
 import Gren.Kernel.Node
 import Internal.Stream as IStream
+import FileSystem.Path exposing (Path)
 
 
 -- ENVIRONMENT
@@ -67,6 +68,7 @@ import Internal.Stream as IStream
 type alias Environment =
     { platform : Platform
     , cpuArchitecture : CpuArchitecture
+    , applicationPath : Path
     , args : Array String
     , stdout : IStream.Stream
     , stderr : IStream.Stream
@@ -81,6 +83,7 @@ initializeEnvironment =
                 (\raw ->
                     { platform = platformFromString raw.platform
                     , cpuArchitecture = archFromString raw.arch
+                    , applicationPath = raw.applicationPath
                     , args = raw.args
                     , stdout = IStream.Stream 0 raw.stdout
                     , stderr = IStream.Stream 1 raw.stderr
@@ -99,7 +102,7 @@ type Platform
     | OpenBSD
     | SunOS
     | Aix
-    | UnknownPlatform
+    | UnknownPlatform String
 
 
 platformFromString : String -> Platform
@@ -127,7 +130,7 @@ platformFromString platform =
             Aix
 
         _ ->
-            UnknownPlatform
+            UnknownPlatform platform
 
 
 {-| The CPU architecture your application is running on.
@@ -143,7 +146,7 @@ type CpuArchitecture
     | S390
     | S390x
     | X64
-    | UnknownArchitecture
+    | UnknownArchitecture String
 
 
 archFromString : String -> CpuArchitecture
@@ -180,12 +183,12 @@ archFromString arch =
             X64
 
         _ ->
-            UnknownArchitecture
+            UnknownArchitecture arch
 
 
 {-| Get a `Dict` of environment variables.
 -}
-getEnvironmentVariables : Task Never (Dict String String)
+getEnvironmentVariables : Task x (Dict String String)
 getEnvironmentVariables =
     Gren.Kernel.Node.getEnvironmentVariables
 
@@ -260,7 +263,7 @@ defineSimpleProgram initTask =
                         )
             }
         , update = update (\_ _ -> { model = {}, command = Cmd.none })
-        , subscriptions = always Sub.none
+        , subscriptions = (\_ -> Sub.none)
         }
 
 
@@ -349,13 +352,15 @@ endWithCmd cmd =
 
 
 {-| Terminate the program immediatly. It will not wait for tasks like http calls
-or file system writes, so only use this if you've reached a state where it makes
-no sense to continue.
+or file system writes to complete.
+
+This function is equivalent to:
+
+    exitWithCode 0
 -}
-exit : Cmd msg
+exit : Task x {}
 exit =
-    Gren.Kernel.Node.exit
-        |> Task.perform never
+    exitWithCode 0
 
 
 {-| Terminate the program immediatly. It will not wait for tasks like http calls
@@ -363,12 +368,13 @@ or file system writes, so only use this if you've reached a state where it makes
 no sense to continue.
 
 The exit code can be read by other processes on your system. Any value other than
-0 is considered an error.
+0 is considered an error, but there are no other formal requirements for what
+makes an exit code. If all you want is to signalize that your application exited
+due to an error, -1 is a good option.
 -}
-exitWithCode : Int -> Cmd msg
+exitWithCode : Int -> Task x {}
 exitWithCode code =
     Gren.Kernel.Node.exitWithCode code
-        |> Task.perform never
 
 
 {-| Set the error code that the program will return once it finishes.
@@ -377,7 +383,6 @@ Note: This will not terminate your program, so things like http calls
 or writes to the filesystem will be allowed to complete. However,
 the program will only exit once there are no ongoing tasks.
 -}
-setExitCode : Int -> Cmd msg
+setExitCode : Int -> Task x {}
 setExitCode code =
     Gren.Kernel.Node.setExitCode code
-        |> Task.perform never

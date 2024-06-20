@@ -1,4 +1,4 @@
-effect module Stream where { command = StreamCmd, subscription = StreamSub } exposing
+effect module Stream where { subscription = StreamSub } exposing
     ( Stream
     , send
     , sendString
@@ -15,8 +15,7 @@ like bytes flowing from a server to a client, or from a file to a program.
 
 import Dict exposing (Dict)
 import Gren.Kernel.Stream
-import Task
-import Bytes.Encode as BE
+import Task exposing (Task)
 import Bytes exposing (Bytes)
 import Process
 import Internal.Stream as Internal
@@ -28,38 +27,23 @@ type alias Stream
     = Internal.Stream
 
 
--- COMMANDS
-
-
-type StreamCmd a
-    = SendToStream Stream Bytes
-
-
-cmdMap : (a -> b) -> StreamCmd a -> StreamCmd b
-cmdMap _ cmd =
-    case cmd of
-        SendToStream stream payload ->
-            SendToStream stream payload
-
-
 {-| This lets you send bytes over a `Stream`.
 -}
-send : Stream -> Bytes -> Cmd msg
-send stream bytes =
-    command <| SendToStream stream bytes
+send : Stream -> Bytes -> Task x {}
+send (Internal.Stream _ kernelStream) bytes =
+    Gren.Kernel.Stream.send kernelStream bytes
 
 
 {-| This lets you send a string over a `Stream`.
 -}
-sendString : Stream -> String -> Cmd msg
+sendString : Stream -> String -> Task x {}
 sendString stream string =
-    send stream <|
-        BE.encode <| BE.string string
+    send stream <| Bytes.fromString string
 
 
 {-| This sends string and a newline over a `Stream`.
 -}
-sendLine : Stream -> String -> Cmd msg
+sendLine : Stream -> String -> Task x {}
 sendLine stream string =
     sendString stream <| string ++ "\n"
 
@@ -110,11 +94,10 @@ init =
 
 onEffects
     : Platform.Router msg Event
-    -> Array (StreamCmd msg)
     -> Array (StreamSub msg)
     -> State msg
     -> Task.Task Never (State msg)
-onEffects router commands subs state =
+onEffects router subs state =
     let
         newTaggers =
             Array.foldl subToListener Dict.empty subs
@@ -133,24 +116,14 @@ onEffects router commands subs state =
                 |> Array.foldl
                     (\id tasks -> Task.andThen (\{} -> Process.kill id) tasks)
                     (Task.succeed {})
-
-        commandTasks =
-            Array.foldl
-                (\(SendToStream stream bytes) tasks ->
-                    Task.andThen (\_ -> Platform.sendToSelf router (ToStream stream bytes)) tasks
-                )
-                (Task.succeed {})
-                commands
     in
-        commandTasks
-            |> Task.andThen (\_ -> killTasks)
-            |> Task.andThen (\_ -> spawnHelp router toSpawn existingProcesses)
-            |> Task.andThen (\newProcesses ->
-                Task.succeed
-                    { taggers = newTaggers
-                    , processes = newProcesses
-                    }
-                )
+    killTasks
+        |> Task.andThen (\_ -> spawnHelp router toSpawn existingProcesses)
+        |> Task.map (\newProcesses ->
+            { taggers = newTaggers
+            , processes = newProcesses
+            }
+        )
 
 
 subToListener : StreamSub msg -> Dict Int (Tagger msg) -> Dict Int (Tagger msg)
@@ -159,12 +132,12 @@ subToListener sub taggers =
         Listen ((Internal.Stream sid _) as stream) tagger ->
             case Dict.get sid taggers of
                 Just data ->
-                    Dict.insert sid
+                    Dict.set sid
                         { data | taggers = Array.pushLast tagger data.taggers }
                         taggers
 
                 Nothing ->
-                    Dict.insert sid
+                    Dict.set sid
                         { stream = stream
                         , taggers = [ tagger ]
                         }
@@ -189,7 +162,7 @@ spawnHelp router toSpawn processes =
           Array.dropFirst 1 toSpawn
 
         spawnRest processId =
-          spawnHelp router rest (Dict.insert sid processId processes)
+          spawnHelp router rest (Dict.set sid processId processes)
       in
         spawnStream
           |> Task.andThen spawnRest
@@ -202,7 +175,6 @@ attachListener =
 
 type Event
     = FromStream Stream Bytes
-    | ToStream Stream Bytes
 
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task.Task Never (State msg)
@@ -218,11 +190,4 @@ onSelfMsg router event state =
                         Task.andThen (\{} -> Platform.sendToApp router msg) tasks
                     )
                     (Task.succeed {})
-                |> Task.andThen (\_ -> Task.succeed state)
-
-        ToStream (Internal.Stream _ rawStream) bytes ->
-            let
-                _ =
-                    Gren.Kernel.Stream.send rawStream bytes
-            in
-                Task.succeed state
+                |> Task.map (\_ -> state)

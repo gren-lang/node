@@ -98,6 +98,7 @@ import Bytes exposing (Bytes)
 import Task exposing (Task)
 import Platform
 import Gren.Kernel.HttpClient
+import HttpServer exposing (Method(..), methodToString)
 
 
 {-| A value that represents the permission to perform HTTP requests.
@@ -133,7 +134,7 @@ initializeForHost host =
 this value, then customize it using the following `with` functions.
 -}
 type alias RequestConfiguration responseType =
-    { method : String
+    { method : Method
     , url : String
     , headers : Dict String (Array String)
     , body : Body
@@ -146,19 +147,19 @@ type alias RequestConfiguration responseType =
 -}
 get : String -> RequestConfiguration {}
 get url =
-    request "GET" url
+    request GET url
 
 
 {-| Initializes the configuration for a simple POST request to the given url.
 -}
 post : String -> RequestConfiguration {}
 post url =
-    request "POST" url
+    request POST url
 
 
 {-| Initializes a request configuration with the given method and url.
 -}
-request : String -> String -> RequestConfiguration {}
+request : Method -> String -> RequestConfiguration {}
 request method url =
     { method = method
     , url = url
@@ -198,7 +199,7 @@ Examples include the length of the body, authentication information, name of the
 withHeader : String -> String -> RequestConfiguration a -> RequestConfiguration a
 withHeader key value req =
     { req
-        | headers = Dict.insert key [value] req.headers
+        | headers = Dict.set (String.toLower key) [value] req.headers
     }
 
 
@@ -210,7 +211,7 @@ withDuplicatedHeader : String -> String -> RequestConfiguration a -> RequestConf
 withDuplicatedHeader key value req =
     { req
         | headers = Dict.update 
-            key 
+            (String.toLower key)
             (Maybe.map (Array.pushLast value) >> Maybe.withDefault [value] >> Just)
             req.headers
     }
@@ -248,7 +249,7 @@ If the "Content-Type" header is set, this function will remove it.
 withEmptyBody : RequestConfiguration a -> RequestConfiguration a
 withEmptyBody req = 
     { req
-        | headers = Dict.remove "Content-Type" req.headers
+        | headers = Dict.remove "content-type" req.headers
         , body = BodyEmpty
     }
 
@@ -260,7 +261,7 @@ header, potentially overwriting the header if it has already been set.
 withStringBody : String -> String -> RequestConfiguration a -> RequestConfiguration a
 withStringBody mimeType value req = 
     { req
-        | headers = Dict.insert "Content-Type" [mimeType] req.headers
+        | headers = Dict.set "content-type" [mimeType] req.headers
         , body = BodyString value
     }
 
@@ -281,7 +282,7 @@ potentially overwriting the header if it has already been set.
 withBytesBody : String -> Bytes -> RequestConfiguration a -> RequestConfiguration a
 withBytesBody mimeType value req = 
     { req
-        | headers = Dict.insert "Content-Type" [mimeType] req.headers
+        | headers = Dict.set "content-type" [mimeType] req.headers
         , body = BodyBytes value
     }
 
@@ -423,7 +424,7 @@ kernelRequestConfig permission config =
                 SpecificPermission prefix ->
                     prefix ++ config.url
     in
-    { method = config.method
+    { method = methodToString config.method
     , url = actualUrl
     , headers = config.headers
     , bodyType = bodyTypeAsString config.body
@@ -488,7 +489,7 @@ errorToString err =
             "Bad headers: one or more of your headers contains invalid characters."
 
         BadStatus res ->
-            "Bad status: " ++ String.fromInt res.statusCode
+            "Bad status: " ++ String.fromInt res.statusCode ++ " - " ++ res.statusText
 
         UnexpectedResponseBody message ->
             "Unexpected response body: " ++ message
@@ -641,7 +642,7 @@ onEffects router commands state =
                             { state 
                                 | nextId = state.nextId + 1
                                 , msgHandlers = 
-                                    Dict.insert 
+                                    Dict.set 
                                         state.nextId
                                         { toMsg = toMsg
                                         , kernelRequest = kernelRequest
