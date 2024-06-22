@@ -8,7 +8,7 @@ var _Stream_attachListener = F2(function (stream, sendToApp) {
   return __Scheduler_binding(function (_callback) {
     var listener = function (data) {
       __Scheduler_rawSpawn(
-        sendToApp(new DataView(data.buffer, data.byteOffset, data.length))
+        sendToApp(new DataView(data.buffer, data.byteOffset, data.byteLength))
       );
     };
 
