@@ -303,16 +303,12 @@ checkAccess _ permissions path =
 
 
 {-| Change the access permissions for the entity's owner, group and everyone else.
-
-If `resolveLink` is `False`, you'll change the permissions of the link itself, not
-the entity it points to.
 -}
 changeAccess 
     : Permission
     -> { owner : Array AccessPermission 
        , group : Array AccessPermission
        , others : Array AccessPermission
-       , resolveLink : Bool
        }
     -> Path
     -> Task Error Path
@@ -323,11 +319,7 @@ changeAccess _ permissions path =
             ++ (String.fromInt <| accessPermissionsToInt permissions.group)
             ++ (String.fromInt <| accessPermissionsToInt permissions.others)
     in
-    if permissions.resolveLink then
-        Gren.Kernel.FileSystem.chmod mode path
-
-    else
-        Gren.Kernel.FileSystem.lchmod mode path
+    Gren.Kernel.FileSystem.chmod mode path
 
 
 {-| The integer representation of a set of access permissions in a posix system.
