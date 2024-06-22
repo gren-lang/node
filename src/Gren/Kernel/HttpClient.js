@@ -167,7 +167,7 @@ var _HttpClient_request = function (config) {
                   new DataView(
                     finalBuffer.buffer,
                     finalBuffer.byteOffset,
-                    finalBuffer.length
+                    finalBuffer.byteLength
                   )
                 )
               )
@@ -298,7 +298,7 @@ var _HttpClient_startReceive = F4(function (
               request,
               _HttpClient_formatResponse(
                 res,
-                new DataView(bytes.buffer, bytes.byteOffset, bytes.length)
+                new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
               )
             )
           )

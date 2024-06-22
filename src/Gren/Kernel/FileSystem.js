@@ -514,7 +514,7 @@ var _FileSystem_readFile = function (path) {
       } else {
         callback(
           __Scheduler_succeed(
-            new DataView(data.buffer, data.byteOffset, data.length)
+            new DataView(data.buffer, data.byteOffset, data.byteLength)
           )
         );
       }
