@@ -21,21 +21,12 @@ var _ChildProcess_run = function (options) {
       options.__$arguments,
       {
         encoding: "buffer",
-        cwd: workingDir.__$inherit ? process.cwd() : workingDir.__$override,
-        env:
-          env.__$option === 0
-            ? process.env
-            : env.__$option === 1
-            ? __Utils_update(process.env, _ChildProcess_dictToObj(env.__$value))
-            : _ChildProcess_dictToObj(env.__$value),
+        timeout: options.__$runDuration,
+        cwd: _ChildProcess_handleCwd(workingDir),
+        env: _ChildProcess_handleEnv(env),
         timeout: options.__$runDuration,
         maxBuffer: options.__$maximumBytesWrittenToStreams,
-        shell:
-          shell.__$choice === 0
-            ? false
-            : shell.__$choice === 1
-            ? true
-            : shell.__$value,
+        shell: _ChildProcess_handleShell(shell),
       },
       function (err, stdout, stderr) {
         if (err == null) {
@@ -75,6 +66,51 @@ var _ChildProcess_run = function (options) {
     );
   });
 };
+
+var _ChildProcess_spawn = function (options) {
+  return __Scheduler_binding(function (callback) {
+    var workingDir = options.__$workingDirectory;
+    var env = options.__$environmentVariables;
+    var shell = options.__$shell;
+
+    var subproc = childProcess.spawn(options.__$program, options.__$arguments, {
+      cwd: _ChildProcess_handleCwd(workingDir),
+      env: _ChildProcess_handleEnv(env),
+      timeout: options.__$runDuration,
+      shell: _ChildProcess_handleShell(shell),
+      stdio: options.__$connection === 0 ? "inherit" : "ignore",
+      detached: options.__$connection === 2 && process.platform === "win32",
+    });
+
+    if (options.__$connection === 2) {
+      subproc.unref();
+    }
+
+    return function () {
+      subproc.kill();
+    };
+  });
+};
+
+function _ChildProcess_handleCwd(cwd) {
+  return cwd.__$inherit ? process.cwd() : cwd.__$override;
+}
+
+function _ChildProcess_handleEnv(env) {
+  return env.__$option === 0
+    ? process.env
+    : env.__$option === 1
+    ? __Utils_update(process.env, _ChildProcess_dictToObj(env.__$value))
+    : _ChildProcess_dictToObj(env.__$value);
+}
+
+function _ChildProcess_handleShell(shell) {
+  return shell.__$choice === 0
+    ? false
+    : shell.__$choice === 1
+    ? true
+    : shell.__$value;
+}
 
 function _ChildProcess_dictToObj(dict) {
   return A3(
