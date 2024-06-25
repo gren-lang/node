@@ -245,11 +245,7 @@ runWithDefaultOptions permission program arguments =
 * `workingDirectory` specifies the working directory of the process
 * `environmentVariables` specifies the environment variables the process has access to
 * `runDuration` specifies a maximum amount of time a process is allowed to run before exiting
-* `connection` let's you specify how close the new process is connected to the application. `Integrated`
-means that the spawned process shares the stdin, stdout and stderr streams and that the application
-will wait for its termination. `Ignored` means that stdin, stdout and stderr is seperate but that
-the application will still wait for its termination. `Detached` means that the application can
-terminate even if the spawned process is still running.
+* `connection` let's you specify how close the new process is connected to the application
 -}
 type alias SpawnOptions =
     { shell : Shell
@@ -260,6 +256,12 @@ type alias SpawnOptions =
     }
 
 
+{-| What relation should the newly spawned process have with the running application?
+
+* `Integrated` means that the spawned process shares the stdin, stdout and stderr streams and that the application will wait for its termination.
+* `Ignored` means that stdin, stdout and stderr is seperate but that the application will still wait for its termination.
+* `Detached` means that the application can terminate even if the spawned process is still running.
+-}
 type Connection
     = Integrated
     | Ignored
