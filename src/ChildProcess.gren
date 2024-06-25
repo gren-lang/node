@@ -15,7 +15,7 @@ module ChildProcess exposing
     , runWithDefaultOptions
     --
     , SpawnOptions
-    , Connection
+    , Connection(..)
     , defaultSpawnOptions
     , spawn
     , spawnWithDefaultOptions
