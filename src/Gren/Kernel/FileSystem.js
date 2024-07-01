@@ -226,7 +226,7 @@ var _FileSystem_listDirectory = function (path) {
           callback(
             __Scheduler_succeed(
               content.map((f) => ({
-                __$name: f.name,
+                __$path: __FilePath_fromString(f.name),
                 __$entityType: _FileSystem_toEntityType(f),
               }))
             )
