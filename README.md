@@ -4,6 +4,43 @@ This package allows you to create Gren programs that run on the NodeJS runtime.
 
 **I highly recommend working through the [guide](https://gren-lang.org/book/) to learn how to use Gren.**
 
+## Creating a node application
+
+In addition to [installing gren](https://gren-lang.org/install), you'll need the current [node LTS](https://nodejs.org/en) release.
+
+Initialize a gren application that targets node:
+
+```
+gren init --platform=node
+```
+
+Create a `src/Main.gren` file:
+
+```elm
+module Main exposing (main)
+
+import Node
+import Stream
+import Task
+
+main =
+    Node.defineSimpleProgram
+        (\env ->
+            Stream.sendLine env.stdout "Hello, World!"
+                |> Task.execute
+                |> Node.endWithCmd
+        )
+```
+
+compile and run with
+
+```
+gren make src/Main.gren
+node app
+```
+
+See the [cat example](https://github.com/gren-lang/example-projects/tree/main/cat) and the [examples folder](https://github.com/gren-lang/node/tree/main/examples) for more complex examples.
+
 ## Applications, sub-systems and permissions
 
 This package is based around the idea of sub-systems. A sub-system provides access to functionality which interact with the outside world, like reading files or communicating with the terminal.
