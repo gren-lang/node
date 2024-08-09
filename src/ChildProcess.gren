@@ -18,6 +18,7 @@ module ChildProcess exposing
     , Connection(..)
     , defaultSpawnOptions
     , spawn
+    , spawnAndNotifyOnExit
     , spawnWithDefaultOptions
     )
 
@@ -37,7 +38,7 @@ This module allow you to spawn child processes.
 
 ## Spawning processes
 
-@docs SpawnOptions, Connection, defaultSpawnOptions, spawn, spawnWithDefaultOptions
+@docs SpawnOptions, Connection, defaultSpawnOptions, spawn, spawnWithDefaultOptions, spawnAndNotifyOnExit
 -}
 
 
@@ -256,6 +257,28 @@ type alias SpawnOptions =
     }
 
 
+{-| Record expected by spawn kernel call.
+-}
+type alias SpawnKernelOptions =
+    { program : String
+    , arguments : Array String
+    , shell : 
+        { choice : Int
+        , value : String 
+        }
+    , workingDirectory : 
+        { inherit : Bool
+        , override : String
+        }
+    , environmentVariables :
+        { option : Int
+        , value : Dict String String
+        }
+    , runDuration : Int
+    , connection : Int
+    }
+
+
 {-| What relation should the newly spawned process have with the running application?
 
 * `Integrated` means that the spawned process shares the stdin, stdout and stderr streams and that the application will wait for its termination.
@@ -289,70 +312,88 @@ This is mostly helpful for starting long-running processes.
 spawn : Permission -> String -> Array String -> SpawnOptions -> Task x Process.Id
 spawn _ program arguments opts =
     Process.spawn <|
-        Gren.Kernel.ChildProcess.spawn
-            { program = program
-            , arguments = arguments
-            , shell =
-                case opts.shell of
-                    NoShell ->
-                        { choice = 0
-                        , value = ""
-                        }
+        Gren.Kernel.ChildProcess.spawn <|
+            spawnKernelOptions program arguments opts
 
-                    DefaultShell ->
-                        { choice = 1
-                        , value = ""
-                        }
 
-                    CustomShell value ->
-                        { choice = 2
-                        , value = value
-                        }
-            , workingDirectory =
-                 case opts.workingDirectory of
-                     InheritWorkingDirectory -> 
-                        { inherit = True
-                        , override = ""
-                        }
+{-| Spawn a process with a given name, arguments and options, and let it run in the background.
+When the process completes, trigger the given message with a `Result [FailedRun](#FailedRun) [SuccessfulRun](#SuccessfulRun)`.
 
-                     SetWorkingDirectory value ->
-                        { inherit = False
-                        , override = value
-                        }
-            , environmentVariables =
-                case opts.environmentVariables of
-                    InheritEnvironmentVariables -> 
-                        { option = 0
-                        , value = Dict.empty
-                        }
-                
-                    MergeWithEnvironmentVariables value ->
-                        { option = 1
-                        , value = value
-                        }
+    spawnAndNotifyOnExit permission SleepFinished "sleep" [ "2" ] defaultSpawnOptions 
 
-                    ReplaceEnvironmentVariables value ->
-                        { option = 2
-                        , value = value
-                        }
-            , runDuration =
-                case opts.runDuration of
-                    NoLimit ->
-                        0
+-}
+spawnAndNotifyOnExit : Permission -> (Task FailedRun SuccessfulRun -> msg) -> String -> Array String -> SpawnOptions -> Task x Process.Id
+spawnAndNotifyOnExit _ mapper program arguments opts =
+    Process.spawn <|
+        Gren.Kernel.ChildProcess.spawnAndNotifyOnExit mapper <|
+            spawnKernelOptions program arguments opts
 
-                    Milliseconds ms -> 
-                        max 0 ms
-            , connection =
-                case opts.connection of
-                    Integrated ->
-                        0
 
-                    Ignored ->
-                        1
+spawnKernelOptions : String -> Array String -> SpawnOptions -> SpawnKernelOptions
+spawnKernelOptions program arguments opts =
+    { program = program
+    , arguments = arguments
+    , shell =
+        case opts.shell of
+            NoShell ->
+                { choice = 0
+                , value = ""
+                }
 
-                    Detached ->
-                        2
-            }
+            DefaultShell ->
+                { choice = 1
+                , value = ""
+                }
+
+            CustomShell value ->
+                { choice = 2
+                , value = value
+                }
+    , workingDirectory =
+         case opts.workingDirectory of
+             InheritWorkingDirectory -> 
+                { inherit = True
+                , override = ""
+                }
+
+             SetWorkingDirectory value ->
+                { inherit = False
+                , override = value
+                }
+    , environmentVariables =
+        case opts.environmentVariables of
+            InheritEnvironmentVariables -> 
+                { option = 0
+                , value = Dict.empty
+                }
+        
+            MergeWithEnvironmentVariables value ->
+                { option = 1
+                , value = value
+                }
+
+            ReplaceEnvironmentVariables value ->
+                { option = 2
+                , value = value
+                }
+    , runDuration =
+        case opts.runDuration of
+            NoLimit ->
+                0
+
+            Milliseconds ms -> 
+                max 0 ms
+    , connection =
+        case opts.connection of
+            Integrated ->
+                0
+
+            Ignored ->
+                1
+
+            Detached ->
+                2
+    }
 
 
 {-| Same as [spawn], but with [defaultSpawnOptions](#defaultSpawnOptions) passed in as options.
