@@ -1,8 +1,9 @@
 /*
 
-import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
+import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
 import Gren.Kernel.Utils exposing (update)
 import Dict exposing (foldl)
+import ChildProcess exposing (FailedRun, SuccessfulRun)
 
 */
 
@@ -69,28 +70,45 @@ var _ChildProcess_run = function (options) {
 
 var _ChildProcess_spawn = function (options) {
   return __Scheduler_binding(function (callback) {
-    var workingDir = options.__$workingDirectory;
-    var env = options.__$environmentVariables;
-    var shell = options.__$shell;
-
-    var subproc = childProcess.spawn(options.__$program, options.__$arguments, {
-      cwd: _ChildProcess_handleCwd(workingDir),
-      env: _ChildProcess_handleEnv(env),
-      timeout: options.__$runDuration,
-      shell: _ChildProcess_handleShell(shell),
-      stdio: options.__$connection === 0 ? "inherit" : "ignore",
-      detached: options.__$connection === 2 && process.platform === "win32",
-    });
-
-    if (options.__$connection === 2) {
-      subproc.unref();
-    }
-
+    var subproc = _ChildProcess_getSubProc(options);
     return function () {
       subproc.kill();
     };
   });
 };
+
+var _ChildProcess_spawnAsCmd = F2(function (sendToApp, options) {
+  return __Scheduler_binding(function (callback) {
+    var subproc = _ChildProcess_getSubProc(options);
+    subproc.on("exit", function (code) {
+      callback(__Scheduler_rawSpawn(sendToApp(code)));
+    });
+    return function () {
+      subproc.kill();
+    };
+  });
+});
+
+function _ChildProcess_getSubProc(options) {
+  var workingDir = options.__$workingDirectory;
+  var env = options.__$environmentVariables;
+  var shell = options.__$shell;
+
+  var subproc = childProcess.spawn(options.__$program, options.__$arguments, {
+    cwd: _ChildProcess_handleCwd(workingDir),
+    env: _ChildProcess_handleEnv(env),
+    timeout: options.__$runDuration,
+    shell: _ChildProcess_handleShell(shell),
+    stdio: options.__$connection === 0 ? "inherit" : "ignore",
+    detached: options.__$connection === 2 && process.platform === "win32",
+  });
+  
+  if (options.__$connection === 2) {
+    subproc.unref();
+  }
+
+  return subproc;
+}
 
 function _ChildProcess_handleCwd(cwd) {
   return cwd.__$inherit ? process.cwd() : cwd.__$override;
