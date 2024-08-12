@@ -77,7 +77,7 @@ var _ChildProcess_spawn = function (options) {
   });
 };
 
-var _ChildProcess_spawnAsCmd = F2(function (sendToApp, options) {
+var _ChildProcess_spawnAndNotifyOnExit = F2(function (sendToApp, options) {
   return __Scheduler_binding(function (callback) {
     var subproc = _ChildProcess_getSubProc(options);
     subproc.on("exit", function (code) {

@@ -18,7 +18,7 @@ effect module ChildProcess where { command = MyCmd } exposing
     , Connection(..)
     , defaultSpawnOptions
     , spawn
-    , spawnAsCmd
+    , spawnAndNotifyOnExit
     , spawnWithDefaultOptions
     )
 
@@ -319,11 +319,11 @@ spawn _ program arguments opts =
 {-| Spawn a process with the given name, arguments and options, and let it run in the background.
 When the process completes, trigger the given message with the exit code.
 
-    spawnAsCmd permission SleepFinished "sleep" [ "2" ] defaultSpawnOptions 
+    spawnAndNotifyOnExit permission SleepFinished "sleep" [ "2" ] defaultSpawnOptions 
 
 -}
-spawnAsCmd : Permission -> (Int -> msg) -> String -> Array String -> SpawnOptions -> Cmd msg
-spawnAsCmd _ toMsg program arguments opts =
+spawnAndNotifyOnExit : Permission -> (Int -> msg) -> String -> Array String -> SpawnOptions -> Cmd msg
+spawnAndNotifyOnExit _ toMsg program arguments opts =
     command <|
         Spawn toMsg <|
             kernelSpawnConfig program arguments opts
@@ -431,7 +431,7 @@ onEffects router commands state =
     Just { first, rest } ->
         case first of
             Spawn toMsg config ->
-                Gren.Kernel.ChildProcess.spawnAsCmd 
+                Gren.Kernel.ChildProcess.spawnAndNotifyOnExit 
                     (Platform.sendToApp router << toMsg) 
                     config
                         |> Process.spawn
