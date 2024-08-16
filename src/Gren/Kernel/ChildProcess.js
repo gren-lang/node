@@ -102,7 +102,7 @@ function _ChildProcess_getSubProc(options) {
     stdio: options.__$connection === 0 ? "inherit" : "ignore",
     detached: options.__$connection === 2 && process.platform === "win32",
   });
-  
+
   if (options.__$connection === 2) {
     subproc.unref();
   }
