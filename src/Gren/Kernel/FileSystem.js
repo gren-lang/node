@@ -161,7 +161,7 @@ var _FileSystem_writeHelper = function (
       }
 
       if (bytesWritten === length) {
-        callback(__Scheduler_succeed(fd));
+        callback(__Scheduler_succeed(fh));
         return;
       }
 
