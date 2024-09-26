@@ -10,16 +10,14 @@ import Platform exposing (sendToApp)
 
 */
 
-const http = require("node:http");
-const https = require("node:https");
 var buffer = require("node:buffer").Buffer;
 
 function _HttpClient_clientForProtocol(config) {
   if (config.__$url.startsWith("http://")) {
-    return http;
+    return require("node:http");
   }
 
-  return https;
+  return require("node:https");
 }
 
 var _HttpClient_request = function (config) {

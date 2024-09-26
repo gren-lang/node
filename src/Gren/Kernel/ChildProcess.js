@@ -9,10 +9,15 @@ import ChildProcess exposing (FailedRun, SuccessfulRun)
 
 var bufferNs = require("node:buffer");
 var process = require("node:process");
-var childProcess = require("node:child_process");
+
+var _ChildProcess_module = function () {
+  return require("node:child_process");
+};
 
 var _ChildProcess_run = function (options) {
   return __Scheduler_binding(function (callback) {
+    var childProcess = _ChildProcess_module();
+
     var workingDir = options.__$workingDirectory;
     var env = options.__$environmentVariables;
     var shell = options.__$shell;
@@ -90,6 +95,8 @@ var _ChildProcess_spawnAndNotifyOnExit = F2(function (sendToApp, options) {
 });
 
 function _ChildProcess_getSubProc(options) {
+  var childProcess = _ChildProcess_module();
+
   var workingDir = options.__$workingDirectory;
   var env = options.__$environmentVariables;
   var shell = options.__$shell;

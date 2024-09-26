@@ -19,7 +19,9 @@ var _Node_log = F2(function (text, args) {
 var _Node_init = __Scheduler_binding(function (callback) {
   callback(
     __Scheduler_succeed({
-      __$applicationPath: __FilePath_fromString(module.filename),
+      __$applicationPath: __FilePath_fromString(
+        typeof module !== "undefined" ? module.filename : process.execPath
+      ),
       __$arch: process.arch,
       __$args: process.argv,
       __$platform: process.platform,
@@ -58,4 +60,3 @@ function _Node_objToDict(obj) {
 
   return dict;
 }
-
