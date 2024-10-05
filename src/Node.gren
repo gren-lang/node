@@ -46,13 +46,14 @@ you to contact said subsystem. Be careful what code you give these permissions t
 -}
 
 
+import Bytes exposing (Bytes)
 import Dict exposing ( Dict )
 import Init
 import Internal.Init
 import Task exposing ( Task )
 import Gren.Kernel.Node
-import Internal.Stream as IStream
 import FileSystem.Path exposing (Path)
+import Stream exposing (ReadableStream, WriteableStream)
 
 
 -- ENVIRONMENT
@@ -70,9 +71,9 @@ type alias Environment =
     , cpuArchitecture : CpuArchitecture
     , applicationPath : Path
     , args : Array String
-    , stdout : IStream.Stream
-    , stderr : IStream.Stream
-    , stdin : IStream.Stream
+    , stdout : WriteableStream {} Bytes
+    , stderr : WriteableStream {} Bytes
+    , stdin : ReadableStream {} Bytes
     }
 
 
@@ -85,9 +86,9 @@ initializeEnvironment =
                     , cpuArchitecture = archFromString raw.arch
                     , applicationPath = raw.applicationPath
                     , args = raw.args
-                    , stdout = IStream.Stream 0 raw.stdout
-                    , stderr = IStream.Stream 1 raw.stderr
-                    , stdin = IStream.Stream 2 raw.stdin
+                    , stdout = raw.stdout
+                    , stderr = raw.stderr
+                    , stdin = raw.stdin
                     }
                 )
 

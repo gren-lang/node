@@ -8,6 +8,7 @@ import Gren.Kernel.FilePath exposing (fromString)
 */
 
 var process = require("node:process");
+var stream = require("node:stream");
 
 var _Node_log = F2(function (text, args) {
   // This function is used for simple applications where the main function returns String
@@ -25,9 +26,9 @@ var _Node_init = __Scheduler_binding(function (callback) {
       __$arch: process.arch,
       __$args: process.argv,
       __$platform: process.platform,
-      __$stderr: process.stderr,
-      __$stdin: process.stdin,
-      __$stdout: process.stdout,
+      __$stderr: stream.Writable.toWeb(process.stderr),
+      __$stdin: stream.Readable.toWeb(process.stdin),
+      __$stdout: stream.Writable.toWeb(process.stdout),
     })
   );
 });
