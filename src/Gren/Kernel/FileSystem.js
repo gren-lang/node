@@ -68,7 +68,7 @@ var _FileSystem_readFromOffset = F2(function (fh, options) {
       fileOffset,
       buffer.byteLength,
       requestedLength,
-      callback
+      callback,
     );
   });
 });
@@ -80,7 +80,7 @@ var _FileSystem_readHelper = function (
   fileOffset,
   maxReadLength,
   requestedReadLength,
-  callback
+  callback,
 ) {
   fs.read(
     fh,
@@ -99,8 +99,8 @@ var _FileSystem_readHelper = function (
       if (bytesRead === 0 || newBufferOffset >= requestedReadLength) {
         callback(
           __Scheduler_succeed(
-            new DataView(buffer.buffer, buffer.byteOffset, newBufferOffset)
-          )
+            new DataView(buffer.buffer, buffer.byteOffset, newBufferOffset),
+          ),
         );
         return;
       }
@@ -121,9 +121,9 @@ var _FileSystem_readHelper = function (
         fileOffset + bytesRead,
         newMaxReadLength,
         requestedReadLength,
-        callback
+        callback,
       );
-    }
+    },
   );
 };
 
@@ -135,7 +135,7 @@ var _FileSystem_writeFromOffset = F3(function (fh, options, bytes) {
       0,
       bytes.byteLength,
       options.__$offset,
-      callback
+      callback,
     );
   });
 });
@@ -146,7 +146,7 @@ var _FileSystem_writeHelper = function (
   bufferOffset,
   length,
   fileOffset,
-  callback
+  callback,
 ) {
   fs.write(
     fh,
@@ -174,9 +174,9 @@ var _FileSystem_writeHelper = function (
         newBufferOffset,
         length - bytesWritten,
         newFileOffset,
-        callback
+        callback,
       );
-    }
+    },
   );
 };
 
@@ -208,7 +208,7 @@ var _FileSystem_makeDirectory = F2(function (options, path) {
         } else {
           callback(__Scheduler_succeed(path));
         }
-      }
+      },
     );
   });
 });
@@ -228,11 +228,11 @@ var _FileSystem_listDirectory = function (path) {
               content.map((f) => ({
                 __$path: __FilePath_fromString(f.name),
                 __$entityType: _FileSystem_toEntityType(f),
-              }))
-            )
+              })),
+            ),
           );
         }
-      }
+      },
     );
   });
 };
@@ -399,7 +399,7 @@ var _FileSystem_chown = F2(function (ids, path) {
         } else {
           callback(__Scheduler_succeed(path));
         }
-      }
+      },
     );
   });
 });
@@ -416,7 +416,7 @@ var _FileSystem_lchown = F2(function (ids, path) {
         } else {
           callback(__Scheduler_succeed(path));
         }
-      }
+      },
     );
   });
 });
@@ -433,7 +433,7 @@ var _FileSystem_copyFile = F2(function (src, dest) {
         } else {
           callback(__Scheduler_succeed(dest));
         }
-      }
+      },
     );
   });
 });
@@ -449,7 +449,7 @@ var _FileSystem_link = F2(function (src, dest) {
         } else {
           callback(__Scheduler_succeed(dest));
         }
-      }
+      },
     );
   });
 });
@@ -465,7 +465,7 @@ var _FileSystem_symlink = F2(function (src, dest) {
         } else {
           callback(__Scheduler_succeed(dest));
         }
-      }
+      },
     );
   });
 });
@@ -502,8 +502,8 @@ var _FileSystem_readFile = function (path) {
       } else {
         callback(
           __Scheduler_succeed(
-            new DataView(data.buffer, data.byteOffset, data.byteLength)
-          )
+            new DataView(data.buffer, data.byteOffset, data.byteLength),
+          ),
         );
       }
     });
@@ -533,7 +533,7 @@ var _FileSystem_rename = F2(function (oldPath, newPath) {
         } else {
           callback(__Scheduler_succeed(newPath));
         }
-      }
+      },
     );
   });
 });
@@ -658,7 +658,7 @@ var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
           }
 
           // other change types are ignored
-        }
+        },
       );
     } catch (e) {
       // ignore errors
@@ -675,11 +675,11 @@ var _FileSystem_homeDir = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(__FilePath_fromString(os.homedir())));
 });
 
-var _FileSystem_currentWorkingDirectory = __Scheduler_binding(function (
-  callback
-) {
-  callback(__Scheduler_succeed(__FilePath_fromString(process.cwd())));
-});
+var _FileSystem_currentWorkingDirectory = __Scheduler_binding(
+  function (callback) {
+    callback(__Scheduler_succeed(__FilePath_fromString(process.cwd())));
+  },
+);
 
 var _FileSystem_tmpDir = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(__FilePath_fromString(os.tmpdir())));

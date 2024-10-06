@@ -4,6 +4,6 @@
     "test": "./test.sh"
   },
   "devDependencies": {
-    "prettier": "2.7.1"
+    "prettier": "3.3.3"
   }
 }

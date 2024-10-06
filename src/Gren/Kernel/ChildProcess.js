@@ -41,14 +41,14 @@ var _ChildProcess_run = function (options) {
               __$stdout: new DataView(
                 stdout.buffer,
                 stdout.byteOffset,
-                stdout.byteLength
+                stdout.byteLength,
               ),
               __$stderr: new DataView(
                 stderr.buffer,
                 stderr.byteOffset,
-                stderr.byteLength
+                stderr.byteLength,
               ),
-            })
+            }),
           );
         } else {
           callback(
@@ -58,17 +58,17 @@ var _ChildProcess_run = function (options) {
               __$stdout: new DataView(
                 stdout.buffer,
                 stdout.byteOffset,
-                stdout.byteLength
+                stdout.byteLength,
               ),
               __$stderr: new DataView(
                 stderr.buffer,
                 stderr.byteOffset,
-                stderr.byteLength
+                stderr.byteLength,
               ),
-            })
+            }),
           );
         }
-      }
+      },
     );
   });
 };
@@ -125,16 +125,16 @@ function _ChildProcess_handleEnv(env) {
   return env.__$option === 0
     ? process.env
     : env.__$option === 1
-    ? __Utils_update(process.env, _ChildProcess_dictToObj(env.__$value))
-    : _ChildProcess_dictToObj(env.__$value);
+      ? __Utils_update(process.env, _ChildProcess_dictToObj(env.__$value))
+      : _ChildProcess_dictToObj(env.__$value);
 }
 
 function _ChildProcess_handleShell(shell) {
   return shell.__$choice === 0
     ? false
     : shell.__$choice === 1
-    ? true
-    : shell.__$value;
+      ? true
+      : shell.__$value;
 }
 
 function _ChildProcess_dictToObj(dict) {
@@ -145,6 +145,6 @@ function _ChildProcess_dictToObj(dict) {
       return acc;
     }),
     {},
-    dict
+    dict,
   );
 }
