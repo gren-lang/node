@@ -71,9 +71,9 @@ type alias Environment =
     , cpuArchitecture : CpuArchitecture
     , applicationPath : Path
     , args : Array String
-    , stdout : WriteableStream {} Bytes
-    , stderr : WriteableStream {} Bytes
-    , stdin : ReadableStream {} Bytes
+    , stdout : WriteableStream Bytes
+    , stderr : WriteableStream Bytes
+    , stdin : ReadableStream Bytes
     }
 
 
