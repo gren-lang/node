@@ -25,13 +25,7 @@ var _Node_init = __Scheduler_binding(function (callback) {
     stdin.unref();
   }
 
-  const stdinTransform = new TransformStream({
-    transform(chunk, controller) {
-      controller.enqueue(
-        new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-      );
-    },
-  });
+  const stdinTransform = new TransformStream();
 
   const stdinReadableProxy = !stdin.ref
     ? stdinTransform.readable
@@ -47,49 +41,40 @@ var _Node_init = __Scheduler_binding(function (callback) {
         },
       });
 
-  stdin.on("readable", () => {
-    let data;
-    const chunks = [];
-    while ((data = stdin.read()) !== null) {
-      chunks.push(data);
-    }
+  const stdinWriter = stdinTransform.writable.getWriter();
+  let writeOp = null;
 
-    if (!stdinReadableProxy.locked) {
-      // discarding stdin data, as no one is listening
+  stdin.on("readable", () => {
+    if (writeOp !== null) {
+      // waiting for stream to be read: abort
       return;
     }
 
-    let writeOp = Promise.resolve(undefined);
-    const writer = stdinTransform.writable.getWriter();
-    for (let i = 0; i < chunks.length; i++) {
-      writeOp = writeOp.then(() => writer.write(chunks[i]));
-    }
+    writeOp = stdinWriter.ready;
 
-    writeOp.finally(() => {
-      writer.releaseLock();
-
-      if (stdin.unref) {
-        stdin.unref();
+    writeOp.then(() => {
+      let data;
+      const chunks = [];
+      while ((data = stdin.read()) !== null) {
+        chunks.push(data);
       }
+
+      let writes = Promise.resolve();
+      for (let i = 0; i < chunks.length; i++) {
+        writes = writes.then(() => stdinWriter.write(chunks[i]));
+      }
+
+      writes.finally(() => {
+        if (stdin.unref) {
+          stdin.unref();
+        }
+      });
+
+      writeOp = null;
+
+      return writes;
     });
   });
-
-  const stdout = stream.Writable.toWeb(process.stdout);
-  const stderr = stream.Writable.toWeb(process.stderr);
-
-  const dataViewToByteTransform = {
-    transform(chunk, controller) {
-      controller.enqueue(
-        new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-      );
-    },
-  };
-
-  const stdoutTransform = new TransformStream(dataViewToByteTransform);
-  stdoutTransform.readable.pipeTo(stdout);
-
-  const stderrTransform = new TransformStream(dataViewToByteTransform);
-  stderrTransform.readable.pipeTo(stderr);
 
   callback(
     __Scheduler_succeed({
@@ -99,9 +84,9 @@ var _Node_init = __Scheduler_binding(function (callback) {
       __$arch: process.arch,
       __$args: process.argv,
       __$platform: process.platform,
-      __$stderr: stderrTransform.writable,
+      __$stderr: stream.Writable.toWeb(process.stderr),
       __$stdin: stdinReadableProxy,
-      __$stdout: stdoutTransform.writable,
+      __$stdout: stream.Writable.toWeb(process.stdout),
     }),
   );
 });
