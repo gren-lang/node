@@ -53,7 +53,7 @@ import Internal.Init
 import Task exposing ( Task )
 import Gren.Kernel.Node
 import FileSystem.Path exposing (Path)
-import Stream exposing (Readable, Writeable)
+import Stream
 
 
 -- ENVIRONMENT
@@ -71,9 +71,9 @@ type alias Environment =
     , cpuArchitecture : CpuArchitecture
     , applicationPath : Path
     , args : Array String
-    , stdout : Writeable Bytes
-    , stderr : Writeable Bytes
-    , stdin : Readable Bytes
+    , stdout : Stream.Writable Bytes
+    , stderr : Stream.Writable Bytes
+    , stdin : Stream.Readable Bytes
     }
 
 
