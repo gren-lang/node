@@ -18,63 +18,16 @@ var _Node_log = F2(function (text, args) {
 });
 
 var _Node_init = __Scheduler_binding(function (callback) {
-  const stdin = process.stdin;
-  if (stdin.unref) {
+  if (process.stdin.unref) {
     // Don't block program shutdown if this is the only
     // stream being listened to
-    stdin.unref();
+    process.stdin.unref();
   }
 
-  const stdinTransform = new TransformStream();
-
-  const stdinReadableProxy = !stdin.ref
-    ? stdinTransform.readable
-    : new Proxy(stdinTransform.readable, {
-        get(target, prop, receiver) {
-          if (prop === "getReader" && stdin.ref) {
-            // Make sure to keep program alive if we're waiting for
-            // user input
-            stdin.ref();
-          }
-
-          return Reflect.get(target, prop, receiver);
-        },
-      });
-
-  const stdinWriter = stdinTransform.writable.getWriter();
-  let writeOp = null;
-
-  stdin.on("readable", () => {
-    if (writeOp !== null) {
-      // waiting for stream to be read: abort
-      return;
-    }
-
-    writeOp = stdinWriter.ready;
-
-    writeOp.then(() => {
-      let data;
-      const chunks = [];
-      while ((data = stdin.read()) !== null) {
-        chunks.push(data);
-      }
-
-      let writes = Promise.resolve();
-      for (let i = 0; i < chunks.length; i++) {
-        writes = writes.then(() => stdinWriter.write(chunks[i]));
-      }
-
-      writes.finally(() => {
-        if (stdin.unref) {
-          stdin.unref();
-        }
-      });
-
-      writeOp = null;
-
-      return writes;
-    });
-  });
+  const stdinStream = stream.Readable.toWeb(process.stdin);
+  const stdinProxy = !process.stdin.ref
+    ? stdinStream
+    : _Node_makeProxyOfStdin(stdinStream);
 
   callback(
     __Scheduler_succeed({
@@ -85,11 +38,44 @@ var _Node_init = __Scheduler_binding(function (callback) {
       __$args: process.argv,
       __$platform: process.platform,
       __$stderr: stream.Writable.toWeb(process.stderr),
-      __$stdin: stdinReadableProxy,
+      __$stdin: stdinProxy,
       __$stdout: stream.Writable.toWeb(process.stdout),
     }),
   );
 });
+
+function _Node_makeProxyOfStdin(stdinStream) {
+  return new Proxy(stdinStream, {
+    get(target, prop, receiver) {
+      if (prop === "getReader") {
+        // Make sure to keep program alive if we're waiting for
+        // user input
+        process.stdin.ref();
+
+        const reader = Reflect.get(target, prop, receiver);
+        return _Node_makeProxyOfReader(reader);
+      }
+
+      if (prop === "pipeThrough") {
+        process.stdin.ref();
+      }
+
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+function _Node_makeProxyOfReader(reader) {
+  return new Proxy(reader, {
+    get(target, prop, receiver) {
+      if (prop === "releaseLock") {
+        process.stdin.unref();
+      }
+
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
 
 var _Node_getEnvironmentVariables = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(_Node_objToDict(process.env)));
