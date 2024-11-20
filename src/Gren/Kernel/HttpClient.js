@@ -31,7 +31,7 @@ var _HttpClient_request = function (config) {
           __Dict_foldl,
           _HttpClient_dictToObject,
           {},
-          config.__$headers
+          config.__$headers,
         ),
         timeout: config.__$timeout,
       });
@@ -43,8 +43,8 @@ var _HttpClient_request = function (config) {
       } else {
         return callback(
           __Scheduler_fail(
-            __HttpClient_UnknownError("problem with request: " + e.message)
-          )
+            __HttpClient_UnknownError("problem with request: " + e.message),
+          ),
         );
       }
     }
@@ -60,8 +60,8 @@ var _HttpClient_request = function (config) {
 
       return callback(
         __Scheduler_fail(
-          __HttpClient_UnknownError("problem with request: " + e.message)
-        )
+          __HttpClient_UnknownError("problem with request: " + e.message),
+        ),
       );
     });
 
@@ -93,8 +93,8 @@ var _HttpClient_request = function (config) {
       res.on("error", (e) => {
         return callback(
           __Scheduler_fail(
-            __HttpClient_UnknownError("problem with request: " + e.message)
-          )
+            __HttpClient_UnknownError("problem with request: " + e.message),
+          ),
         );
       });
 
@@ -102,8 +102,8 @@ var _HttpClient_request = function (config) {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           return callback(
             __Scheduler_fail(
-              __HttpClient_BadStatus(_HttpClient_formatResponse(res, rawData))
-            )
+              __HttpClient_BadStatus(_HttpClient_formatResponse(res, rawData)),
+            ),
           );
         }
 
@@ -111,47 +111,47 @@ var _HttpClient_request = function (config) {
           case "NOTHING":
             if (rawData === null) {
               return callback(
-                __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
+                __Scheduler_succeed(_HttpClient_formatResponse(res, {})),
               );
             } else {
               return callback(
                 __Scheduler_fail(
                   __HttpClient_UnexpectedResponseBody(
-                    "Received response body where I expected none."
-                  )
-                )
+                    "Received response body where I expected none.",
+                  ),
+                ),
               );
             }
 
           case "ANYTHING":
             return callback(
-              __Scheduler_succeed(_HttpClient_formatResponse(res, {}))
+              __Scheduler_succeed(_HttpClient_formatResponse(res, {})),
             );
 
           case "STRING":
             return callback(
-              __Scheduler_succeed(_HttpClient_formatResponse(res, rawData))
+              __Scheduler_succeed(_HttpClient_formatResponse(res, rawData)),
             );
 
           case "JSON":
             const jsonResult = A2(
               __Decode_decodeString,
               config.__$expect.a,
-              rawData
+              rawData,
             );
             if (__Result_isOk(jsonResult)) {
               return callback(
                 __Scheduler_succeed(
-                  _HttpClient_formatResponse(res, jsonResult.a)
-                )
+                  _HttpClient_formatResponse(res, jsonResult.a),
+                ),
               );
             } else {
               return callback(
                 __Scheduler_fail(
                   __HttpClient_UnexpectedResponseBody(
-                    __Decode_errorToString(jsonResult.a)
-                  )
-                )
+                    __Decode_errorToString(jsonResult.a),
+                  ),
+                ),
               );
             }
 
@@ -165,10 +165,10 @@ var _HttpClient_request = function (config) {
                   new DataView(
                     finalBuffer.buffer,
                     finalBuffer.byteOffset,
-                    finalBuffer.byteLength
-                  )
-                )
-              )
+                    finalBuffer.byteLength,
+                  ),
+                ),
+              ),
             );
         }
       });
@@ -199,7 +199,7 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
           __Dict_foldl,
           _HttpClient_dictToObject,
           {},
-          config.__$headers
+          config.__$headers,
         ),
         timeout: config.__$timeout,
       });
@@ -213,8 +213,8 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
       } else {
         send(
           __HttpClient_Error(
-            __HttpClient_UnknownError("problem with request: " + e.message)
-          )
+            __HttpClient_UnknownError("problem with request: " + e.message),
+          ),
         );
       }
 
@@ -251,80 +251,78 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
       __Scheduler_succeed({
         __$request: req,
         __$response: null,
-      })
+      }),
     );
   });
 });
 
-var _HttpClient_sendChunk = F4(function (
-  sendToApp,
-  kernelRequest,
-  request,
-  bytes
-) {
-  return __Scheduler_binding(function (callback) {
-    if (!kernelRequest.__$request.writableEnded) {
-      const chunk = _HttpClient_prepBytes(bytes);
+var _HttpClient_sendChunk = F4(
+  function (sendToApp, kernelRequest, request, bytes) {
+    return __Scheduler_binding(function (callback) {
+      if (!kernelRequest.__$request.writableEnded) {
+        const chunk = _HttpClient_prepBytes(bytes);
 
-      kernelRequest.__$request.write(chunk, () => {
-        __Scheduler_rawSpawn(sendToApp(__HttpClient_SentChunk(request)));
-      });
-    }
+        kernelRequest.__$request.write(chunk, () => {
+          __Scheduler_rawSpawn(sendToApp(__HttpClient_SentChunk(request)));
+        });
+      }
 
-    return callback(__Scheduler_succeed({}));
-  });
-});
-
-var _HttpClient_startReceive = F4(function (
-  cleanup,
-  sendToApp,
-  kernelRequest,
-  request
-) {
-  return __Scheduler_binding(function (callback) {
-    if (kernelRequest.__$request.writableEnded) {
-      return callback(__Scheduler_succeed({}));
-    }
-    kernelRequest.__$request.on("response", (res) => {
-      kernelRequest.__$response = res;
-
-      res.on("data", (bytes) => {
-        return __Scheduler_rawSpawn(
-          sendToApp(
-            A2(
-              __HttpClient_ReceivedChunk,
-              request,
-              _HttpClient_formatResponse(
-                res,
-                new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-              )
-            )
-          )
-        );
-      });
-
-      res.on("error", (e) => {
-        __Scheduler_rawSpawn(cleanup(request));
-        __Scheduler_rawSpawn(
-          sendToApp(
-            __HttpClient_Error(
-              __HttpClient_UnknownError("problem with request: " + e.message)
-            )
-          )
-        );
-      });
-
-      res.on("end", () => {
-        __Scheduler_rawSpawn(cleanup(request));
-        __Scheduler_rawSpawn(sendToApp(__HttpClient_Done));
-      });
-    });
-
-    kernelRequest.__$request.end(() => {
       return callback(__Scheduler_succeed({}));
     });
-  });
-});
+  },
+);
+
+var _HttpClient_startReceive = F4(
+  function (cleanup, sendToApp, kernelRequest, request) {
+    return __Scheduler_binding(function (callback) {
+      if (kernelRequest.__$request.writableEnded) {
+        return callback(__Scheduler_succeed({}));
+      }
+      kernelRequest.__$request.on("response", (res) => {
+        kernelRequest.__$response = res;
+
+        res.on("data", (bytes) => {
+          return __Scheduler_rawSpawn(
+            sendToApp(
+              A2(
+                __HttpClient_ReceivedChunk,
+                request,
+                _HttpClient_formatResponse(
+                  res,
+                  new DataView(
+                    bytes.buffer,
+                    bytes.byteOffset,
+                    bytes.byteLength,
+                  ),
+                ),
+              ),
+            ),
+          );
+        });
+
+        res.on("error", (e) => {
+          __Scheduler_rawSpawn(cleanup(request));
+          __Scheduler_rawSpawn(
+            sendToApp(
+              __HttpClient_Error(
+                __HttpClient_UnknownError("problem with request: " + e.message),
+              ),
+            ),
+          );
+        });
+
+        res.on("end", () => {
+          __Scheduler_rawSpawn(cleanup(request));
+          __Scheduler_rawSpawn(sendToApp(__HttpClient_Done));
+        });
+      });
+
+      kernelRequest.__$request.end(() => {
+        return callback(__Scheduler_succeed({}));
+      });
+    });
+  },
+);
 
 var _HttpClient_abort = function (kernelRequest) {
   return __Scheduler_binding(function (callback) {

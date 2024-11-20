@@ -15,7 +15,7 @@ var _Terminal_init = __Scheduler_binding(function (callback) {
         : 0,
       __$columns: process.stdout.columns,
       __$rows: process.stdout.rows,
-    })
+    }),
   );
 });
 
@@ -26,7 +26,7 @@ var _Terminal_attachListener = function (sendToApp) {
         sendToApp({
           __$columns: process.stdout.columns,
           __$rows: process.stdout.rows,
-        })
+        }),
       );
     };
 

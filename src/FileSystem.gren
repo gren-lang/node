@@ -33,7 +33,9 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , appendToFile
     , copyFile
     , readFile
+    , readFileStream
     , writeFile
+    , writeFileStream
     , truncateFile
     , remove
     -- Directories
@@ -72,7 +74,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Files
 
-@docs copyFile, appendToFile, readFile, writeFile, truncateFile, remove
+@docs copyFile, appendToFile, readFile, readFileStream, writeFile, writeFileStream, truncateFile, remove
 
 ## Directories
 
@@ -102,6 +104,7 @@ import Init
 import Internal.Init
 import Time
 import Process
+import Stream
 
 
 {-| This value represents the permission to perform file system operations.
@@ -413,10 +416,21 @@ copyFile _ dest src =
 
 
 {-| Read the entire contents of a file.
+
+Note: This will return the entire contents of a file at once. For very large
+files this might cause you to run out of memory. In those cases you might want
+to use [readFileStream](#readFileStream) instead.
 -}
 readFile : Permission -> Path -> Task Error Bytes
 readFile _ path =
     Gren.Kernel.FileSystem.readFile path
+
+
+{-| Read the contents of a file as a stream.
+-}
+readFileStream : Permission -> Path -> Task Error (Stream.Readable Bytes)
+readFileStream _ path =
+    Gren.Kernel.FileSystem.readFileStream path
 
 
 {-| Write the given `Bytes` into a file. The file will be created if it doesn't exist,
@@ -425,6 +439,13 @@ and overwritten if it does.
 writeFile : Permission -> Bytes -> Path -> Task Error Path
 writeFile _ bytes path =
     Gren.Kernel.FileSystem.writeFile bytes path
+
+
+{-| Create a writable stream backed by a file.
+-}
+writeFileStream : Permission -> Path -> Task Error (Stream.Writable Bytes)
+writeFileStream _ path =
+    Gren.Kernel.FileSystem.writeFileStream path
 
 
 {-| Make sure the given file is of a specific length. If the file is smaller than
