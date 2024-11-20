@@ -13,6 +13,7 @@ var bufferNs = require("node:buffer");
 var process = require("node:process");
 var path = require("node:path");
 var os = require("node:os");
+var stream = require("node:stream");
 
 var _FileSystem_coerce = function (fh) {
   return fh;
@@ -510,6 +511,18 @@ var _FileSystem_readFile = function (path) {
   });
 };
 
+var _FileSystem_readFileStream = function (path) {
+  return __Scheduler_binding(function (callback) {
+    fs.createReadStream(__FilePath_toString(path), function (err, fstream) {
+      if (err) {
+        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+      } else {
+        callback(__Scheduler_succeed(stream.Readable.toWeb(fstream)));
+      }
+    });
+  });
+};
+
 var _FileSystem_readLink = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.readlink(__FilePath_toString(path), function (err, linkedPath) {
@@ -637,6 +650,18 @@ var _FileSystem_writeFile = F2(function (data, path) {
     });
   });
 });
+
+var _FileSystem_writeFileStream = function (data) {
+  return __Scheduler_binding(function (callback) {
+    fs.createWritableStream(__FilePath_toString(path), function (err, fstream) {
+      if (err) {
+        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+      } else {
+        callback(__Scheduler_succeed(stream.Writable.toWeb(fstream)));
+      }
+    });
+  });
+};
 
 var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
   return __Scheduler_binding(function (_callback) {
