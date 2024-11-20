@@ -651,7 +651,7 @@ var _FileSystem_writeFile = F2(function (data, path) {
   });
 });
 
-var _FileSystem_writeFileStream = function (data) {
+var _FileSystem_writeFileStream = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.createWritableStream(__FilePath_toString(path), function (err, fstream) {
       if (err) {
