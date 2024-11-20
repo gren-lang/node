@@ -513,13 +513,12 @@ var _FileSystem_readFile = function (path) {
 
 var _FileSystem_readFileStream = function (path) {
   return __Scheduler_binding(function (callback) {
-    fs.createReadStream(__FilePath_toString(path), function (err, fstream) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
-      } else {
-        callback(__Scheduler_succeed(stream.Readable.toWeb(fstream)));
-      }
-    });
+    try {
+      var fstream = fs.createReadStream(__FilePath_toString(path))
+      callback(__Scheduler_succeed(stream.Readable.toWeb(fstream)));
+    } catch (err) {
+      callback(__Scheduler_fail(_FileSystem_constructError(err)));
+    }
   });
 };
 
@@ -653,13 +652,12 @@ var _FileSystem_writeFile = F2(function (data, path) {
 
 var _FileSystem_writeFileStream = function (path) {
   return __Scheduler_binding(function (callback) {
-    fs.createWriteStream(__FilePath_toString(path), function (err, fstream) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
-      } else {
-        callback(__Scheduler_succeed(stream.Writable.toWeb(fstream)));
-      }
-    });
+    try {
+      var fstream = fs.createWriteStream(__FilePath_toString(path));
+      callback(__Scheduler_succeed(stream.Writable.toWeb(fstream)));
+    } catch (err) {
+      callback(__Scheduler_fail(_FileSystem_constructError(err)));
+    }
   });
 };
 
