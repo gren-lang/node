@@ -39,7 +39,7 @@ gren make src/Main.gren
 node app
 ```
 
-See the [cat example](https://github.com/gren-lang/example-projects/tree/main/cat) and the [examples folder](https://github.com/gren-lang/node/tree/main/examples) for more complex examples.
+See the [cat example](https://github.com/gren-lang/example-projects/tree/main/cat) for a more complex example.
 
 ## Applications, sub-systems and permissions
 

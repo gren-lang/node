@@ -22,8 +22,6 @@ you can either do a `send`, which represents the response as a `Task`, or `strea
 actions while the request is sending and while the response is coming in. A typical example of why you'd use `stream`
 is to show a progress bar to the user, or decode the response incrementally as opposed to all at once.
 
-See [examples/http-client](https://github.com/gren-lang/node/tree/main/examples/http-client) for a working example.
-
 ## Initialization
 
 Code that wishes to perform HTTP requests require a permission to do so.
