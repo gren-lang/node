@@ -75,7 +75,7 @@ Most likely from a failed attempt to start the server (e.g. `EADDRINUSE`).
 Refer to the [node docs](https://nodejs.org/docs/latest-v18.x/api/errors.html) for details.
 -}
 type ServerError =
-    ServerError String String
+    ServerError { code : String, message : String }
 
 
 {-| Initialize the [`HttpServer`](HttpServer) module and get permission to create a server.
@@ -125,7 +125,7 @@ type Method
 -}
 methodToString : Method -> String
 methodToString method =
-    case method of
+    when method is
         GET ->
             "GET"
         
@@ -235,7 +235,7 @@ requestInfo : Request -> String
 requestInfo req =
     let
         method
-            = case req.method of
+            = when req.method is
                 GET ->
                     "GET"
 
@@ -268,7 +268,7 @@ requestInfo req =
 
 toMethod : String -> Method
 toMethod s =
-    case s of
+    when s is
         "GET" ->
             GET
         
@@ -307,7 +307,7 @@ arrayPairs a =
             Array.dropFirst 2 a
         
         allPairs =
-            [ pair ] ++ case rest of
+            [ pair ] ++ when rest is
                 [] ->
                     []
                 
@@ -321,7 +321,7 @@ dictFromPairs : Array (Array String) -> Dict String String
 dictFromPairs pairs =
     let
         mapper p dict =
-            case p of
+            when p is
                 [a, b] ->
                     Dict.set a b dict
                 
@@ -335,14 +335,14 @@ dictFromPairs pairs =
 
 
 type HttpSub msg
-    = OnRequestSub Server (Request -> Response -> msg)
+    = OnRequestSub { server : Server, requestHandler : (Request -> Response -> msg) }
 
 
 subMap : (a -> b) -> HttpSub a -> HttpSub b
 subMap f sub =
-    case sub of
-        OnRequestSub server msg ->
-            OnRequestSub server (\req res -> f (msg req res))
+    when sub is
+        OnRequestSub { server, requestHandler } ->
+            OnRequestSub { server = server, requestHandler = (\req res -> f (requestHandler req res)) }
 
 
 type alias State msg =
@@ -364,15 +364,15 @@ onEffects router subs state =
         _removeListeners =
             state
                 |> Array.map
-                    (\(OnRequestSub server _) ->
+                    (\(OnRequestSub { server }) ->
                         Gren.Kernel.HttpServer.removeAllListeners server
                     )
         
         _addListeners =
             subs
                 |> Array.map
-                    (\(OnRequestSub server msg) ->
-                        Gren.Kernel.HttpServer.addListener server router msg
+                    (\(OnRequestSub { server, requestHandler }) ->
+                        Gren.Kernel.HttpServer.addListener server router requestHandler
                     )
     in
     Task.succeed subs
@@ -390,5 +390,5 @@ onSelfMsg _ _ state =
 {-| Subscribe to incoming HTTP requests.
 -}
 onRequest : Server -> (Request -> Response -> msg) -> Sub msg
-onRequest server tagger =
-    subscription (OnRequestSub server tagger)
+onRequest server requestHandler =
+    subscription (OnRequestSub { server = server, requestHandler = requestHandler })

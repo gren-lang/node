@@ -32,7 +32,7 @@ var _FileSystem_open = F2(function (access, path) {
 });
 
 var _FileSystem_constructError = function (err) {
-  return A2(__FileSystem_Error, err.code || "", err.message || "");
+  return __FileSystem_Error({ __$code: err.code || "", __$message: err.message || "" });
 };
 
 var _FileSystem_close = function (fh) {

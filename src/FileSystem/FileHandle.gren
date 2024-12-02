@@ -149,7 +149,7 @@ openForWrite : Permission -> OpenForWriteBehaviour -> Path -> Task FileSystem.Er
 openForWrite _ behaviour path =
     let
         access =
-            case behaviour of
+            when behaviour is
                 EnsureEmpty -> "w"
                 ExpectExisting -> "r+"
                 ExpectNotExisting -> "wx"
@@ -163,7 +163,7 @@ openForReadAndWrite : Permission -> OpenForWriteBehaviour -> Path -> Task FileSy
 openForReadAndWrite _ behaviour path =
     let
         access =
-            case behaviour of
+            when behaviour is
                 EnsureEmpty -> "w+"
                 ExpectExisting -> "r+"
                 ExpectNotExisting -> "wx+"

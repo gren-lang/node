@@ -118,7 +118,7 @@ type TerminalSub msg
 
 subMap : (a -> b) -> TerminalSub a -> TerminalSub b
 subMap mapFn sub =
-    case sub of
+    when sub is
         OnResize msgMap ->
             OnResize (mapFn << msgMap)
 
@@ -162,7 +162,7 @@ onEffects router subs state =
 
         subscriptionTask =
             if Array.length newTaggers > 0 then
-                case state.maybeProcessId of
+                when state.maybeProcessId is
                     Just pid ->
                         Task.succeed <| Just pid
 
@@ -173,7 +173,7 @@ onEffects router subs state =
 
 
             else
-                case state.maybeProcessId of
+                when state.maybeProcessId is
                     Just pid ->
                         Process.kill pid
                             |> Task.map (\_ -> Nothing)
@@ -196,7 +196,7 @@ type Event
 
 onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task Never (State msg)
 onSelfMsg router event state =
-    case event of
+    when event is
         SelfOnResize newSize ->
             state.taggers
                 |> Array.map (\tagger -> tagger newSize)

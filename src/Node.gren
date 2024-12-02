@@ -108,7 +108,7 @@ type Platform
 
 platformFromString : String -> Platform
 platformFromString platform =
-    case String.toLower platform of
+    when String.toLower platform is
         "win32" ->
             Win32
 
@@ -152,7 +152,7 @@ type CpuArchitecture
 
 archFromString : String -> CpuArchitecture
 archFromString arch =
-    case String.toLower arch of
+    when String.toLower arch is
         "arm" ->
             Arm
 
@@ -292,9 +292,9 @@ update
     -> Model model
     -> { model : Model model, command : Cmd (Msg model msg) }
 update appUpdate msg model =
-    case model of
+    when model is
         Uninitialized ->
-            case msg of
+            when msg is
                 InitDone initResult ->
                     { model = Initialized initResult.model
                     , command = Cmd.map MsgReceived initResult.command
@@ -305,7 +305,7 @@ update appUpdate msg model =
                     { model = model, command = Cmd.none }
 
         Initialized appModel ->
-            case msg of
+            when msg is
                 InitDone _ ->
                     -- Ignore
                     { model = model, command = Cmd.none }
@@ -325,7 +325,7 @@ subscriptions
     -> (Model model)
     -> Sub (Msg model msg)
 subscriptions appSubs model =
-    case model of
+    when model is
         Uninitialized ->
             Sub.none
 

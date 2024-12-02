@@ -4,7 +4,7 @@
     "name": "gren-lang/node",
     "summary": "Run Gren on NodeJS",
     "license": "BSD-3-Clause",
-    "version": "4.2.1",
+    "version": "5.0.0",
     "exposed-modules": [
         "Node",
         "Init",
@@ -17,9 +17,9 @@
         "HttpServer",
         "HttpServer.Response"
     ],
-    "gren-version": "0.4.0 <= v < 0.5.0",
+    "gren-version": "0.5.0 <= v < 0.6.0",
     "dependencies": {
-        "gren-lang/core": "5.1.0 <= v < 6.0.0",
-        "gren-lang/url": "4.0.0 <= v < 5.0.0"
+        "gren-lang/core": "local:../core",
+        "gren-lang/url": "local:../url"
     }
 }

@@ -12,7 +12,7 @@ var _HttpServer_createServer = F2(function (host, port) {
     const server = require("http").createServer();
     server.on("error", function (e) {
       callback(
-        __Scheduler_fail(A2(__HttpServer_ServerError, e.code, e.message)),
+        __Scheduler_fail(__HttpServer_ServerError({ __$code: e.code, __$message: e.message })),
       );
     });
     server.listen(port, host, function () {

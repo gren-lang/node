@@ -177,7 +177,7 @@ run _ program arguments opts =
         { program = program
         , arguments = arguments
         , shell =
-            case opts.shell of
+            when opts.shell is
                 NoShell ->
                     { choice = 0
                     , value = ""
@@ -193,7 +193,7 @@ run _ program arguments opts =
                     , value = value
                     }
         , workingDirectory =
-             case opts.workingDirectory of
+             when opts.workingDirectory is
                  InheritWorkingDirectory -> 
                     { inherit = True
                     , override = ""
@@ -204,7 +204,7 @@ run _ program arguments opts =
                     , override = value
                     }
         , environmentVariables =
-            case opts.environmentVariables of
+            when opts.environmentVariables is
                 InheritEnvironmentVariables -> 
                     { option = 0
                     , value = Dict.empty
@@ -221,7 +221,7 @@ run _ program arguments opts =
                     }
         , maximumBytesWrittenToStreams = opts.maximumBytesWrittenToStreams
         , runDuration =
-            case opts.runDuration of
+            when opts.runDuration is
                 NoLimit ->
                     0
 
@@ -325,8 +325,10 @@ When the process completes, trigger the given message with the exit code.
 spawnAndNotifyOnExit : Permission -> (Int -> msg) -> String -> Array String -> SpawnOptions -> Cmd msg
 spawnAndNotifyOnExit _ toMsg program arguments opts =
     command <|
-        Spawn toMsg <|
-            kernelSpawnConfig program arguments opts
+        Spawn 
+            { toMsg = toMsg
+            , config = kernelSpawnConfig program arguments opts
+            }
 
 
 kernelSpawnConfig : String -> Array String -> SpawnOptions -> KernelSpawnConfig
@@ -334,7 +336,7 @@ kernelSpawnConfig program arguments opts =
     { program = program
     , arguments = arguments
     , shell =
-        case opts.shell of
+        when opts.shell is
             NoShell ->
                 { choice = 0
                 , value = ""
@@ -350,7 +352,7 @@ kernelSpawnConfig program arguments opts =
                 , value = value
                 }
     , workingDirectory =
-         case opts.workingDirectory of
+         when opts.workingDirectory is
              InheritWorkingDirectory -> 
                 { inherit = True
                 , override = ""
@@ -361,7 +363,7 @@ kernelSpawnConfig program arguments opts =
                 , override = value
                 }
     , environmentVariables =
-        case opts.environmentVariables of
+        when opts.environmentVariables is
             InheritEnvironmentVariables -> 
                 { option = 0
                 , value = Dict.empty
@@ -377,14 +379,14 @@ kernelSpawnConfig program arguments opts =
                 , value = value
                 }
     , runDuration =
-        case opts.runDuration of
+        when opts.runDuration is
             NoLimit ->
                 0
 
             Milliseconds ms -> 
                 max 0 ms
     , connection =
-        case opts.connection of
+        when opts.connection is
             Integrated ->
                 0
 
@@ -407,14 +409,14 @@ spawnWithDefaultOptions permission program arguments =
 
 
 type MyCmd msg
-    = Spawn (Int -> msg) KernelSpawnConfig
+    = Spawn { toMsg : (Int -> msg), config : KernelSpawnConfig }
 
 
 cmdMap : (a -> b) -> MyCmd a -> MyCmd b
 cmdMap func cmd =
-    case cmd of
-        Spawn toMsg config ->
-            Spawn (toMsg >> func) config
+    when cmd is
+        Spawn { toMsg, config } ->
+            Spawn { toMsg = (toMsg >> func), config = config }
 
 
 init : Task Never {}
@@ -424,13 +426,13 @@ init =
 
 onEffects : Platform.Router msg Never -> Array (MyCmd msg) -> {} -> Task Never {}
 onEffects router commands state =
-  case Array.popFirst commands of
+  when Array.popFirst commands is
     Nothing ->
       Task.succeed state
 
     Just { first, rest } ->
-        case first of
-            Spawn toMsg config ->
+        when first is
+            Spawn { toMsg, config } ->
                 Gren.Kernel.ChildProcess.spawnAndNotifyOnExit 
                     (Platform.sendToApp router << toMsg) 
                     config

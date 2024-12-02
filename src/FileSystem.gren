@@ -134,21 +134,21 @@ operating system you're performing it on. To figure out which error it is, you'l
 to use one of the helper functions below, or check the specific error code.
 -}
 type Error
-    = Error String String
+    = Error { code : String, message : String }
 
 
 {-| A string that identifies a specific kind of error. There can be several error codes for the
 same kind of error, depending on the operating system that is in use.
 -}
 errorCode : Error -> String
-errorCode (Error code _) =
+errorCode (Error { code }) =
     code
 
 
 {-| Returns a human readable description of the error.
 -}
 errorToString : Error -> String
-errorToString (Error _ message) =
+errorToString (Error { message }) =
     message
 
 
@@ -156,28 +156,28 @@ errorToString (Error _ message) =
 the operation.
 -}
 errorIsPermissionDenied : Error -> Bool
-errorIsPermissionDenied (Error code _) =
+errorIsPermissionDenied (Error { code }) =
     code == "EACCES"
 
 
 {-| If `True`, a file exists when it was expected not to.
 -}
 errorIsFileExists : Error -> Bool
-errorIsFileExists (Error code _) =
+errorIsFileExists (Error { code }) =
     code == "EEXIST"
 
 
 {-| If `True`, a file operation was attempted on a directory.
 -}
 errorIsDirectoryFound : Error -> Bool
-errorIsDirectoryFound (Error code _) =
+errorIsDirectoryFound (Error { code }) =
     code == "EISDIR"
 
 
 {-| If `True`, the application has too many open files.
 -}
 errorIsTooManyOpenFiles : Error -> Bool
-errorIsTooManyOpenFiles (Error code _) =
+errorIsTooManyOpenFiles (Error { code }) =
     code == "EMFILE"
 
 
@@ -185,49 +185,49 @@ errorIsTooManyOpenFiles (Error code _) =
 that doesn't exist.
 -}
 errorIsNoSuchFileOrDirectory : Error -> Bool
-errorIsNoSuchFileOrDirectory (Error code _) =
+errorIsNoSuchFileOrDirectory (Error { code }) =
     code == "ENOENT"
 
 
 {-| If `True`, a directory was expected but it found a file or some other entity.
 -}
 errorIsNotADirectory : Error -> Bool
-errorIsNotADirectory (Error code _) =
+errorIsNotADirectory (Error { code }) =
     code == "ENOTDIR"
 
 
 {-| If `True`, the operation expected an empty directory, but the directory is not empty.
 -}
 errorIsDirectoryNotEmpty : Error -> Bool
-errorIsDirectoryNotEmpty (Error code _) =
+errorIsDirectoryNotEmpty (Error { code }) =
     code == "ENOTEMPTY"
 
 
 {-| If `True`, the operation was rejected because of missing privileges.
 -}
 errorIsNotPermitted : Error -> Bool
-errorIsNotPermitted (Error code _) =
+errorIsNotPermitted (Error { code }) =
     code == "EPERM"
 
 
 {-| If `True`, we seem to be stuck in a loop following link after link after...
 -}
 errorIsLinkLoop : Error -> Bool
-errorIsLinkLoop (Error code _) =
+errorIsLinkLoop (Error { code }) =
     code == "ELOOP"
 
 
 {-| If `True`, the [Path](FileSystem.Path#Path) is too long.
 -}
 errorIsPathTooLong : Error -> Bool
-errorIsPathTooLong (Error code _) =
+errorIsPathTooLong (Error { code }) =
     code == "ENAMETOOLONG"
 
 
 {-| If `True`, the arguments passed to the function is invalid somehow.
 -}
 errorIsInvalidInput : Error -> Bool
-errorIsInvalidInput (Error code _) =
+errorIsInvalidInput (Error { code }) =
     code == "EINVAL"
 
 
@@ -235,7 +235,7 @@ errorIsInvalidInput (Error code _) =
 busy, or even corrupt.
 -}
 errorIsIO : Error -> Bool
-errorIsIO (Error code _) =
+errorIsIO (Error { code }) =
     code == "EIO"
 
 
@@ -543,7 +543,7 @@ unlink _ path =
 
 
 type FileSystemSub msg
-    = Watch Path Bool (WatchEvent -> msg)
+    = Watch { path : Path, recursive : Bool, msgMap : (WatchEvent -> msg) }
 
 
 {-| Represents a change within a watched directory.
@@ -561,9 +561,9 @@ type WatchEvent
 
 subMap : (a -> b) -> FileSystemSub a -> FileSystemSub b
 subMap mapFn sub =
-    case sub of
-        Watch path recursive msgMap ->
-            Watch path recursive (mapFn << msgMap)
+    when sub is
+        Watch { path, recursive, msgMap } ->
+            Watch { path = path, recursive = recursive, msgMap = (mapFn << msgMap) }
 
 
 {-| This notifies your application every time there is a change within the directory
@@ -571,14 +571,13 @@ represented by the given [Path](FileSystem.Path#Path).
 -}
 watch : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
 watch _ msgMap path =
-    subscription (Watch path False msgMap)
-
+    subscription (Watch { path = path, recursive = False, msgMap = msgMap })
 
 {-| Same as [watch](#watch), but this will also watch for changes in sub-directories.
 -}
 watchRecursive : Permission -> (WatchEvent -> msg) -> Path -> Sub msg
 watchRecursive _ msgMap path =
-    subscription (Watch path True msgMap)
+    subscription (Watch { path = path, recursive = True, msgMap = msgMap })
 
 
 -- LOOP
@@ -613,12 +612,12 @@ onEffects router subs state =
     let
         newWatchers =
             subs
-                |> Array.filter (\(Watch _ bool _) -> not bool)
+                |> Array.keepIf (\(Watch { recursive }) -> not recursive)
                 |> Array.foldl subToWatcher Dict.empty
 
         newRecursiveWatchers =
             subs
-                |> Array.filter (\(Watch _ bool _) -> bool)
+                |> Array.keepIf (\(Watch { recursive }) -> recursive)
                 |> Array.foldl subToWatcher Dict.empty
 
         toSpawn =
@@ -651,7 +650,7 @@ onEffects router subs state =
                             realKey = 
                                 keyMapper key
                         in
-                        case Dict.get realKey processes of
+                        when Dict.get realKey processes is
                             Just processId ->
                                 Process.kill processId
                                     |> Task.map (\_ -> Dict.remove realKey processes)
@@ -667,7 +666,7 @@ onEffects router subs state =
                 accTask
                     |> Task.andThen 
                         (\processes ->
-                            Process.spawn (attachWatcher key isRecursive (Platform.sendToSelf router << WatchPathChange isRecursive key))
+                            Process.spawn (attachWatcher key isRecursive (\event -> Platform.sendToSelf router <| WatchPathChange { recursive = isRecursive, key = key, event = event }))
                                 |> Task.map (\id -> Dict.set (keyMapper key) id processes)
                         )
             )
@@ -690,13 +689,13 @@ onEffects router subs state =
 
 subToWatcher : FileSystemSub msg -> Dict String (Taggers msg) -> Dict String (Taggers msg)
 subToWatcher sub taggers =
-    case sub of
-        Watch path _ tagger ->
+    when sub is
+        Watch { path, msgMap = tagger } ->
             let
                 key =
                     Gren.Kernel.FilePath.toString path
             in
-            case Dict.get key taggers of
+            when Dict.get key taggers is
                 Just data ->
                     Dict.set 
                         key
@@ -713,11 +712,11 @@ attachWatcher =
 
 
 type SelfMsg
-    = WatchPathChange Bool String WatchEvent
+    = WatchPathChange { recursive : Bool, key : String, event : WatchEvent }
 
 
 onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task.Task Never (State msg)
-onSelfMsg router (WatchPathChange recursive key event) state =
+onSelfMsg router (WatchPathChange { recursive, key, event }) state =
     let
         notifyApplication taggers =
             Array.foldl 
@@ -730,7 +729,7 @@ onSelfMsg router (WatchPathChange recursive key event) state =
                 |> Task.map (\{} -> state)
     in
     if recursive then
-        case Dict.get key state.recursiveWatchers of
+        when Dict.get key state.recursiveWatchers is
             Just taggers ->
                 notifyApplication taggers
 
@@ -738,7 +737,7 @@ onSelfMsg router (WatchPathChange recursive key event) state =
                 Task.succeed state
 
     else
-        case Dict.get key state.watchers of
+        when Dict.get key state.watchers is
             Just taggers ->
                 notifyApplication taggers
 

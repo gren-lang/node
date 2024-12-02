@@ -120,7 +120,7 @@ filenameWithExtension path =
 -}
 parentPath : Path -> Maybe Path
 parentPath path =
-    case Array.popLast path.directory of
+    when Array.popLast path.directory is
         Nothing ->
             if filenameWithExtension path == "" then
                 Nothing
@@ -135,7 +135,7 @@ parentPath path =
         Just { last, initial } ->
             let
                 { filename, extension } =
-                    case String.split "." last of
+                    when String.split "." last is
                         [ file, ext ] ->
                             { filename = file
                             , extension = ext
@@ -170,7 +170,7 @@ prepend left right =
             left.directory
                 |> Array.pushLast (filenameWithExtension left)
                 |> Array.append right.directory
-                |> Array.filter (\dir -> dir /= "")
+                |> Array.keepIf (\dir -> dir /= "")
         , filename = right.filename
         , extension = right.extension
     }

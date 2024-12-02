@@ -35,8 +35,9 @@ import Task exposing (Task)
 {-| An HTTP response.
 -}
 type Response =
-    Response ResponseKey
-        { status : Int
+    Response
+        { key : ResponseKey
+        , status : Int
         , headers : Dict String String
         , body : Body
         }
@@ -57,8 +58,9 @@ This is only used internally.
 -}
 toResponse : ResponseKey -> Response
 toResponse key =
-    Response key
-        { status = 200
+    Response
+        { key = key
+        , status = 200
         , body = StringBody ""
         , headers = Dict.empty
         }
@@ -67,15 +69,15 @@ toResponse key =
 {-| Set the HTTP status code on a response.
 -}
 setStatus : Int -> Response -> Response
-setStatus statusCode (Response key response) =
-    Response key { response | status = statusCode }
+setStatus statusCode (Response response) =
+    Response { response | status = statusCode }
 
 
 {-| Add a header key/value pair to a response.
 -}
 setHeader : String -> String -> Response -> Response
-setHeader key value (Response responseKey response) =
-    Response responseKey
+setHeader key value (Response response) =
+    Response
         { response 
             | headers = Dict.set key value response.headers
         }
@@ -90,16 +92,16 @@ setBody = setBodyAsString
 {-| Set the body of the response to a string.
 -}
 setBodyAsString : String -> Response -> Response
-setBodyAsString body (Response key response) =
-    Response key
+setBodyAsString body (Response response) =
+    Response
         { response | body = StringBody body }
 
 
 {-| Set the body of the response to some bytes.
 -}
 setBodyAsBytes : Bytes -> Response -> Response
-setBodyAsBytes body (Response key response) =
-    Response key
+setBodyAsBytes body (Response response) =
+    Response
         { response | body = BytesBody body }
 
 
@@ -134,7 +136,7 @@ onSelfMsg _ _ state =
 
 cmdMap : (a -> b) -> ResponseCmd a -> ResponseCmd b
 cmdMap _ cmd =
-    case cmd of
+    when cmd is
         SendResponse r ->
             SendResponse r
 
@@ -149,10 +151,10 @@ onEffects router cmds state =
         _sendResponses =
             cmds
                 |> Array.map
-                    (\(SendResponse (Response key response)) ->
-                        Gren.Kernel.HttpServer.setStatus response.status key
+                    (\(SendResponse (Response response)) ->
+                        Gren.Kernel.HttpServer.setStatus response.status response
                             |> Gren.Kernel.HttpServer.setHeaders (Dict.foldl (\k v array -> Array.pushLast { key = k, value = v } array) [] response.headers)
-                            |> ( case response.body of
+                            |> ( when response.body is
                                  StringBody body ->
                                      Gren.Kernel.HttpServer.setBody body
 
