@@ -32,7 +32,10 @@ var _FileSystem_open = F2(function (access, path) {
 });
 
 var _FileSystem_constructError = function (err) {
-  return __FileSystem_Error({ __$code: err.code || "", __$message: err.message || "" });
+  return __FileSystem_Error({
+    __$code: err.code || "",
+    __$message: err.message || "",
+  });
 };
 
 var _FileSystem_close = function (fh) {
@@ -514,7 +517,7 @@ var _FileSystem_readFile = function (path) {
 var _FileSystem_readFileStream = function (path) {
   return __Scheduler_binding(function (callback) {
     try {
-      var fstream = fs.createReadStream(__FilePath_toString(path))
+      var fstream = fs.createReadStream(__FilePath_toString(path));
       callback(__Scheduler_succeed(stream.Readable.toWeb(fstream)));
     } catch (err) {
       callback(__Scheduler_fail(_FileSystem_constructError(err)));

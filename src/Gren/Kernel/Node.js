@@ -77,6 +77,14 @@ function _Node_makeProxyOfReader(reader) {
   });
 }
 
+var _Node_getPlatform = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(process.platform));
+});
+
+var _Node_getCpuArchitecture = __Scheduler_binding(function (callback) {
+  callback(__Scheduler_succeed(process.arch));
+});
+
 var _Node_getEnvironmentVariables = __Scheduler_binding(function (callback) {
   callback(__Scheduler_succeed(_Node_objToDict(process.env)));
 });

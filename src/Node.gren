@@ -1,7 +1,9 @@
 module Node exposing
     ( Environment
     , Platform(..)
+    , getPlatform
     , CpuArchitecture(..)
+    , getCpuArchitecture
     , getEnvironmentVariables
     --
     , SimpleProgram
@@ -62,6 +64,7 @@ import Stream
 {-| Contains information about the environment your application was initiated in.
 
 * `platform` and `cpuArchitecture` tells you something about the operating system and machine your application is running on.
+* `applicationPath` is the path to the currently executing program.
 * `args` is an `Array` of the arguments passed to your application.
 * `stdout`, `stderr` and `stdin` are streams you can use to communicate with the outside world. Take a closer look at the `Stream` module for more information.
 
@@ -106,6 +109,14 @@ type Platform
     | UnknownPlatform String
 
 
+{-| Retrieve the platform of the computer running the application.
+-}
+getPlatform : Task x Platform
+getPlatform =
+    Gren.Kernel.Node.getPlatform
+        |> Task.map platformFromString
+
+
 platformFromString : String -> Platform
 platformFromString platform =
     when String.toLower platform is
@@ -148,6 +159,14 @@ type CpuArchitecture
     | S390x
     | X64
     | UnknownArchitecture String
+
+
+{-| Retrieve the CPU architecture of the computer running the application.
+-}
+getCpuArchitecture : Task x CpuArchitecture
+getCpuArchitecture =
+    Gren.Kernel.Node.getCpuArchitecture
+        |> Task.map archFromString
 
 
 archFromString : String -> CpuArchitecture
