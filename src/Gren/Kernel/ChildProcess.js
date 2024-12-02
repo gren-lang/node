@@ -9,6 +9,7 @@ import ChildProcess exposing (FailedRun, SuccessfulRun)
 
 var bufferNs = require("node:buffer");
 var process = require("node:process");
+var stream = require("node:stream");
 
 var _ChildProcess_module = function () {
   return require("node:child_process");
@@ -73,24 +74,33 @@ var _ChildProcess_run = function (options) {
   });
 };
 
-var _ChildProcess_spawn = function (options) {
+var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
   return __Scheduler_binding(function (callback) {
     var subproc = _ChildProcess_getSubProc(options);
-    return function () {
-      subproc.kill();
-    };
-  });
-};
 
-var _ChildProcess_spawnAndNotifyOnExit = F2(function (sendToApp, options) {
-  return __Scheduler_binding(function (callback) {
-    var subproc = _ChildProcess_getSubProc(options);
+    __Scheduler_rawSpawn(
+      sendInitToApp({
+        __$processId: __Scheduler_rawSpawn(
+          __Scheduler_binding(function (callback) {
+            return function () {
+              subproc.kill();
+            };
+          }),
+        ),
+        __$streams:
+          options.__$connection !== 1
+            ? __Maybe_Nothing
+            : __Maybe_Just({
+                __$input: stream.Readable.toWeb(subproc.stdin),
+                __$output: stream.Writable.toWeb(subproc.stdout),
+                __$error: stream.Writable.toWeb(subproc.stderr),
+              }),
+      }),
+    );
+
     subproc.on("exit", function (code) {
-      callback(__Scheduler_rawSpawn(sendToApp(code)));
+      __Scheduler_rawSpawn(sendExitToApp(code));
     });
-    return function () {
-      subproc.kill();
-    };
   });
 });
 
@@ -106,11 +116,16 @@ function _ChildProcess_getSubProc(options) {
     env: _ChildProcess_handleEnv(env),
     timeout: options.__$runDuration,
     shell: _ChildProcess_handleShell(shell),
-    stdio: options.__$connection === 0 ? "inherit" : "ignore",
-    detached: options.__$connection === 2 && process.platform === "win32",
+    stdio:
+      options.__$connection === 0
+        ? "inherit"
+        : options.__$connection === 1
+          ? "pipe"
+          : "ignore",
+    detached: options.__$connection === 3 && process.platform === "win32",
   });
 
-  if (options.__$connection === 2) {
+  if (options.__$connection === 3) {
     subproc.unref();
   }
 

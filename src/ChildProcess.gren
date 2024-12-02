@@ -12,14 +12,12 @@ effect module ChildProcess where { command = MyCmd } exposing
     , FailedRun
     , SuccessfulRun
     , run
-    , runWithDefaultOptions
     --
     , SpawnOptions
+    , StreamIO
     , Connection(..)
     , defaultSpawnOptions
     , spawn
-    , spawnAndNotifyOnExit
-    , spawnWithDefaultOptions
     )
 
 
@@ -49,6 +47,7 @@ import Task exposing (Task)
 import Init
 import Internal.Init
 import Process
+import Stream
 
 
 {-| This value represents the permission to spawn child processes.
@@ -230,13 +229,6 @@ run _ program arguments opts =
         }
 
 
-{-| Same as [run](#run), but with [defaultRunOptions](#defaultRunOptions) passed in as options.
--}
-runWithDefaultOptions : Permission -> String -> Array String -> Task FailedRun SuccessfulRun
-runWithDefaultOptions permission program arguments =
-    run permission program arguments defaultRunOptions
-
-
 -- SPAWN
 
 
@@ -248,18 +240,24 @@ runWithDefaultOptions permission program arguments =
 * `runDuration` specifies a maximum amount of time a process is allowed to run before exiting
 * `connection` let's you specify how close the new process is connected to the application
 -}
-type alias SpawnOptions =
+type alias SpawnOptions msg =
     { shell : Shell
     , workingDirectory : WorkingDirectory
     , environmentVariables : EnvironmentVariables
     , runDuration : RunDuration
     , connection : Connection
+    , onInit :
+        { processId : Process.Id
+        , streams : Maybe StreamIO
+        }
+        -> msg
+    , onExit : Int -> msg
     }
 
 
 {-| Record expected by spawn kernel call.
 -}
-type alias KernelSpawnConfig =
+type alias KernelSpawnConfig msg =
     { program : String
     , arguments : Array String
     , shell : 
@@ -276,62 +274,64 @@ type alias KernelSpawnConfig =
         }
     , runDuration : Int
     , connection : Int
+    , onInit :
+        { processId : Process.Id
+        , streams : Maybe StreamIO
+        }
+        -> msg
+    , onExit : Int -> msg
+    }
+
+
+{-| Streams that can be used to communicate with a spawned child process.
+-}
+type alias StreamIO =
+    { input : Stream.Writable Bytes
+    , output : Stream.Readable Bytes
+    , error : Stream.Readable Bytes
     }
 
 
 {-| What relation should the newly spawned process have with the running application?
 
-* `Integrated` means that the spawned process shares the stdin, stdout and stderr streams and that the application will wait for its termination.
-* `Ignored` means that stdin, stdout and stderr is seperate but that the application will still wait for its termination.
-* `Detached` means that the application can terminate even if the spawned process is still running.
+* `Integrated` means that the spawned process shares the stdin, stdout and stderr streams.
+* `External` means that a new streams are created for stdin, stdout and stderr and passed to the application, which can use those streams for communicating with the new process.
+* `Ignored` means the same as `External`, but anything written to stdin, stdout and stderr is discarded/ignored.
+* `Detached` means the same as `Ignored`, but that the application will exit even if the child process hasn't finished executing.
 -}
 type Connection
     = Integrated
+    | External
     | Ignored
     | Detached
 
 
 {-| A nice default set of options for the [spawn](#spawn) function.
 -}
-defaultSpawnOptions : SpawnOptions
-defaultSpawnOptions =
+defaultSpawnOptions : ({ processId : Process.Id, streams : Maybe StreamIO } -> msg ) -> (Int -> msg) -> SpawnOptions msg
+defaultSpawnOptions onInit onExit =
     { shell = DefaultShell
     , workingDirectory = InheritWorkingDirectory
     , environmentVariables = InheritEnvironmentVariables
     , runDuration = NoLimit
     , connection = Integrated
+    , onInit = onInit
+    , onExit = onExit
     }
 
 
 {-| Spawn a process with a given name, arguments and options, and let it run in the background.
 This is mostly helpful for starting long-running processes.
 
-    spawn permission "tail" [ "my_file" ] defaultSpawnOptions
+    spawn permission "tail" [ "my_file" ] mySpawnOptions
 
 -}
-spawn : Permission -> String -> Array String -> SpawnOptions -> Task x Process.Id
+spawn : Permission -> String -> Array String -> SpawnOptions msg -> Cmd msg
 spawn _ program arguments opts =
-    Process.spawn <|
-        Gren.Kernel.ChildProcess.spawn <|
-            kernelSpawnConfig program arguments opts
+    command <| Spawn <| kernelSpawnConfig program arguments opts
 
 
-{-| Spawn a process with the given name, arguments and options, and let it run in the background.
-When the process completes, trigger the given message with the exit code.
-
-    spawnAndNotifyOnExit permission SleepFinished "sleep" [ "2" ] defaultSpawnOptions 
-
--}
-spawnAndNotifyOnExit : Permission -> (Int -> msg) -> String -> Array String -> SpawnOptions -> Cmd msg
-spawnAndNotifyOnExit _ toMsg program arguments opts =
-    command <|
-        Spawn 
-            { toMsg = toMsg
-            , config = kernelSpawnConfig program arguments opts
-            }
-
-
-kernelSpawnConfig : String -> Array String -> SpawnOptions -> KernelSpawnConfig
+kernelSpawnConfig : String -> Array String -> SpawnOptions msg -> KernelSpawnConfig msg
 kernelSpawnConfig program arguments opts =
     { program = program
     , arguments = arguments
@@ -390,33 +390,44 @@ kernelSpawnConfig program arguments opts =
             Integrated ->
                 0
 
-            Ignored ->
+            External ->
                 1
+            
+            Ignored ->
+                2
 
             Detached ->
-                2
+                3
+    , onInit = opts.onInit
+    , onExit = opts.onExit
     }
 
 
-{-| Same as [spawn], but with [defaultSpawnOptions](#defaultSpawnOptions) passed in as options.
--}
-spawnWithDefaultOptions : Permission -> String -> Array String -> Task x Process.Id
-spawnWithDefaultOptions permission program arguments =
-    spawn permission program arguments defaultSpawnOptions
-
+mapKernelSpawnConfig : (msg -> msg2) -> KernelSpawnConfig msg -> KernelSpawnConfig msg2
+mapKernelSpawnConfig mapper config =
+    { program = config.program
+    , arguments = config.arguments
+    , shell = config.shell
+    , workingDirectory = config.workingDirectory
+    , environmentVariables = config.environmentVariables
+    , runDuration = config.runDuration
+    , connection = config.connection
+    , onInit = mapper << config.onInit
+    , onExit = mapper << config.onExit
+    }
 
 -- COMMANDS
 
 
 type MyCmd msg
-    = Spawn { toMsg : (Int -> msg), config : KernelSpawnConfig }
+    = Spawn (KernelSpawnConfig msg)
 
 
 cmdMap : (a -> b) -> MyCmd a -> MyCmd b
 cmdMap func cmd =
     when cmd is
-        Spawn { toMsg, config } ->
-            Spawn { toMsg = (toMsg >> func), config = config }
+        Spawn config ->
+            Spawn <| mapKernelSpawnConfig func config
 
 
 init : Task Never {}
@@ -432,9 +443,10 @@ onEffects router commands state =
 
     Just { first, rest } ->
         when first is
-            Spawn { toMsg, config } ->
-                Gren.Kernel.ChildProcess.spawnAndNotifyOnExit 
-                    (Platform.sendToApp router << toMsg) 
+            Spawn config ->
+                Gren.Kernel.ChildProcess.spawn
+                    (Platform.sendToApp router << config.onInit)
+                    (Platform.sendToApp router << config.onExit)
                     config
                         |> Process.spawn
                         |> Task.andThen 
