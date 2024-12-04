@@ -8,7 +8,7 @@ module Node exposing
     --
     , SimpleProgram
     , defineSimpleProgram
-    , endWithCmd
+    , endSimpleProgram
     --
     , Program
     , ProgramConfiguration
@@ -36,7 +36,7 @@ you to contact said subsystem. Be careful what code you give these permissions t
 
 ## Simple Program
 
-@docs SimpleProgram, defineSimpleProgram, endWithCmd
+@docs SimpleProgram, defineSimpleProgram, endSimpleProgram
 
 ## Environment information
 
@@ -363,9 +363,9 @@ startProgram initResult =
 {-| When defining a program with [defineSimpleProgram](#defineSimpleProgram), use this function to define the
 final command to execute.
 -}
-endWithCmd : Cmd a -> Init.Task (Cmd a)
-endWithCmd cmd =
-    Internal.Init.Task (Task.succeed cmd)
+endSimpleProgram : Task Never x -> Init.Task (Cmd a)
+endSimpleProgram finalTask =
+    Internal.Init.Task (Task.succeed <| Task.execute finalTask)
 
 
 -- EXIT
