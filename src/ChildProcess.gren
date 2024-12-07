@@ -32,11 +32,11 @@ This module allow you to spawn child processes.
 ## Running processes
 
 @docs RunOptions, defaultRunOptions, Shell, WorkingDirectory, EnvironmentVariables, RunDuration
-@docs FailedRun, SuccessfulRun, run, runWithDefaultOptions
+@docs FailedRun, SuccessfulRun, run
 
 ## Spawning processes
 
-@docs SpawnOptions, Connection, defaultSpawnOptions, spawn, spawnWithDefaultOptions, spawnAndNotifyOnExit
+@docs SpawnOptions, StreamIO, Connection, defaultSpawnOptions, spawn
 -}
 
 

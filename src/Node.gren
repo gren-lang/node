@@ -40,7 +40,7 @@ you to contact said subsystem. Be careful what code you give these permissions t
 
 ## Environment information
 
-@docs Environment, Platform, CpuArchitecture, getEnvironmentVariables
+@docs Environment, getEnvironmentVariables, Platform, getPlatform, CpuArchitecture, getCpuArchitecture
 
 ## Exit
 
