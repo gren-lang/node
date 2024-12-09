@@ -152,7 +152,7 @@ onEffects router cmds state =
             cmds
                 |> Array.map
                     (\(SendResponse (Response response)) ->
-                        Gren.Kernel.HttpServer.setStatus response.status response
+                        Gren.Kernel.HttpServer.setStatus response.status response.key
                             |> Gren.Kernel.HttpServer.setHeaders (Dict.foldl (\k v array -> Array.pushLast { key = k, value = v } array) [] response.headers)
                             |> ( when response.body is
                                  StringBody body ->
