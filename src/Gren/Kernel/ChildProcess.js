@@ -4,6 +4,7 @@ import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
 import Gren.Kernel.Utils exposing (update)
 import Dict exposing (foldl)
 import ChildProcess exposing (FailedRun, SuccessfulRun)
+import Maybe exposing (Just, Nothing)
 
 */
 
