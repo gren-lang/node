@@ -23,6 +23,9 @@ effect module HttpServer where { subscription = HttpSub } exposing
 You write your server using The Elm Architecture by subscribing to request
 events and responding with commands in update.
 
+See the [example project](https://github.com/gren-lang/example-projects/blob/main/http-server/src/Main.gren) for what this looks like.
+Or the [integration tests](https://github.com/gren-lang/integration-tests/blob/main/http-server/src/Main.gren) for a more robust example with routing and multiple response types.
+
 ## Initialization
 
 @docs Permission, Server, ServerError, initialize, createServer
