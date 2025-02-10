@@ -1,9 +1,0 @@
-{
-  "scripts": {
-    "prettier": "prettier -w \"!**/gren.json\" .",
-    "test": "./test.sh"
-  },
-  "devDependencies": {
-    "prettier": "3.3.3"
-  }
-}

@@ -4,7 +4,7 @@
     "source-directories": [
         "src"
     ],
-    "gren-version": "0.5.0",
+    "gren-version": "0.5.2",
     "dependencies": {
         "direct": {
             "gren-lang/core": "6.0.0",
