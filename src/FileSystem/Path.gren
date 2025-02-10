@@ -180,4 +180,9 @@ prepend left right =
 -}
 join : Array Path -> Path
 join paths =
-    Array.foldl append (fromPosixString ".") paths
+    when Array.popFirst paths is
+        Just { first, rest } ->
+            Array.foldl append first rest
+
+        Nothing ->
+            empty

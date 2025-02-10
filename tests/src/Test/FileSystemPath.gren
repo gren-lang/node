@@ -145,8 +145,14 @@ tests =
                         |> Path.append (Path.fromPosixString "/with/more")
                         |> Path.toPosixString
                         |> Expect.equal "/some/longer/file.md/with/more"
+            , test "Preserves root" <|
+                \{} ->
+                    Path.fromPosixString "/some/path"
+                        |> Path.append (Path.fromPosixString "nested/file.md")
+                        |> Path.toPosixString
+                        |> Expect.equal "/some/path/nested/file.md"
             ]
-        , describe "concat"
+        , describe "join"
             [ test "Easier way to join many paths" <|
                 \{} ->
                     Expect.equal
@@ -158,6 +164,16 @@ tests =
                             [ Path.fromPosixString "one"
                             , Path.fromPosixString "two/three"
                             , Path.fromPosixString "/file.md"
+                            ]
+                        )
+            , test "Preserves root" <|
+                \{} ->
+                    Expect.equal
+                        (Path.fromPosixString "/my/long/path/to/file.md")
+                        (Path.join
+                            [ Path.fromPosixString "/my/long"
+                            , Path.fromPosixString "path/to"
+                            , Path.fromPosixString "file.md"
                             ]
                         )
             ]
