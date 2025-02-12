@@ -54,6 +54,15 @@ tests =
                             , filename = "file"
                             , extension = ""
                             }
+            , test "paths are normalized, but leading . is kept" <| 
+                \{} ->
+                    Path.fromPosixString "./file"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "." ]
+                            , filename = "file"
+                            , extension = ""
+                            }
             , test "paths are normalized, even in extreme cases" <| 
                 \{} ->
                     Path.fromPosixString "some/other//file/other/.."

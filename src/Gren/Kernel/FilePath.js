@@ -21,15 +21,23 @@ var _FilePath_parse = function (pathMod, str) {
   const result = pathMod.parse(pathMod.normalize(str));
 
   const root = result.root;
-  const dirStr = result.dir.startsWith(root)
+
+  let dirStr = result.dir.startsWith(root)
     ? result.dir.substring(root.length)
     : result.dir;
+
+  if (str.startsWith(`.${path.sep}`)) {
+    dirStr = `.${path.sep}` + dirStr;
+  }
 
   const filename =
     result.name === "." && result.ext.length === 0 ? "" : result.name;
 
   return {
-    __$directory: dirStr === "" ? [] : dirStr.split(pathMod.sep),
+    __$directory:
+      dirStr === ""
+        ? []
+        : dirStr.split(pathMod.sep).filter((dir) => dir.length > 0),
     __$extension: result.ext.length > 0 ? result.ext.substring(1) : "",
     __$filename: filename,
     __$root: result.root,
