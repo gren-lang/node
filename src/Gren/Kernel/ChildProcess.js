@@ -92,9 +92,9 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
           options.__$connection !== 1
             ? __Maybe_Nothing
             : __Maybe_Just({
-                __$input: stream.Readable.toWeb(subproc.stdin),
-                __$output: stream.Writable.toWeb(subproc.stdout),
-                __$error: stream.Writable.toWeb(subproc.stderr),
+                __$input: stream.Writable.toWeb(subproc.stdin),
+                __$output: stream.Readable.toWeb(subproc.stdout),
+                __$error: stream.Readable.toWeb(subproc.stderr),
               }),
       }),
     );
