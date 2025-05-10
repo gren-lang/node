@@ -40,12 +40,7 @@ var _HttpServer_addListener = F3(function (server, router, msg) {
       .on("end", function () {
         const buffer = Buffer.concat(body);
         let grenRequest = __HttpServer_toRequest({
-          __$urlProtocol: url.protocol,
-          __$urlHost: url.hostname,
-          __$urlPort: url.port,
-          __$urlPath: url.pathname,
-          __$urlQuery: url.search,
-          __$urlFragment: url.hash,
+          __$url: url.href,
           __$headers: request.rawHeaders,
           __$method: request.method,
           __$body: new DataView(
