@@ -7,8 +7,8 @@ import Gren.Kernel.FilePath exposing (fromString)
 
 */
 
-var process = require("node:process");
 var stream = require("node:stream");
+var process = require("node:process");
 
 var _Node_log = F2(function (text, args) {
   // This function is used for simple applications where the main function returns String
