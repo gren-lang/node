@@ -162,54 +162,34 @@ methodToString method =
 This is only used internally.
 -}
 toRequest :
-    { urlProtocol : String
-    , urlHost : String
-    , urlPort : String
-    , urlPath : String
-    , urlQuery : String
-    , urlFragment : String
+    { url : String
     , headers : Array String
     , method : String
     , body : Bytes
     }
     -> Request
 toRequest 
-    { urlProtocol
-    , urlHost
-    , urlPort
-    , urlPath
-    , urlQuery
-    , urlFragment
+    { url
     , headers
     , method
     , body 
     } =
     { method = toMethod method
     , body = body
+    , url = 
+        Url.fromString url
+            |> Maybe.withDefault
+                { protocol = Http
+                , port_ = Nothing
+                , host = ""
+                , path = ""
+                , query = Nothing
+                , fragment = Nothing
+                }
     , headers =
         headers
             |> arrayPairs
             |> dictFromPairs
-    , url =
-        { protocol = 
-            if urlProtocol == "https:" then
-                Https
-            else
-                Http
-        , host = urlHost
-        , path = urlPath
-        , port_ = String.toInt urlPort
-        , query = 
-            if urlQuery == "" then
-                Nothing
-            else
-                Just urlQuery
-        , fragment =
-            if urlFragment == "" then
-                Nothing
-            else
-                Just urlFragment
-        }
     }
 
 
@@ -266,7 +246,7 @@ requestInfo req =
                 UNKNOWN m ->
                     "UNKNOWN(" ++ m ++ ")"
     in
-    method ++ " " ++ req.url.path
+    method ++ " " ++ (Url.toString req.url)
 
 
 toMethod : String -> Method
