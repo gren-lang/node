@@ -394,7 +394,7 @@ expectBytes req =
 send
     : Permission 
     -> RequestConfiguration expectedBody
-    -> Task (Error expectedBody) (Response expectedBody)
+    -> Task Error (Response expectedBody)
 send permission config =
     Gren.Kernel.HttpClient.request (kernelRequestConfig permission config)
 
@@ -459,14 +459,14 @@ type alias Response data =
 
 * BadUrl: Something is wrong with the URL you provided.
 * BadHeaders: The request headers are invalid. Make sure you only use characters in the latin-1 character set.
-* BadStatus: The status code indicates that the response didn't go well. The [Response](#Response) is attached, with a string-encoded data.
+* BadStatus: The status code indicates that the response didn't go well. The [Response](#Response) is attached.
 * Timeout: The request timed out. The server didn't respond as quickly as you expected it would.
 * UnknownError: We don't know what went wrong. You should probably report this if you see it in the wild.
 -}
-type Error body
+type Error
     = BadUrl String
     | BadHeaders
-    | BadStatus (Response body)
+    | BadStatus (Response Bytes)
     | UnexpectedResponseBody String
     | Timeout
     | UnknownError String
@@ -474,7 +474,7 @@ type Error body
 
 {-| Gives a brief description of an error.
 -}
-errorToString : Error body -> String
+errorToString : Error -> String
 errorToString err =
     when err is
         Timeout ->
@@ -522,7 +522,7 @@ request or not.
 type StreamEvent
     = SentChunk StreamRequest
     | ReceivedChunk { request : StreamRequest, response : (Response Bytes) }
-    | Error (Error Bytes)
+    | Error Error
     | Aborted
     | Done
 

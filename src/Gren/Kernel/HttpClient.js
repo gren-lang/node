@@ -67,28 +67,17 @@ var _HttpClient_request = function (config) {
 
     req.on("response", (res) => {
       const expectType = config.__$expectType;
+      const expectString = expectType === "STRING" || expectType === "JSON";
 
-      let rawData = null;
-
-      if (expectType === "STRING" || expectType === "JSON") {
+      if (expectString) {
         res.setEncoding("utf8");
-
-        res.on("data", (chunk) => {
-          if (rawData === null) {
-            rawData = chunk;
-          } else {
-            rawData += chunk;
-          }
-        });
-      } else {
-        res.on("data", (chunk) => {
-          if (rawData === null) {
-            rawData = [chunk];
-          } else {
-            rawData.push(chunk);
-          }
-        });
       }
+
+      let rawData = [];
+
+      res.on("data", (chunk) => {
+        rawData.push(chunk);
+      });
 
       res.on("error", (e) => {
         return callback(
@@ -100,16 +89,29 @@ var _HttpClient_request = function (config) {
 
       res.on("end", () => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
+          const finalBuffer = expectString
+            ? buffer.from(rawData.join(""))
+            : buffer.concat(rawData);
+
           return callback(
             __Scheduler_fail(
-              __HttpClient_BadStatus(_HttpClient_formatResponse(res, rawData)),
+              __HttpClient_BadStatus(
+                _HttpClient_formatResponse(
+                  res,
+                  new DataView(
+                    finalBuffer.buffer,
+                    finalBuffer.byteOffset,
+                    finalBuffer.byteLength,
+                  ),
+                ),
+              ),
             ),
           );
         }
 
         switch (expectType) {
           case "NOTHING":
-            if (rawData === null) {
+            if (rawData.length === 0) {
               return callback(
                 __Scheduler_succeed(_HttpClient_formatResponse(res, {})),
               );
@@ -130,14 +132,16 @@ var _HttpClient_request = function (config) {
 
           case "STRING":
             return callback(
-              __Scheduler_succeed(_HttpClient_formatResponse(res, rawData)),
+              __Scheduler_succeed(
+                _HttpClient_formatResponse(res, rawData.join("")),
+              ),
             );
 
           case "JSON":
             const jsonResult = A2(
               __Decode_decodeString,
               config.__$expect.a,
-              rawData,
+              rawData.join(""),
             );
             if (__Result_isOk(jsonResult)) {
               return callback(
