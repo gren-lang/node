@@ -1,4 +1,4 @@
-module Node exposing
+effect module Node where { subscription = NodeSub } exposing
     ( Environment
     , Platform(..)
     , getPlatform
@@ -18,6 +18,10 @@ module Node exposing
     , exit
     , exitWithCode
     , setExitCode
+    --
+    , onEmptyEventLoop
+    , onSignalInterrupt
+    , onSignalTerminate
     )
 
 
@@ -45,6 +49,11 @@ you to contact said subsystem. Be careful what code you give these permissions t
 ## Exit
 
 @docs exit, exitWithCode, setExitCode
+
+## Subscriptions
+
+@docs onEmptyEventLoop, onSignalInterrupt, onSignalTerminate
+
 -}
 
 
@@ -56,6 +65,8 @@ import Task exposing ( Task )
 import Gren.Kernel.Node
 import FileSystem.Path exposing (Path)
 import Stream
+import Platform exposing (ProcessId)
+import Process
 
 
 -- ENVIRONMENT
@@ -257,7 +268,7 @@ program, chances are you're looking for [defineSimpleProgram](#defineSimpleProgr
 defineProgram : ProgramConfiguration model msg -> Program model msg
 defineProgram config =
     Platform.worker
-        { init = init config.init
+        { init = initProgram config.init
         , update = update config.update
         , subscriptions = subscriptions config.subscriptions
         }
@@ -287,11 +298,11 @@ defineSimpleProgram initTask =
         }
 
 
-init
+initProgram
     : (Environment -> Init.Task { model : model, command : Cmd msg })
     -> {}
     -> { model : Model model, command : Cmd (Msg model msg) }
-init initTask {} =
+initProgram initTask {} =
     { model = Uninitialized
     , command = 
         initializeEnvironment
@@ -406,3 +417,198 @@ the program will only exit once there are no ongoing tasks.
 setExitCode : Int -> Task x {}
 setExitCode code =
     Gren.Kernel.Node.setExitCode code
+
+
+-- SUBSCRIPTIONS
+
+
+type NodeSub msg
+    = OnEmptyEventLoop msg
+    | OnSignalInterrupt msg
+    | OnSignalTerminate msg
+
+
+subMap : (a -> b) -> NodeSub a -> NodeSub b
+subMap mapFn sub =
+    when sub is
+        OnEmptyEventLoop msg ->
+            OnEmptyEventLoop (mapFn msg)
+
+        OnSignalInterrupt msg ->
+            OnSignalInterrupt (mapFn msg)
+
+        OnSignalTerminate msg ->
+            OnSignalTerminate (mapFn msg)
+
+
+{-| -}
+onEmptyEventLoop : msg -> Sub msg
+onEmptyEventLoop msg =
+    subscription (OnEmptyEventLoop msg)
+
+
+{-| -}
+onSignalInterrupt : msg -> Sub msg
+onSignalInterrupt msg =
+    subscription (OnSignalInterrupt msg)
+
+
+{-| -}
+onSignalTerminate : msg -> Sub msg
+onSignalTerminate msg =
+    subscription (OnSignalTerminate msg)
+
+
+-- LOOP
+
+
+type alias State msg =
+    { emptyEventLoop : Array msg
+    , emptyEventLoopListener : Maybe ProcessId
+    , signalInterrupt : Array msg
+    , signalInterruptListener : Maybe ProcessId
+    , signalTerminate : Array msg
+    , signalTerminateListener : Maybe ProcessId
+    }
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed
+        { emptyEventLoop = []
+        , emptyEventLoopListener = Nothing
+        , signalInterrupt = []
+        , signalInterruptListener = Nothing
+        , signalTerminate = []
+        , signalTerminateListener = Nothing
+        }
+
+
+onEffects
+    : Platform.Router msg Event
+    -> Array (NodeSub msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router subs state =
+    let
+        newSubs =
+            Array.foldl
+                categorizeSubs
+                { emptyEventLoop = []
+                , signalInterrupt = []
+                , signalTerminate = []
+                }
+                subs
+
+        categorizeSubs sub acc =
+            when sub is
+                OnEmptyEventLoop msg ->
+                    { acc | emptyEventLoop = Array.pushLast msg acc.emptyEventLoop }
+
+                OnSignalInterrupt msg ->
+                    { acc | signalInterrupt = Array.pushLast msg acc.signalInterrupt }
+
+                OnSignalTerminate msg ->
+                    { acc | signalTerminate = Array.pushLast msg acc.signalTerminate }
+
+        emptyEventLoopListenerTask =
+            if Array.length newSubs.emptyEventLoop > 0 then
+              when state.emptyEventLoopListener is
+                  Just pid ->
+                      Task.succeed (Just pid)
+
+                  Nothing ->
+                      Gren.Kernel.Node.attachEmptyEventLoopListener (Platform.sendToSelf router NotifyEmptyEventLoop)
+                          |> Process.spawn
+                          |> Task.map Just
+            else
+                when state.emptyEventLoopListener is
+                    Just pid ->
+                        Process.kill pid
+                            |> Task.map (\_ -> Nothing)
+
+                    Nothing ->
+                        Task.succeed Nothing
+
+        signalInterruptListenerTask =
+            if Array.length newSubs.signalInterrupt > 0 then
+              when state.signalInterruptListener is
+                  Just pid ->
+                      Task.succeed (Just pid)
+
+                  Nothing ->
+                      Gren.Kernel.Node.attachSignalInterruptListener (Platform.sendToSelf router NotifySignalInterrupt)
+                          |> Process.spawn
+                          |> Task.map Just
+            else
+                when state.signalInterruptListener is
+                    Just pid ->
+                        Process.kill pid
+                            |> Task.map (\_ -> Nothing)
+
+                    Nothing ->
+                        Task.succeed Nothing
+
+        signalTerminateListenerTask =
+            if Array.length newSubs.signalTerminate > 0 then
+              when state.signalTerminateListener is
+                  Just pid ->
+                      Task.succeed (Just pid)
+
+                  Nothing ->
+                      Gren.Kernel.Node.attachSignalTerminateListener (Platform.sendToSelf router NotifySignalTerminate)
+                          |> Process.spawn
+                          |> Task.map Just
+            else
+                when state.signalTerminateListener is
+                    Just pid ->
+                        Process.kill pid
+                            |> Task.map (\_ -> Nothing)
+
+                    Nothing ->
+                        Task.succeed Nothing
+    in
+    Task.map3
+        (\emptyEventLoopListener signalInterruptListener signalTerminateListener ->
+            { emptyEventLoop = newSubs.emptyEventLoop
+            , emptyEventLoopListener = emptyEventLoopListener
+            , signalInterrupt = newSubs.signalInterrupt
+            , signalInterruptListener = signalInterruptListener
+            , signalTerminate = newSubs.signalTerminate
+            , signalTerminateListener = signalTerminateListener
+            }
+        )
+        emptyEventLoopListenerTask
+        signalInterruptListenerTask
+        signalTerminateListenerTask
+
+
+type Event
+    = NotifyEmptyEventLoop
+    | NotifySignalInterrupt
+    | NotifySignalTerminate
+
+
+onSelfMsg : Platform.Router msg Event -> Event -> State msg -> Task Never (State msg)
+onSelfMsg router event state =
+    when event is
+        NotifyEmptyEventLoop ->
+            Array.foldl
+                (\msg task -> Task.andThen (\_ -> Platform.sendToApp router msg) task)
+                (Task.succeed {})
+                state.emptyEventLoop
+                |> Task.map (\_ -> state)
+
+        NotifySignalInterrupt ->
+            Array.foldl
+                (\msg task -> Task.andThen (\_ -> Platform.sendToApp router msg) task)
+                (Task.succeed {})
+                state.signalInterrupt
+                |> Task.map (\_ -> state)
+
+        NotifySignalTerminate ->
+            Array.foldl
+                (\msg task -> Task.andThen (\_ -> Platform.sendToApp router msg) task)
+                (Task.succeed {})
+                state.signalTerminate
+                |> Task.map (\_ -> state)

@@ -102,6 +102,50 @@ var _Node_setExitCode = function (code) {
   });
 };
 
+// Subs
+
+var _Node_attachEmptyEventLoopListener = function (selfMsg) {
+  return __Scheduler_binding(function (_callback) {
+    var listener = function () {
+      __Scheduler_rawSpawn(selfMsg);
+    };
+
+    process.on("beforeExit", listener);
+
+    return function () {
+      process.off("beforeExit", listener);
+    };
+  });
+};
+
+var _Node_attachSignalInterruptListener = function (selfMsg) {
+  return __Scheduler_binding(function (_callback) {
+    var listener = function () {
+      __Scheduler_rawSpawn(selfMsg);
+    };
+
+    process.on("SIGINT", listener);
+
+    return function () {
+      process.off("SIGINT", listener);
+    };
+  });
+};
+
+var _Node_attachSignalTerminateListener = function (selfMsg) {
+  return __Scheduler_binding(function (_callback) {
+    var listener = function () {
+      __Scheduler_rawSpawn(selfMsg);
+    };
+
+    process.on("SIGTERM", listener);
+
+    return function () {
+      process.off("SIGTERM", listener);
+    };
+  });
+};
+
 // Helpers
 
 function _Node_objToDict(obj) {
