@@ -1,4 +1,4 @@
-app: Makefile gren.json node_modules
+app: Makefile gren.json src/Main.gren
 	gren make --optimize src/Main.gren --output=bin/app
 
 .PHONY: test
