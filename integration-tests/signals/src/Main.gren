@@ -1,0 +1,130 @@
+module Main exposing (main)
+
+import Node
+import Init
+import Task
+import HttpClient
+import Stream
+import Json.Encode as Json
+import Json.Decode
+import Dict
+import Bytes exposing (Bytes)
+import Bytes.Encode
+import Bytes.Decode
+import Process
+
+
+type alias Model =
+    { stdout : Stream.Writable Bytes
+    , listenEmptyEventLoop : Bool
+    , listenSigInt : Bool
+    , listenSigTerm : Bool
+    }
+
+
+type Msg 
+    = EmptyEventLoop
+    | SigInt
+    | SigTerm
+
+
+main : Node.Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions =
+            \model ->
+                Sub.batch
+                    [ if model.listenEmptyEventLoop then
+                          Node.onEmptyEventLoop EmptyEventLoop
+
+                      else
+                          Sub.none
+                    , if model.listenSigInt then
+                          Node.onSignalInterrupt SigInt
+
+                      else
+                          Sub.none
+                    , if model.listenSigTerm then
+                        Node.onSignalTerminate SigTerm
+
+                      else
+                        Sub.none
+                    ]
+        }
+
+
+init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    let
+        defaultModel =
+            { stdout = env.stdout
+            , listenEmptyEventLoop = False
+            , listenSigInt = False
+            , listenSigTerm = False
+            }
+    in
+    Node.startProgram <|
+        when Array.get 2 env.args is
+            Just "EmptyEventLoop" ->
+                { model =  { defaultModel | listenEmptyEventLoop = True }
+                , command = Cmd.none
+                }
+
+            Just "SIGINT" ->
+                { model =  { defaultModel | listenSigInt = True }
+                , command =
+                    Process.sleep 50000
+                        |> Task.execute
+                }
+
+            Just "SIGTERM" ->
+                { model =  { defaultModel | listenSigTerm = True }
+                , command =
+                    Process.sleep 50000
+                        |> Task.execute
+                }
+
+            _ ->
+                { model = defaultModel
+                , command =
+                    Stream.writeLineAsBytes "Invalid start argument" env.stdout
+                        |> Task.andThen (\_ -> Task.succeed {})
+                        |> Task.onError (\_ -> Task.succeed {})
+                        |> Task.execute
+                }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        EmptyEventLoop ->
+            { model = model
+            , command =
+                Stream.writeLineAsBytes "EmptyEventLoop" model.stdout
+                    |> Task.andThen (\_ -> Node.exitWithCode 100)
+                    |> Task.andThen (\_ -> Task.succeed {})
+                    |> Task.onError (\_ -> Task.succeed {})
+                    |> Task.execute
+            }
+
+        SigInt ->
+            { model = model
+            , command =
+                Stream.writeLineAsBytes "SIGINT" model.stdout
+                    |> Task.andThen (\_ -> Node.exitWithCode 101)
+                    |> Task.andThen (\_ -> Task.succeed {})
+                    |> Task.onError (\_ -> Task.succeed {})
+                    |> Task.execute
+            }
+
+        SigTerm ->
+            { model = model
+            , command =
+                Stream.writeLineAsBytes "SIGTERM" model.stdout
+                    |> Task.andThen (\_ -> Node.exitWithCode 102)
+                    |> Task.andThen (\_ -> Task.succeed {})
+                    |> Task.onError (\_ -> Task.succeed {})
+                    |> Task.execute
+            }

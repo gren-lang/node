@@ -12,6 +12,16 @@
       "format:check": "prettier -c \"!**/*.json\" .",
       "test": [
         "cd tests/",
+        "./run-tests.sh",
+        "cd ../integration-tests",
+        "./run-tests.sh"
+      ],
+      "test:unit": [
+        "cd tests/",
+        "./run-tests.sh"
+      ],
+      "test:integration": [
+        "cd integration-tests/",
         "./run-tests.sh"
       ]
     }

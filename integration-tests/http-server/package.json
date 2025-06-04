@@ -4,7 +4,6 @@
   },
   "dependencies": {
     "clet": "^1.0.1",
-    "gren-lang": "^0.5.2",
     "mocha": "^10.2.0",
     "supertest": "^7.0.0"
   }
