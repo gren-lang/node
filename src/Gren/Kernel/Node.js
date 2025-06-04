@@ -2,7 +2,7 @@
 
 import Dict exposing (empty, set)
 import Gren.Kernel.Platform exposing (export)
-import Gren.Kernel.Scheduler exposing (binding, succeed)
+import Gren.Kernel.Scheduler exposing (binding, succeed, rawSpawn)
 import Gren.Kernel.FilePath exposing (fromString)
 
 */
