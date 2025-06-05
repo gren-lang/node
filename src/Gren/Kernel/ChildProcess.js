@@ -123,7 +123,8 @@ function _ChildProcess_getSubProc(options) {
         : options.__$connection.__$kind === 1
           ? "pipe"
           : "ignore",
-    detached: options.__$connection.__$kind === 3 && process.platform === "win32",
+    detached:
+      options.__$connection.__$kind === 3 && process.platform === "win32",
   });
 
   if (options.__$connection.__$kind === 3) {

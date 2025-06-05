@@ -5,21 +5,21 @@ const url = "http://localhost:3000";
 
 describe("Requests", () => {
   it("responding with custom body", async () => {
-    const res1 = await request(url).get('/');
+    const res1 = await request(url).get("/");
 
     assert.equal(res1.status, 200);
-    assert.equal(res1.text, 'Welcome!');
-     
-    const res2 = await request(url).get('/hello');
-    
+    assert.equal(res1.text, "Welcome!");
+
+    const res2 = await request(url).get("/hello");
+
     assert.equal(res2.status, 200);
-    assert.equal(res2.text, 'Hello to you too!');
+    assert.equal(res2.text, "Hello to you too!");
   });
 
   it("responding with custom status", async () => {
     const res1 = await request(url).get("/");
     assert.equal(res1.status, 200);
-    
+
     const res2 = await request(url).get("/not/found");
     assert.equal(res2.status, 404);
   });
@@ -54,10 +54,11 @@ describe("Requests", () => {
   });
 
   it("responding to stream requests", async () => {
-    const response = await request(url).post("/")
+    const response = await request(url)
+      .post("/")
       .field("test.txt", Buffer.from("abc123"), { mimeType: "text/plain" });
 
-    assert.equal(response.status, 200)
+    assert.equal(response.status, 200);
     assert.match(response.text, /test.txt/);
     assert.match(response.text, /abc123/);
   });

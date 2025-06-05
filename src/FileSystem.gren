@@ -34,8 +34,10 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , appendToFile
     , copyFile
     , readFile
+    , ReadFileStreamPosition (..)
     , readFileStream
     , writeFile
+    , WriteFileStreamBehaviour (..)
     , writeFileStream
     , truncateFile
     , remove
@@ -70,7 +72,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Files
 
-@docs copyFile, appendToFile, readFile, readFileStream, writeFile, writeFileStream, truncateFile, remove
+@docs copyFile, appendToFile, readFile, ReadFileStreamPosition, readFileStream, writeFile, WriteFileStreamBehaviour, writeFileStream, truncateFile, remove
 
 ## Directories
 
@@ -439,11 +441,35 @@ readFile _ path =
     Gren.Kernel.FileSystem.readFile path
 
 
+{-| Specify where in a file you'll start streaming data from.
+
+* `Beginning` reads ethe entire file
+* `From` skips the associated number of bytes, then streams the rest of the file
+* `Between` reads just the bytes between `start` and `end`, both of which are offsets from the beginning of the file.
+-}
+type ReadFileStreamPosition
+    = Beginning
+    | From Int
+    | Between { start : Int, end : Int }
+
+
 {-| Read the contents of a file as a stream.
 -}
-readFileStream : Permission -> Path -> Task Error (Stream.Readable Bytes)
-readFileStream _ path =
-    Gren.Kernel.FileSystem.readFileStream path
+readFileStream : Permission -> ReadFileStreamPosition -> Path -> Task Error (Stream.Readable Bytes)
+readFileStream _ position path =
+    let
+        range =
+            when position is
+                Beginning ->
+                    { start = 0, end = -1 }
+
+                From start ->
+                    { start = start, end = -1 }
+
+                Between r ->
+                    r
+    in
+    Gren.Kernel.FileSystem.readFileStream range path
 
 
 {-| Write the given `Bytes` into a file. The file will be created if it doesn't exist,
@@ -454,11 +480,35 @@ writeFile _ bytes path =
     Gren.Kernel.FileSystem.writeFile bytes path
 
 
+{-| Specify how the streamed bytes will be entered into the file.
+
+* `Replace` will delete all existing bytes in the file and add new bytes from the beginning.
+* `ReplaceFrom` will keep the associated number of bytes already in the file, but replace everything after with the streamed data.
+* `Append` will keep the contents of the file untouched, and add new data at the end.
+-}
+type WriteFileStreamBehaviour
+    = Replace
+    | ReplaceFrom Int
+    | Append
+
+
 {-| Create a writable stream backed by a file.
 -}
-writeFileStream : Permission -> Path -> Task Error (Stream.Writable Bytes)
-writeFileStream _ path =
-    Gren.Kernel.FileSystem.writeFileStream path
+writeFileStream : Permission -> WriteFileStreamBehaviour -> Path -> Task Error (Stream.Writable Bytes)
+writeFileStream _ behaviour path =
+    let
+        pos =
+            when behaviour is
+                Replace ->
+                    0
+
+                ReplaceFrom num ->
+                    num
+
+                Append ->
+                    -1
+    in
+    Gren.Kernel.FileSystem.writeFileStream pos path
 
 
 {-| Make sure the given file is of a specific length. If the file is smaller than

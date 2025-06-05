@@ -6,11 +6,11 @@ let proc;
 export function mochaGlobalSetup() {
   const appPath = path.resolve(import.meta.dirname, "../app");
   proc = childProc.fork(appPath);
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     setTimeout(() => {
       resolve({});
     }, 100);
-  })
+  });
 }
 
 export function mochaGlobalTeardown() {
