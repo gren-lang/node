@@ -19,7 +19,7 @@
     ],
     "gren-version": "0.5.0 <= v < 0.6.0",
     "dependencies": {
-        "gren-lang/core": "6.0.0 <= v < 7.0.0",
+        "gren-lang/core": "local:../core",
         "gren-lang/url": "5.0.0 <= v < 6.0.0"
     }
 }

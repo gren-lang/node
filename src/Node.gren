@@ -229,8 +229,8 @@ getEnvironmentVariables =
 
 {-| A program that executes a single task and then exits.
 -}
-type alias SimpleProgram a =
-    Program {} a
+type alias SimpleProgram msg =
+    Platform.Program {} {} msg
 
 
 {-| The definition of a Gren program that runs on NodeJS.
@@ -271,30 +271,6 @@ defineProgram config =
         { init = initProgram config.init
         , update = update config.update
         , subscriptions = subscriptions config.subscriptions
-        }
-
-
-{-| Define a simple program that doesn't require long-lived state or the ability to respond
-to messages or subscriptions. Ideal for simple and short-lived programs.
--}
-defineSimpleProgram : (Environment -> Init.Task (Cmd a)) -> SimpleProgram a
-defineSimpleProgram initTask =
-    Platform.worker
-        { init = \_ ->
-            { model = Uninitialized
-            , command =
-                initializeEnvironment
-                    |> Task.andThen (\env -> unwrap <| initTask env)
-                    |> Task.perform 
-                        (\cmd -> 
-                            InitDone
-                                { model = {}
-                                , command = cmd
-                                }
-                        )
-            }
-        , update = update (\_ _ -> { model = {}, command = Cmd.none })
-        , subscriptions = (\_ -> Sub.none)
         }
 
 
@@ -371,6 +347,24 @@ startProgram initResult =
     Internal.Init.Task (Task.succeed initResult)
 
 
+{-| Define a simple program that doesn't require long-lived state or the ability to respond
+to messages or subscriptions. Ideal for simple and short-lived programs.
+-}
+defineSimpleProgram : (Environment -> Init.Task (Cmd a)) -> SimpleProgram a
+defineSimpleProgram initTask =
+    Platform.worker
+        { init = \_ ->
+            { model = {}
+            , command =
+                initializeEnvironment
+                    |> Task.andThen (\env -> unwrap <| initTask env)
+                    |> Task.executeCmd
+            }
+        , update = (\_ _ -> { model = {}, command = Cmd.none })
+        , subscriptions = (\_ -> Sub.none)
+        }
+
+
 {-| When defining a program with [defineSimpleProgram](#defineSimpleProgram), use this function to define the
 final command to execute.
 -}
@@ -389,7 +383,7 @@ This function is equivalent to:
 
     exitWithCode 0
 -}
-exit : Task x {}
+exit : Cmd msg
 exit =
     exitWithCode 0
 
@@ -403,7 +397,7 @@ The exit code can be read by other processes on your system. Any value other tha
 makes an exit code. If all you want is to signalize that your application exited
 due to an error, -1 is a good option.
 -}
-exitWithCode : Int -> Task x {}
+exitWithCode : Int -> Cmd msg
 exitWithCode code =
     Gren.Kernel.Node.exitWithCode code
 
