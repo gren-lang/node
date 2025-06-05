@@ -238,19 +238,16 @@ run _ program arguments opts =
 * `workingDirectory` specifies the working directory of the process
 * `environmentVariables` specifies the environment variables the process has access to
 * `runDuration` specifies a maximum amount of time a process is allowed to run before exiting
-* `connection` let's you specify how close the new process is connected to the application
+* `connection` let's you specify how the new process is connected to the application, 
+and which message to receive when the process starts
+* `onExit` is the message that is triggered when the process exits. The message receives the exit code.
 -}
 type alias SpawnOptions msg =
     { shell : Shell
     , workingDirectory : WorkingDirectory
     , environmentVariables : EnvironmentVariables
     , runDuration : RunDuration
-    , connection : Connection
-    , onInit :
-        { processId : Process.Id
-        , streams : Maybe StreamIO
-        }
-        -> msg
+    , connection : Connection msg
     , onExit : Int -> msg
     }
 
@@ -273,12 +270,10 @@ type alias KernelSpawnConfig msg =
         , value : Dict String String
         }
     , runDuration : Int
-    , connection : Int
-    , onInit :
-        { processId : Process.Id
-        , streams : Maybe StreamIO
+    , connection :
+        { kind : Int
+        , onInit : { processId : Process.Id, streams : StreamIO } -> msg
         }
-        -> msg
     , onExit : Int -> msg
     }
 
@@ -299,23 +294,22 @@ type alias StreamIO =
 * `Ignored` means the same as `External`, but anything written to stdin, stdout and stderr is discarded/ignored.
 * `Detached` means the same as `Ignored`, but that the application will exit even if the child process hasn't finished executing.
 -}
-type Connection
-    = Integrated
-    | External
-    | Ignored
-    | Detached
+type Connection msg
+    = Integrated (Process.Id -> msg)
+    | External ({ processId : Process.Id, streams : StreamIO } -> msg)
+    | Ignored (Process.Id -> msg)
+    | Detached (Process.Id -> msg)
 
 
 {-| A nice default set of options for the [spawn](#spawn) function.
 -}
-defaultSpawnOptions : ({ processId : Process.Id, streams : Maybe StreamIO } -> msg ) -> (Int -> msg) -> SpawnOptions msg
-defaultSpawnOptions onInit onExit =
+defaultSpawnOptions : Connection msg -> (Int -> msg) -> SpawnOptions msg
+defaultSpawnOptions connection onExit =
     { shell = DefaultShell
     , workingDirectory = InheritWorkingDirectory
     , environmentVariables = InheritEnvironmentVariables
     , runDuration = NoLimit
-    , connection = Integrated
-    , onInit = onInit
+    , connection = connection
     , onExit = onExit
     }
 
@@ -387,18 +381,25 @@ kernelSpawnConfig program arguments opts =
                 max 0 ms
     , connection =
         when opts.connection is
-            Integrated ->
-                0
+            Integrated toMsg ->
+                { kind = 0
+                , onInit = (\{ processId } -> toMsg processId)
+                }
 
-            External ->
-                1
+            External toMsg ->
+                { kind = 1
+                , onInit = toMsg
+                }
             
-            Ignored ->
-                2
+            Ignored toMsg ->
+                { kind = 2
+                , onInit = (\{ processId } -> toMsg processId)
+                }
 
-            Detached ->
-                3
-    , onInit = opts.onInit
+            Detached toMsg ->
+                { kind = 3
+                , onInit = (\{ processId } -> toMsg processId)
+                }
     , onExit = opts.onExit
     }
 
@@ -411,8 +412,10 @@ mapKernelSpawnConfig mapper config =
     , workingDirectory = config.workingDirectory
     , environmentVariables = config.environmentVariables
     , runDuration = config.runDuration
-    , connection = config.connection
-    , onInit = mapper << config.onInit
+    , connection =
+        { kind = config.connection.kind
+        , onInit = mapper << config.connection.onInit
+        }
     , onExit = mapper << config.onExit
     }
 
@@ -445,7 +448,7 @@ onEffects router commands state =
         when first is
             Spawn config ->
                 Gren.Kernel.ChildProcess.spawn
-                    (Platform.sendToApp router << config.onInit)
+                    (Platform.sendToApp router << config.connection.onInit)
                     (Platform.sendToApp router << config.onExit)
                     config
                         |> Process.spawn

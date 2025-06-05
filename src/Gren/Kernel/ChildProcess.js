@@ -89,13 +89,13 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
           }),
         ),
         __$streams:
-          options.__$connection !== 1
-            ? __Maybe_Nothing
-            : __Maybe_Just({
+          options.__$connection.__$kind !== 1
+            ? {}
+            : {
                 __$input: stream.Writable.toWeb(subproc.stdin),
                 __$output: stream.Readable.toWeb(subproc.stdout),
                 __$error: stream.Readable.toWeb(subproc.stderr),
-              }),
+              },
       }),
     );
 
@@ -118,15 +118,15 @@ function _ChildProcess_getSubProc(options) {
     timeout: options.__$runDuration,
     shell: _ChildProcess_handleShell(shell),
     stdio:
-      options.__$connection === 0
+      options.__$connection.__$kind === 0
         ? "inherit"
-        : options.__$connection === 1
+        : options.__$connection.__$kind === 1
           ? "pipe"
           : "ignore",
-    detached: options.__$connection === 3 && process.platform === "win32",
+    detached: options.__$connection.__$kind === 3 && process.platform === "win32",
   });
 
-  if (options.__$connection === 3) {
+  if (options.__$connection.__$kind === 3) {
     subproc.unref();
   }
 
