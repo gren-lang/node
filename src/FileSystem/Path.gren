@@ -11,7 +11,11 @@ module FileSystem.Path exposing
     , parentPath
     --
     , append
+    , appendPosixString
+    , appendWin32String
     , prepend
+    , prependPosixString
+    , prependWin32String
     , join
     )
 
@@ -161,6 +165,20 @@ append left right =
     prepend right left
 
 
+{-| Convenience function. Converts String with [fromPosixString](#fromPosixString) before appending.
+-}
+appendPosixString : String -> Path -> Path
+appendPosixString str path =
+    prepend path (fromPosixString str)
+
+
+{-| Convenience function. Converts String with [fromWin32String](#fromWin32String) before appending.
+-}
+appendWin32String : String -> Path -> Path
+appendWin32String str path =
+    prepend path (fromWin32String str)
+
+
 {-| Join two paths by prepending the first [Path](#Path) onto the second.
 -}
 prepend : Path -> Path -> Path
@@ -174,6 +192,20 @@ prepend left right =
         , filename = right.filename
         , extension = right.extension
     }
+
+
+{-| Convenience function. Converts String with [fromPosixString](#fromPosixString) before prepending.
+-}
+prependPosixString : String -> Path -> Path
+prependPosixString str path =
+    prepend (fromPosixString str) path
+
+
+{-| Convenience function. Converts String with [fromWin32String](#fromWin32String) before prepending.
+-}
+prependWin32String : String -> Path -> Path
+prependWin32String str path =
+    prepend (fromWin32String str) path
 
 
 {-| Join all paths in an `Array`.
