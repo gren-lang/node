@@ -3,6 +3,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , initialize
     -- Errors
     , Error
+    , errorPath
     , errorCode
     , errorToString
     , errorIsPermissionDenied
@@ -63,11 +64,6 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 @docs Permission, initialize
 
-## Errors
-
-@docs Error, errorCode, errorToString
-@docs errorIsPermissionDenied, errorIsFileExists, errorIsDirectoryFound, errorIsTooManyOpenFiles, errorIsNoSuchFileOrDirectory, errorIsNotADirectory, errorIsDirectoryNotEmpty, errorIsNotPermitted, errorIsLinkLoop, errorIsPathTooLong, errorIsInvalidInput, errorIsIO
-
 ## Metadata
 
 @docs Metadata, EntityType, metadata, AccessPermission, checkAccess, changeAccess, accessPermissionsToInt, changeOwner, changeTimes, move, realPath
@@ -91,6 +87,12 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 ## Special paths
 
 @docs homeDirectory, currentWorkingDirectory, tmpDirectory, devNull
+
+## Errors
+
+@docs Error, errorCode, errorToString
+@docs errorIsPermissionDenied, errorIsFileExists, errorIsDirectoryFound, errorIsTooManyOpenFiles, errorIsNoSuchFileOrDirectory, errorIsNotADirectory, errorIsDirectoryNotEmpty, errorIsNotPermitted, errorIsLinkLoop, errorIsPathTooLong, errorIsInvalidInput, errorIsIO
+
 -}
 
 
@@ -134,7 +136,18 @@ operating system you're performing it on. To figure out which error it is, you'l
 to use one of the helper functions below, or check the specific error code.
 -}
 type Error
-    = Error { code : String, message : String }
+    = Error
+        { path : Path
+        , code : String
+        , message : String
+        }
+
+
+{-| The path where the error occured.
+-}
+errorPath : Error -> Path
+errorPath (Error { path }) =
+    path
 
 
 {-| A string that identifies a specific kind of error. There can be several error codes for the

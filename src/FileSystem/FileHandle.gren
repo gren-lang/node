@@ -33,6 +33,9 @@ module FileSystem.FileHandle exposing
 {-| This module provides access to files through FileHandles. A [FileHandle](#FileHandle) represents an open file.
 If you know you're going to perform repeated operations on a file, it will be more efficient through a [FileHandle](#FileHandle).
 
+The Error is the same as the one returned from the FileSystem module, but `errorPath` will always
+return an empty path.
+
 @docs FileHandle, ReadableFileHandle, WriteableFileHandle, ReadWriteableFileHandle, ReadPermission, WritePermission, makeReadOnly, makeWriteOnly
 
 ## File open/close

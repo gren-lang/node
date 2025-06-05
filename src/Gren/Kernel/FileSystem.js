@@ -23,7 +23,7 @@ var _FileSystem_open = F2(function (access, path) {
   return __Scheduler_binding(function (callback) {
     fs.open(__FilePath_toString(path), access, function (err, fd) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -31,8 +31,9 @@ var _FileSystem_open = F2(function (access, path) {
   });
 });
 
-var _FileSystem_constructError = function (err) {
+var _FileSystem_constructError = function (path, err) {
   return __FileSystem_Error({
+    __$path: path,
     __$code: err.code || "",
     __$message: err.message || "",
   });
@@ -42,7 +43,7 @@ var _FileSystem_close = function (fh) {
   return __Scheduler_binding(function (callback) {
     fs.close(fh, function (err) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed({}));
       }
@@ -94,7 +95,7 @@ var _FileSystem_readHelper = function (
     fileOffset,
     function (err, bytesRead, _buff) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
         return;
       }
 
@@ -160,7 +161,7 @@ var _FileSystem_writeHelper = function (
     fileOffset,
     function (err, bytesWritten, buffer) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
         return;
       }
 
@@ -192,7 +193,7 @@ var _FileSystem_remove = F2(function (options, path) {
   return __Scheduler_binding(function (callback) {
     fs.rm(__FilePath_toString(path), rmOpts, function (err) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -207,7 +208,7 @@ var _FileSystem_makeDirectory = F2(function (options, path) {
       { recursive: options.__$recursive },
       function (err) {
         if (err != null) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
         } else {
           callback(__Scheduler_succeed(path));
         }
@@ -224,7 +225,7 @@ var _FileSystem_listDirectory = function (path) {
       { withFileTypes: true },
       function (err, content) {
         if (err != null) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
         } else {
           callback(
             __Scheduler_succeed(
@@ -260,7 +261,7 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchmod(fd, mode, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -272,7 +273,7 @@ var _FileSystem_fchown = F2(function (ids, fd) {
   return __Scheduler_binding(function (callback) {
     fs.fchown(fd, ids.__$userID, ids.__$groupID, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -284,7 +285,7 @@ var _FileSystem_fdatasync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fdatasync(fd, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -296,7 +297,7 @@ var _FileSystem_fsync = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fsync(fd, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -308,7 +309,7 @@ var _FileSystem_fstat = function (fd) {
   return __Scheduler_binding(function (callback) {
     fs.fstat(fd, function (err, stats) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
       }
@@ -320,7 +321,7 @@ var _FileSystem_ftruncate = F2(function (len, fd) {
   return __Scheduler_binding(function (callback) {
     fs.ftruncate(fd, len, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -332,7 +333,7 @@ var _FileSystem_futimes = F3(function (atime, mtime, fd) {
   return __Scheduler_binding(function (callback) {
     fs.futimes(fd, atime, mtime, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err.message)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FileSystem_fromString(""), err)));
       } else {
         callback(__Scheduler_succeed(fd));
       }
@@ -358,7 +359,7 @@ var _FileSystem_access = F2(function (permissions, path) {
   return __Scheduler_binding(function (callback) {
     fs.access(__FilePath_toString(path), mode, function (err) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -370,7 +371,7 @@ var _FileSystem_appendFile = F2(function (data, path) {
   return __Scheduler_binding(function (callback) {
     fs.appendFile(__FilePath_toString(path), data, function (err) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -382,7 +383,7 @@ var _FileSystem_chmod = F2(function (mode, path) {
   return __Scheduler_binding(function (callback) {
     fs.chmod(__FilePath_toString(path), mode, function (err) {
       if (err != null) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -398,7 +399,7 @@ var _FileSystem_chown = F2(function (ids, path) {
       ids.__$groupID,
       function (err) {
         if (err) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
         } else {
           callback(__Scheduler_succeed(path));
         }
@@ -415,7 +416,7 @@ var _FileSystem_lchown = F2(function (ids, path) {
       ids.__$groupID,
       function (err) {
         if (err) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
         } else {
           callback(__Scheduler_succeed(path));
         }
@@ -432,7 +433,7 @@ var _FileSystem_copyFile = F2(function (src, dest) {
       0,
       function (err) {
         if (err) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(dest, err)));
         } else {
           callback(__Scheduler_succeed(dest));
         }
@@ -448,7 +449,7 @@ var _FileSystem_link = F2(function (src, dest) {
       __FilePath_toString(dest),
       function (err) {
         if (err) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(dest, err)));
         } else {
           callback(__Scheduler_succeed(dest));
         }
@@ -464,7 +465,7 @@ var _FileSystem_symlink = F2(function (src, dest) {
       __FilePath_toString(dest),
       function (err) {
         if (err) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(dest, err)));
         } else {
           callback(__Scheduler_succeed(dest));
         }
@@ -477,7 +478,7 @@ var _FileSystem_unlink = function (src) {
   return __Scheduler_binding(function (callback) {
     fs.unlink(__FilePath_toString(src), function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(src, err)));
       } else {
         callback(__Scheduler_succeed(src));
       }
@@ -489,7 +490,7 @@ var _FileSystem_mkdtemp = function (prefix) {
   return __Scheduler_binding(function (callback) {
     fs.mkdtemp(path.join(os.tmpdir(), prefix), function (err, dir) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(__FilePath_fromString(dir), err)));
       } else {
         callback(__Scheduler_succeed(__FilePath_fromString(dir)));
       }
@@ -501,7 +502,7 @@ var _FileSystem_readFile = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.readFile(__FilePath_toString(path), function (err, data) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(
           __Scheduler_succeed(
@@ -519,7 +520,7 @@ var _FileSystem_readFileStream = function (path) {
       var fstream = fs.createReadStream(__FilePath_toString(path));
       callback(__Scheduler_succeed(stream.Readable.toWeb(fstream)));
     } catch (err) {
-      callback(__Scheduler_fail(_FileSystem_constructError(err)));
+      callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
     }
   });
 };
@@ -528,7 +529,7 @@ var _FileSystem_readLink = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.readlink(__FilePath_toString(path), function (err, linkedPath) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(__FilePath_fromString(linkedPath)));
       }
@@ -543,7 +544,7 @@ var _FileSystem_rename = F2(function (oldPath, newPath) {
       __FilePath_toString(newPath),
       function (err) {
         if (err) {
-          callback(__Scheduler_fail(_FileSystem_constructError(err)));
+          callback(__Scheduler_fail(_FileSystem_constructError(newPath, err)));
         } else {
           callback(__Scheduler_succeed(newPath));
         }
@@ -556,7 +557,7 @@ var _FileSystem_realpath = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.realpath(__FilePath_toString(path), function (err, resolvedPath) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(__FilePath_fromString(resolvedPath)));
       }
@@ -568,7 +569,7 @@ var _FileSystem_stat = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.stat(__FilePath_toString(path), function (err, stats) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
       }
@@ -580,7 +581,7 @@ var _FileSystem_lstat = function (path) {
   return __Scheduler_binding(function (callback) {
     fs.lstat(__FilePath_toString(path), function (err, stats) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(_FileSystem_statToGrenRecord(stats)));
       }
@@ -608,7 +609,7 @@ var _FileSystem_truncate = F2(function (len, path) {
   return __Scheduler_binding(function (callback) {
     fs.truncate(__FilePath_toString(path), len, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -620,7 +621,7 @@ var _FileSystem_utimes = F3(function (atime, mtime, path) {
   return __Scheduler_binding(function (callback) {
     fs.utimes(__FilePath_toString(path), atime, mtime, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -632,7 +633,7 @@ var _FileSystem_lutimes = F3(function (atime, mtime, path) {
   return __Scheduler_binding(function (callback) {
     fs.lutimes(__FilePath_toString(path), atime, mtime, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -644,7 +645,7 @@ var _FileSystem_writeFile = F2(function (data, path) {
   return __Scheduler_binding(function (callback) {
     fs.writeFile(__FilePath_toString(path), data, function (err) {
       if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(err)));
+        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
       } else {
         callback(__Scheduler_succeed(path));
       }
@@ -658,7 +659,7 @@ var _FileSystem_writeFileStream = function (path) {
       var fstream = fs.createWriteStream(__FilePath_toString(path));
       callback(__Scheduler_succeed(stream.Writable.toWeb(fstream)));
     } catch (err) {
-      callback(__Scheduler_fail(_FileSystem_constructError(err)));
+      callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
     }
   });
 };
