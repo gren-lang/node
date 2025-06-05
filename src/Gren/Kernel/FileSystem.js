@@ -186,7 +186,6 @@ var _FileSystem_writeHelper = function (
 
 var _FileSystem_remove = F2(function (options, path) {
   var rmOpts = {
-    force: options.__$ignoreErrors,
     recursive: options.__$recursive,
   };
 

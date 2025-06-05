@@ -459,10 +459,9 @@ truncateFile _ length path =
 
 {-| Remove the file or directory at the given path.
 
-* `recursive` will delete everything inside a directory.
-* `ignoreErrors` will... ignore any errors related to a remove operation.
+* `recursive` will delete a directory and everything in it.
 -}
-remove : Permission -> { recursive : Bool, ignoreErrors : Bool } -> Path -> Task Error Path
+remove : Permission -> { recursive : Bool } -> Path -> Task Error Path
 remove _ options path =
     Gren.Kernel.FileSystem.remove options path
 
