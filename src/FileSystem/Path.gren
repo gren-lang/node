@@ -34,7 +34,7 @@ module FileSystem.Path exposing
 
 ## Manipulation
 
-@docs append, prepend, join
+@docs append, appendPosixString, appendWin32String, prepend, prependPosixString, prependWin32String, join
 -}
 
 

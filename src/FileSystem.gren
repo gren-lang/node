@@ -72,7 +72,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Files
 
-@docs copyFile, appendToFile, readFile, ReadFileStreamPosition, readFileStream, writeFile, WriteFileStreamBehaviour, writeFileStream, truncateFile, remove
+@docs copyFile, appendToFile, readFile, ReadFileStreamMode, readFileStream, writeFile, WriteFileStreamMode, writeFileStream, truncateFile, remove
 
 ## Directories
 
@@ -92,7 +92,7 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
 
 ## Errors
 
-@docs Error, errorCode, errorToString
+@docs Error, errorPath, errorCode, errorToString
 @docs errorIsPermissionDenied, errorIsFileExists, errorIsDirectoryFound, errorIsTooManyOpenFiles, errorIsNoSuchFileOrDirectory, errorIsNotADirectory, errorIsDirectoryNotEmpty, errorIsNotPermitted, errorIsLinkLoop, errorIsPathTooLong, errorIsInvalidInput, errorIsIO
 
 -}
