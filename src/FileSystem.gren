@@ -34,10 +34,10 @@ effect module FileSystem where { subscription = FileSystemSub } exposing
     , appendToFile
     , copyFile
     , readFile
-    , ReadFileStreamPosition (..)
+    , ReadFileStreamMode (..)
     , readFileStream
     , writeFile
-    , WriteFileStreamBehaviour (..)
+    , WriteFileStreamMode (..)
     , writeFileStream
     , truncateFile
     , remove
@@ -447,7 +447,7 @@ readFile _ path =
 * `From` skips the associated number of bytes, then streams the rest of the file
 * `Between` reads just the bytes between `start` and `end`, both of which are offsets from the beginning of the file.
 -}
-type ReadFileStreamPosition
+type ReadFileStreamMode
     = Beginning
     | From Int
     | Between { start : Int, end : Int }
@@ -455,7 +455,7 @@ type ReadFileStreamPosition
 
 {-| Read the contents of a file as a stream.
 -}
-readFileStream : Permission -> ReadFileStreamPosition -> Path -> Task Error (Stream.Readable Bytes)
+readFileStream : Permission -> ReadFileStreamMode -> Path -> Task Error (Stream.Readable Bytes)
 readFileStream _ position path =
     let
         range =
@@ -486,7 +486,7 @@ writeFile _ bytes path =
 * `ReplaceFrom` will keep the associated number of bytes already in the file, but replace everything after with the streamed data.
 * `Append` will keep the contents of the file untouched, and add new data at the end.
 -}
-type WriteFileStreamBehaviour
+type WriteFileStreamMode
     = Replace
     | ReplaceFrom Int
     | Append
@@ -494,7 +494,7 @@ type WriteFileStreamBehaviour
 
 {-| Create a writable stream backed by a file.
 -}
-writeFileStream : Permission -> WriteFileStreamBehaviour -> Path -> Task Error (Stream.Writable Bytes)
+writeFileStream : Permission -> WriteFileStreamMode -> Path -> Task Error (Stream.Writable Bytes)
 writeFileStream _ behaviour path =
     let
         pos =
