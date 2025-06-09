@@ -451,9 +451,8 @@ onEffects router commands state =
                     (Platform.sendToApp router << config.connection.onInit)
                     (Platform.sendToApp router << config.onExit)
                     config
-                        |> Process.spawn
-                        |> Task.andThen 
-                            (\_ -> onEffects router rest {})
+                    |> Task.andThen 
+                        (\_ -> onEffects router rest {})
 
 
 onSelfMsg : Platform.Router msg Never -> Never -> {} -> Task Never {}
