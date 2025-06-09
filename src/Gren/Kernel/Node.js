@@ -92,7 +92,7 @@ var _Node_getEnvironmentVariables = __Scheduler_binding(function (callback) {
 });
 
 var _Node_exitWithCode = function (code) {
-  A2(
+  return A2(
     __Task_perform,
     __Basics_never,
     __Scheduler_binding(function (callback) {
