@@ -1,6 +1,8 @@
 /*
 
+import Basics exposing (never)
 import Dict exposing (empty, set)
+import Task exposing (perform)
 import Gren.Kernel.Platform exposing (export)
 import Gren.Kernel.Scheduler exposing (binding, succeed, rawSpawn)
 import Gren.Kernel.FilePath exposing (fromString)
@@ -90,9 +92,13 @@ var _Node_getEnvironmentVariables = __Scheduler_binding(function (callback) {
 });
 
 var _Node_exitWithCode = function (code) {
-  return __Scheduler_binding(function (callback) {
-    process.exit(code);
-  });
+  A2(
+    __Task_perform,
+    __Basics_never,
+    __Scheduler_binding(function (callback) {
+      process.exit(code);
+    }),
+  );
 };
 
 var _Node_setExitCode = function (code) {
