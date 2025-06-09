@@ -79,7 +79,7 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
   return __Scheduler_binding(function (callback) {
     var subproc = _ChildProcess_getSubProc(options);
 
-    __Scheduler_rawSpawn(
+    var proc = __Scheduler_rawSpawn(
       sendInitToApp({
         __$processId: __Scheduler_rawSpawn(
           __Scheduler_binding(function (callback) {
@@ -102,6 +102,8 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
     subproc.on("exit", function (code) {
       __Scheduler_rawSpawn(sendExitToApp(code));
     });
+
+    callback(__Scheduler_succeed(proc));
   });
 });
 

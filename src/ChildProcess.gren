@@ -451,7 +451,7 @@ onEffects router commands state =
                     (Platform.sendToApp router << config.connection.onInit)
                     (Platform.sendToApp router << config.onExit)
                     config
-                    |> Task.andThen 
+                    |> Task.andThen
                         (\_ -> onEffects router rest {})
 
 
