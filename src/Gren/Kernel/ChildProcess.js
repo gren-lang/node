@@ -3,7 +3,7 @@
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
 import Gren.Kernel.Utils exposing (update)
 import Dict exposing (foldl)
-import ChildProcess exposing (FailedRun, SuccessfulRun)
+import ChildProcess exposing (InitError, ProgramError)
 import Maybe exposing (Just, Nothing)
 
 */
@@ -53,22 +53,36 @@ var _ChildProcess_run = function (options) {
             }),
           );
         } else {
-          callback(
-            __Scheduler_fail({
-              __$exitCode:
-                typeof err.errno === "undefined" ? err.code : err.errno,
-              __$stdout: new DataView(
-                stdout.buffer,
-                stdout.byteOffset,
-                stdout.byteLength,
+          if (typeof err.errno === "undefined") {
+            // errno only exists on system errors, the program was run
+            callback(
+              __Scheduler_fail(
+                __ChildProcess_ProgramError({
+                  __$exitCode: err.code,
+                  __$stdout: new DataView(
+                    stdout.buffer,
+                    stdout.byteOffset,
+                    stdout.byteLength,
+                  ),
+                  __$stderr: new DataView(
+                    stderr.buffer,
+                    stderr.byteOffset,
+                    stderr.byteLength,
+                  ),
+                }),
               ),
-              __$stderr: new DataView(
-                stderr.buffer,
-                stderr.byteOffset,
-                stderr.byteLength,
+            );
+          } else {
+            callback(
+              __Scheduler_fail(
+                __ChildProcess_InitError({
+                  __program: err.path,
+                  __arguments: err.spawnargs,
+                  __errorCode: err.code,
+                }),
               ),
-            }),
-          );
+            );
+          }
         }
       },
     );

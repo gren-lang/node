@@ -9,8 +9,8 @@ effect module ChildProcess where { command = MyCmd } exposing
     , EnvironmentVariables(..)
     , RunDuration(..)
     --
-    , FailedRun
     , SuccessfulRun
+    , FailedRun (..)
     , run
     --
     , SpawnOptions
@@ -32,11 +32,11 @@ This module allow you to spawn child processes.
 ## Running processes
 
 @docs RunOptions, defaultRunOptions, Shell, WorkingDirectory, EnvironmentVariables, RunDuration
-@docs FailedRun, SuccessfulRun, run
+@docs run, SuccessfulRun, FailedRun
 
 ## Spawning processes
 
-@docs SpawnOptions, StreamIO, Connection, defaultSpawnOptions, spawn
+@docs spawn, SpawnOptions, StreamIO, Connection, defaultSpawnOptions
 -}
 
 
@@ -146,15 +146,23 @@ type RunDuration
 -- RUN
 
 
-{-| Return value when a process terminates due to an error
+{-| Return value when a process terminates due to an error.
 
-The exit code provides some hint of what went wrong, but what it means depends on the program which was run.
+Running a child process can either fail due to a system error, like the requested program not being
+installed, or due to an error in the program itself, like calling it with arguments it doesn't
+recognize.
 -}
-type alias FailedRun =
-    { exitCode: Int
-    , stdout : Bytes
-    , stderr : Bytes
-    }
+type FailedRun
+    = InitError
+        { program : String
+        , arguments : Array String
+        , errorCode : String
+        }
+    | ProgramError
+        { exitCode: Int
+        , stdout : Bytes
+        , stderr : Bytes
+        }
 
 
 {-| Return value when a process terminates without error
