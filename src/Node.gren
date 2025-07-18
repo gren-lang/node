@@ -9,6 +9,7 @@ effect module Node where { subscription = NodeSub } exposing
     , SimpleProgram
     , defineSimpleProgram
     , endSimpleProgram
+    , endSimpleProgramWithCmd
     --
     , Program
     , ProgramConfiguration
@@ -371,6 +372,13 @@ final command to execute.
 endSimpleProgram : Task Never x -> Init.Task (Cmd a)
 endSimpleProgram finalTask =
     Internal.Init.Task (Task.succeed <| Task.execute finalTask)
+
+
+{-| Similar to [endSimpleProgram](#endSimpleProgram), but takes a `Cmd` instead of a `Task`.
+-}
+endSimpleProgramWithCmd : Cmd a -> Init.Task (Cmd a)
+endSimpleProgramWithCmd cmd =
+    Internal.Init.Task (Task.succeed cmd)
 
 
 -- EXIT
