@@ -103,28 +103,25 @@ update msg model =
             { model = model
             , command =
                 Stream.writeLineAsBytes "EmptyEventLoop" model.stdout
-                    |> Task.andThen (\_ -> Node.exitWithCode 100)
-                    |> Task.andThen (\_ -> Task.succeed {})
-                    |> Task.onError (\_ -> Task.succeed {})
-                    |> Task.execute
+                    |> Task.map (\_ -> Node.exitWithCode 100)
+                    |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode -1)
+                    |> Task.executeCmd
             }
 
         SigInt ->
             { model = model
             , command =
                 Stream.writeLineAsBytes "SIGINT" model.stdout
-                    |> Task.andThen (\_ -> Node.exitWithCode 101)
-                    |> Task.andThen (\_ -> Task.succeed {})
-                    |> Task.onError (\_ -> Task.succeed {})
-                    |> Task.execute
+                    |> Task.map (\_ -> Node.exitWithCode 101)
+                    |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode -1)
+                    |> Task.executeCmd
             }
 
         SigTerm ->
             { model = model
             , command =
                 Stream.writeLineAsBytes "SIGTERM" model.stdout
-                    |> Task.andThen (\_ -> Node.exitWithCode 102)
-                    |> Task.andThen (\_ -> Task.succeed {})
-                    |> Task.onError (\_ -> Task.succeed {})
-                    |> Task.execute
+                    |> Task.map (\_ -> Node.exitWithCode 102)
+                    |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode -1)
+                    |> Task.executeCmd
             }

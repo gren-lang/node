@@ -5,9 +5,9 @@
       "last_modified": "2025-07-16T16:36:02Z",
       "resolved": "github:NixOS/nixpkgs/fa64ec5c1ca6f17746f3defedb988b9248e97616?lastModified=1752683762&narHash=sha256-CVC4bpthYhKk4Qb4mt00SqfJ7CJ4vfTX06pLN2OHa1c%3D"
     },
-    "github:gren-lang/nix/0.5.4": {
-      "last_modified": "2025-03-24T10:35:41Z",
-      "resolved": "github:gren-lang/nix/35601dd5c34adce2bbc6740ccc19a55078eb27be?lastModified=1742812541&narHash=sha256-iJcZAefSQM67bMRlJPEXT0%2FkVUoEmcr9NYTUPLoAO%2FE%3D"
+    "github:gren-lang/nix/main": {
+      "last_modified": "2025-07-18T19:48:17Z",
+      "resolved": "github:gren-lang/nix/7dc11f06242440026a41aec71966c38fe21ecbf1?lastModified=1752868097&narHash=sha256-sr87ikPuy%2BaBWKQ4hfmpadZCMgfhS9sqJPPlZUQEXDg%3D"
     },
     "nodePackages.prettier@latest": {
       "last_modified": "2025-05-21T18:43:04Z",
