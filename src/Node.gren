@@ -41,7 +41,7 @@ you to contact said subsystem. Be careful what code you give these permissions t
 
 ## Simple Program
 
-@docs SimpleProgram, defineSimpleProgram, endSimpleProgram
+@docs SimpleProgram, defineSimpleProgram, endSimpleProgram, endSimpleProgramWithCmd
 
 ## Environment information
 
