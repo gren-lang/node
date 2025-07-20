@@ -1,4 +1,3 @@
 set -e
 
-gren make Main
-node app
+gren run Main
