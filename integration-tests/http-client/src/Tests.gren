@@ -140,6 +140,70 @@ suite permission =
                         (\_ -> Expect.equal {} res.data)
                 )
             , await
+                (Stream.fromArray [ meaningOfLifeInBytes ]
+                    |> Task.mapError StreamErr
+                    |> Task.andThen
+                        (\body ->
+                            HttpClient.post "/echo"
+                                |> HttpClient.withStreamBody "application/octet-stream" body
+                                |> HttpClient.expectBytes
+                                |> send
+                                |> Task.mapError HttpErr
+                        )
+                )
+                "with streaming request body"
+                (\res ->
+                    test "streams request body" (\_ -> Expect.equal meaningOfLifeInBytes res.data)
+                )
+            , await
+                (Stream.identityTransformation
+                    |> Task.andThen
+                        (\transform ->
+                            Stream.writable transform
+                                |> Stream.writeStringAsBytes "Hello!"
+                                |> Task.andThen Stream.closeWritable
+                                |> Task.map (\_ -> Stream.readable transform)
+                                |> Task.mapError StreamErr
+                        )
+                    |> Task.andThen
+                        (\body ->
+                            HttpClient.post "/echo"
+                                |> HttpClient.withStreamBody "application/octet-stream" body
+                                |> HttpClient.expectString
+                                |> HttpClient.send permission
+                                |> Task.mapError HttpErr
+                        )
+                )
+                "with writable stream"
+                (\res ->
+                    test "streams request body" (\_ -> Expect.equal "Hello!" res.data)
+                )
+            , await
+                (let
+                    request1 : Task Error (HttpClient.Response (Stream.Readable Bytes))
+                    request1 =
+                        HttpClient.post "/echo"
+                            |> HttpClient.withBytesBody "application/octet-stream" meaningOfLifeInBytes
+                            |> HttpClient.expectStream
+                            |> send
+                            |> Task.mapError HttpErr
+
+                    request2 : Stream.Readable Bytes -> Task Error (HttpClient.Response Bytes)
+                    request2 streamBody =
+                        HttpClient.post "/echo"
+                            |> HttpClient.withStreamBody "application/octet-stream" streamBody
+                            |> HttpClient.expectBytes
+                            |> send
+                            |> Task.mapError HttpErr
+                 in
+                 request1
+                    |> Task.andThen (\res -> request2 res.data)
+                )
+                "with piped streaming requests"
+                (\res ->
+                    test "receives bytes through piped request chain" (\_ -> Expect.equal meaningOfLifeInBytes res.data)
+                )
+            , await
                 (HttpClient.post "/echo"
                     |> HttpClient.withBytesBody "application/octet-stream" meaningOfLifeInBytes
                     |> HttpClient.expectStream

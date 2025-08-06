@@ -40,6 +40,7 @@ var _HttpClient_request = function (config) {
         {},
         config.__$headers,
       ),
+      duplex: "half",
       body: _HttpClient_extractRequestBody(config),
       signal: controller.signal,
     })
@@ -189,7 +190,13 @@ var _HttpClient_stream = F4(function (cleanup, sendToApp, request, config) {
 
     const body = _HttpClient_extractRequestBody(config);
 
-    if (body == null) {
+    if (config.__$bodyType === "STREAM") {
+      send(
+        __HttpClient_UnknownError(
+          "stream request body not supported in legacy api",
+        ),
+      );
+    } else if (body == null) {
       send(__HttpClient_SentChunk(request));
     } else {
       req.write(body, () => {
@@ -303,6 +310,8 @@ var _HttpClient_extractRequestBody = function (config) {
       return config.__$body.a;
     case "BYTES":
       return _HttpClient_prepBytes(config.__$body.a);
+    case "STREAM":
+      return config.__$body.a;
   }
 };
 
