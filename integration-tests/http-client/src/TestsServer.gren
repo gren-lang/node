@@ -1,0 +1,130 @@
+module TestsServer exposing (main)
+
+import Node
+import Bytes exposing (Bytes)
+import Dict
+import Process
+import Stream
+import Stream.Log as Log
+import Node exposing (Environment, Program)
+import FileSystem
+import FileSystem.Path as Path
+import HttpServer as Http exposing (ServerError(..), Method(..))
+import HttpServer.Response as Response exposing (Response)
+import Init
+import Json.Decode as Decode
+import Json.Encode as Encode
+import Task exposing (Task)
+
+
+
+
+{-| The test suite calls these handlers to make assertions on.
+-}
+handler : Http.Request -> Response -> Cmd Msg
+handler req res =
+    when { method = req.method, path = req.url.path } is
+        { method = _, path = "/hello" } ->
+            res
+                |> Response.setBody "Hello!"
+                |> Response.send
+
+        { method = POST, path = "/echo" } ->
+            res
+                |> Response.setBodyAsBytes req.body
+                |> Response.send
+            
+
+        { method = GET, path = "/slow" } ->
+            Process.sleep 1000
+                |> Task.map (\_ -> Response.send res)
+                |> Task.executeCmd
+
+        { method = GET, path = "/headers" } ->
+            res
+                |> Response.setBody
+                    (req.headers
+                        |> Encode.dict identity Encode.string
+                        |> Encode.encode 2
+                    )
+                |> Response.send
+
+        _ ->
+            res
+                |> Response.setStatus 404
+                |> Response.setBody "Not found"
+                |> Response.send
+
+
+
+-- Server program
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias Model =
+    { stdout : Stream.Writable Bytes
+    , stderr : Stream.Writable Bytes
+    , server : Maybe Http.Server
+    }
+
+
+type Msg
+    = CreatedServer (Result Http.ServerError Http.Server)
+    | GotRequest { request : Http.Request, response : Response }
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Http.initialize <| \s ->
+        Node.startProgram
+            { model =
+                { stdout = env.stdout
+                , stderr = env.stderr
+                , server = Nothing
+                }
+            , command =
+                Http.createServer s
+                    { host = "0.0.0.0"
+                    , port_ = 3000
+                    }
+                    |> Task.attempt CreatedServer 
+            }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        CreatedServer result ->
+            when result is
+                Ok server ->
+                    { model = { model | server = Just server }
+                    , command = Log.line model.stdout "Server started" |> Task.execute
+                    }
+
+                Err (ServerError { code, message }) ->
+                    { model = model
+                    , command = Log.line model.stderr ("Server failed to start: " ++ code ++ "\n" ++ message) |> Task.execute
+                    }
+        
+        GotRequest r ->
+            { model = model
+            , command = handler r.request r.response
+            }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    when model.server is
+        Just server ->
+            Http.onRequest server (\req res -> GotRequest { request = req, response = res })
+
+        Nothing ->
+            Sub.none

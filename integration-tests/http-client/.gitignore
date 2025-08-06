@@ -1,3 +1,4 @@
-app
+server-app
+tests-app
+stream-tests-app
 .gren
-node_modules/

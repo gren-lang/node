@@ -1,0 +1,113 @@
+module LegacyStreamTests exposing (main)
+
+import Bytes exposing (Bytes)
+import Bytes.Decode
+import Bytes.Encode
+import Dict
+import HttpClient
+import Init
+import Json.Decode
+import Json.Encode as Json
+import Node
+import Stream
+import Stream.Log as Log
+import Task
+
+
+
+{- This program is a smoke test for the legacy HttpClient streams api. -}
+
+
+type alias Model =
+    { env : Node.Environment
+    , chunks : Array Bytes
+    , status : Int
+    }
+
+
+type Msg
+    = StreamResponse HttpClient.StreamEvent
+
+
+main : Node.Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await HttpClient.initialize <|
+        \httpPerm ->
+            let
+                reqChunks =
+                    [ "{ "
+                    , "\"message\": "
+                    , "\"Was chunked as bytes\""
+                    , " }"
+                    ]
+                        |> Array.map Bytes.fromString
+            in
+            Node.startProgram
+                { model =
+                    { env = env
+                    , chunks = reqChunks
+                    , status = 0
+                    }
+                , command =
+                    HttpClient.post "http://localhost:3000/echo"
+                        |> HttpClient.expectBytes
+                        |> HttpClient.stream httpPerm StreamResponse
+                }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    let
+        log : String -> Cmd msg
+        log =
+            Log.line model.env.stdout >> Task.execute
+
+        error : String -> Cmd msg
+        error =
+            Log.line model.env.stderr >> Task.andThen (\_ -> Node.setExitCode 1) >> Task.execute
+    in
+    when msg is
+        StreamResponse progress ->
+            when progress is
+                HttpClient.SentChunk req ->
+                    when Array.popFirst model.chunks is
+                        Nothing ->
+                            -- We are done sending stuff
+                            { model = model
+                            , command = HttpClient.startReceive req
+                            }
+
+                        Just chunks ->
+                            { model = { model | chunks = chunks.rest }
+                            , command = HttpClient.sendChunk req chunks.first
+                            }
+
+                HttpClient.ReceivedChunk { request, response } ->
+                    -- We received some data, but we're not interested in the result
+                    { model = { model | status = response.statusCode }
+                    , command = Cmd.none
+                    }
+
+                HttpClient.Error err ->
+                    { model = model
+                    , command = error (HttpClient.errorToString err)
+                    }
+
+                HttpClient.Aborted ->
+                    { model = model
+                    , command = error "Aborted"
+                    }
+
+                HttpClient.Done ->
+                    { model = model
+                    , command = log (String.fromInt model.status ++ ": Streaming done!")
+                    }

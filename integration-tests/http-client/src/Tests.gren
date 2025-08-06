@@ -1,0 +1,171 @@
+module Tests exposing (main)
+
+import Bytes exposing (Bytes)
+import Bytes.Encode as BE
+import Dict
+import Expect exposing (Expectation)
+import HttpClient exposing (Error, RequestConfiguration, Response)
+import HttpServer
+import Init
+import Json.Decode as DE
+import Json.Encode as JE
+import Node
+import Stream
+import Task exposing (Task)
+import Test.Runner.Effectful exposing (..)
+
+
+
+-- Runner
+
+
+main : Test.Runner.Effectful.Program a
+main =
+    Node.defineSimpleProgram
+        (\env ->
+            Init.await (HttpClient.initializeForHost "http://localhost:3000") <|
+                \permission ->
+                    Test.Runner.Effectful.run env (suite permission)
+        )
+
+
+
+-- Suite
+
+
+type Error
+    = StreamErr Stream.Error
+    | HttpErr HttpClient.Error
+
+
+suite : HttpClient.Permission -> Test
+suite permission =
+    let
+        send : RequestConfiguration a -> Task HttpClient.Error (Response a)
+        send =
+            HttpClient.send permission
+
+        meaningOfLifeInBytes : Bytes
+        meaningOfLifeInBytes =
+            BE.encode (BE.signedInt8 42)
+    in
+    concat
+        [ describe "Request methods"
+            [ await
+                (HttpClient.get "/hello" |> send)
+                "GET request"
+                (\res ->
+                    test "succeeds with status"
+                        (\_ -> Expect.equal 200 res.statusCode)
+                )
+            , await
+                (HttpClient.post "/hello" |> send)
+                "POST request"
+                (\res ->
+                    test "succeeds with status"
+                        (\_ -> Expect.equal 200 res.statusCode)
+                )
+            , await
+                (HttpClient.request HttpServer.DELETE "/hello" |> send)
+                "Other request method"
+                (\res ->
+                    test "succeeeds with status"
+                        (\_ -> Expect.equal 200 res.statusCode)
+                )
+            ]
+        , describe "Request / response body"
+            [ await
+                (HttpClient.post "/echo"
+                    |> HttpClient.withStringBody "text/plain" "ping!"
+                    |> HttpClient.expectString
+                    |> send
+                )
+                "with string body"
+                (\res ->
+                    test "gets response as string"
+                        (\_ -> Expect.equal "ping!" res.data)
+                )
+            , await
+                (HttpClient.post "/echo"
+                    |> HttpClient.withJsonBody (JE.object [ { key = "message", value = JE.string "ping!" } ])
+                    |> HttpClient.expectJson (DE.field "message" DE.string)
+                    |> send
+                )
+                "with JSON body"
+                (\res ->
+                    test "gets response as JSON"
+                        (\_ -> Expect.equal "ping!" res.data)
+                )
+            , await
+                (HttpClient.post "/echo"
+                    |> HttpClient.withBytesBody "application/octet-stream" meaningOfLifeInBytes
+                    |> HttpClient.expectBytes
+                    |> send
+                )
+                "with bytes body"
+                (\res ->
+                    test "gets response as bytes"
+                        (\_ -> Expect.equal meaningOfLifeInBytes res.data)
+                )
+            , await
+                (HttpClient.post "/echo"
+                    |> HttpClient.expectNothing
+                    |> send
+                )
+                "with empty body"
+                (\res ->
+                    test "succeeds if response body is empty"
+                        (\_ -> Expect.equal {} res.data)
+                )
+            , awaitError
+                (HttpClient.post "/echo"
+                    |> HttpClient.expectNothing
+                    |> HttpClient.withStringBody "text/plain" "message"
+                    |> send
+                )
+                "with non-empty body"
+                (\err ->
+                    test "fails if respoonse body not empty"
+                        (\_ -> Expect.equal (HttpClient.UnexpectedResponseBody "Received response body where I expected none.") err)
+                )
+            , await
+                (HttpClient.post "/echo"
+                    |> HttpClient.withStringBody "text/plain" "message"
+                    |> HttpClient.expectAnything
+                    |> send
+                )
+                "with expect anything"
+                (\res ->
+                    test "succeeds with empty record"
+                        (\_ -> Expect.equal {} res.data)
+                )
+            ]
+        , awaitError
+            (HttpClient.get "/slow"
+                |> HttpClient.withTimeout 50
+                |> send
+            )
+            "Request with timeout"
+            (\err ->
+                test "errors with timeout"
+                    (\_ -> Expect.equal HttpClient.Timeout err)
+            )
+        , await
+            (HttpClient.get "/headers"
+                |> HttpClient.withHeader "a" "b"
+                |> HttpClient.withHeader "c" "d"
+                |> HttpClient.expectJson (DE.dict DE.string)
+                |> send
+            )
+            "with custom headers"
+            (\res ->
+                test "sends headers"
+                    (\_ ->
+                        res.data
+                            |> Expect.all
+                                [ Dict.get "a" >> Expect.equal (Just "b")
+                                , Dict.get "c" >> Expect.equal (Just "d")
+                                ]
+                    )
+            )
+        ]
