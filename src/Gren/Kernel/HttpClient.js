@@ -105,6 +105,11 @@ var _HttpClient_request = function (config) {
                 ),
               );
             });
+
+          case "STREAM":
+            return callback(
+              __Scheduler_succeed(_HttpClient_formatResponse(res, res.body)),
+            );
         }
       })
       .catch((e) => {

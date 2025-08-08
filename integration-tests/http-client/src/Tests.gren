@@ -139,6 +139,23 @@ suite permission =
                     test "succeeds with empty record"
                         (\_ -> Expect.equal {} res.data)
                 )
+            , await
+                (HttpClient.post "/echo"
+                    |> HttpClient.withBytesBody "application/octet-stream" meaningOfLifeInBytes
+                    |> HttpClient.expectStream
+                    |> send
+                    |> Task.mapError HttpErr
+                    |> Task.andThen
+                        (.data
+                            >> Stream.readUntilClosed (\a -> Array.pushFirst a >> Ok) []
+                            >> Task.map Bytes.flatten
+                            >> Task.mapError StreamErr
+                        )
+                )
+                "streaming response"
+                (\res ->
+                    test "streams bytes response" (\_ -> Expect.equal meaningOfLifeInBytes res)
+                )
             ]
         , awaitError
             (HttpClient.get "/slow"

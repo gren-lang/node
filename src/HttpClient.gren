@@ -5,7 +5,7 @@ effect module HttpClient where { command = MyCmd } exposing
     , defaultTimeout, withTimeout
     , withHeader, withDuplicatedHeader
     , Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
-    , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+    , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes, expectStream
     , send
     , Response
     , Error(..), errorToString
@@ -62,7 +62,7 @@ The request body is the actual data that you wish to send to a server.
 Once a request has been sent, you usually get a response. The `Expect` type represents
 what we expect the response body to be.
 
-@docs Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+@docs Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes, expectStream
 
 ## Send
 
@@ -97,6 +97,7 @@ import Task exposing (Task)
 import Platform
 import Gren.Kernel.HttpClient
 import HttpServer exposing (Method(..), methodToString)
+import Stream
 
 
 {-| A value that represents the permission to perform HTTP requests.
@@ -296,6 +297,7 @@ type Expect a
     | ExpectString
     | ExpectJson (Json.Decode.Decoder a)
     | ExpectBytes
+    | ExpectStream
 
 
 expectTypeAsString : Expect a -> String
@@ -315,6 +317,9 @@ expectTypeAsString expect =
 
         ExpectBytes ->
             "BYTES"
+
+        ExpectStream ->
+            "STREAM"
 
 
 {-| Use this when you you don't really care what the server responds with. Anything is fine.
@@ -382,6 +387,19 @@ expectBytes req =
     , headers = req.headers
     , body = req.body
     , expect = ExpectBytes
+    , timeout = req.timeout
+    }
+
+
+{-| Use this when you want to treat the response as a readable Stream of bytes.
+-}
+expectStream : RequestConfiguration a -> RequestConfiguration (Stream.Readable Bytes)
+expectStream req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectStream
     , timeout = req.timeout
     }
 
