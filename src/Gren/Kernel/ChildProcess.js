@@ -24,7 +24,7 @@ var _ChildProcess_run = function (options) {
     var env = options.__$environmentVariables;
     var shell = options.__$shell;
 
-    childProcess.execFile(
+    var subProc = childProcess.execFile(
       options.__$program,
       options.__$arguments,
       {
@@ -86,6 +86,10 @@ var _ChildProcess_run = function (options) {
         }
       },
     );
+
+    return () => {
+      subProc.kill();
+    };
   });
 };
 
