@@ -1,15 +1,19 @@
-app: Makefile gren.json src/Main.gren
-	gren make --optimize Main --output=bin/app
+server:
+	gren make TestsServer --output=server-app
+
+tests:
+	gren make Tests --output=tests-app
+
+stream-tests:
+	gren make LegacyStreamTests --output=stream-tests-app
 
 .PHONY: test
-test: app node_modules
-	npm test
-
-node_modules: package.json package-lock.json
-	npm install
+test: server tests stream-tests
+	node run.mjs
 
 .PHONY: clean
 clean:
 	rm -rf .gren
-	rm -rf node_modules
-	rm bin/app
+	rm server-app
+	rm tests-app
+	rm stream-tests-app

@@ -4,8 +4,8 @@ effect module HttpClient where { command = MyCmd } exposing
     , RequestConfiguration, get, post, request
     , defaultTimeout, withTimeout
     , withHeader, withDuplicatedHeader
-    , Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
-    , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+    , Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody, withStreamBody
+    , Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes, expectStream
     , send
     , Response
     , Error(..), errorToString
@@ -55,14 +55,14 @@ It might be interesting to read this [list of HTTP header fields](https://en.wik
 
 The request body is the actual data that you wish to send to a server.
 
-@docs Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody
+@docs Body, withEmptyBody, withStringBody, withJsonBody, withBytesBody, withStreamBody
 
 ## Expected response body
 
 Once a request has been sent, you usually get a response. The `Expect` type represents
 what we expect the response body to be.
 
-@docs Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes
+@docs Expect, expectAnything, expectNothing, expectString, expectJson, expectBytes, expectStream
 
 ## Send
 
@@ -77,6 +77,8 @@ Once your `Response` is configured, you'll want to actually send the request.
 @docs Error, errorToString
 
 ## Streaming
+
+**DEPRECATED** - this api will be removed in the next major version, prefer using the newer [withStreamBody](#withStreamBody) and [expectStream](#expectStream) for streaming requests.
 
 Streaming is the more advanced way to perform a HTTP request. This requires that you follow the Elm
 architecture, as you'll receive messages for every chunk of data sent and received. The benefit of this
@@ -97,6 +99,7 @@ import Task exposing (Task)
 import Platform
 import Gren.Kernel.HttpClient
 import HttpServer exposing (Method(..), methodToString)
+import Stream
 
 
 {-| A value that represents the permission to perform HTTP requests.
@@ -224,6 +227,7 @@ type Body
     = BodyEmpty
     | BodyString String
     | BodyBytes Bytes
+    | BodyStream (Stream.Readable Bytes)
 
 
 bodyTypeAsString : Body -> String
@@ -237,6 +241,9 @@ bodyTypeAsString body =
 
         BodyBytes _ ->
             "BYTES"
+
+        BodyStream _ ->
+            "STREAM"
 
 
 {-| Removes the body from the [RequestConfiguration](#RequestConfiguration).
@@ -285,6 +292,44 @@ withBytesBody mimeType value req =
     }
 
 
+{-| Sets the provided Readable Bytes stream as the request body. You need to provide a mime type to
+desribe what the bytes represent. This mime type will be set as the "Content-Type" header,
+potentially overwriting the header if it has already been set.
+
+You could use a stream body for sending a large file in an http request for example:
+
+    import HttpClient
+    import FileSystem
+    import FileSystem.Path as Path
+
+
+    type Error
+        = FsErr FileSystem.Error
+        | HttpErr HttpClient.Error
+
+
+    upload : HttpClient.Permission -> FileSystem.Permission -> Task Error (HttpClient.Response {})
+    upload httpPerm fsPerm =
+        Path.fromPosixString "/large-file.csv"
+            |> FileSystem.readFileStream fsPerm FileSystem.Beginning
+            |> Task.mapError FsErr
+            |> Task.andThen (\fileStream ->
+                HttpClient.post "/upload"
+                    |> HttpClient.withStreamBody fileStream
+                    |> HttpClient.send httpPerm
+                    |> Task.mapError HttpErr
+            )
+
+-}
+withStreamBody : String -> Stream.Readable Bytes -> RequestConfiguration a -> RequestConfiguration a
+withStreamBody mimeType value req =
+    { req
+        | headers = Dict.set "content-type" [mimeType] req.headers
+        , body = BodyStream value
+    }
+
+
+
 -- EXPECT
 
 
@@ -296,6 +341,7 @@ type Expect a
     | ExpectString
     | ExpectJson (Json.Decode.Decoder a)
     | ExpectBytes
+    | ExpectStream
 
 
 expectTypeAsString : Expect a -> String
@@ -315,6 +361,9 @@ expectTypeAsString expect =
 
         ExpectBytes ->
             "BYTES"
+
+        ExpectStream ->
+            "STREAM"
 
 
 {-| Use this when you you don't really care what the server responds with. Anything is fine.
@@ -382,6 +431,19 @@ expectBytes req =
     , headers = req.headers
     , body = req.body
     , expect = ExpectBytes
+    , timeout = req.timeout
+    }
+
+
+{-| Use this when you want to treat the response as a readable Stream of bytes.
+-}
+expectStream : RequestConfiguration a -> RequestConfiguration (Stream.Readable Bytes)
+expectStream req =
+    { method = req.method
+    , url = req.url
+    , headers = req.headers
+    , body = req.body
+    , expect = ExpectStream
     , timeout = req.timeout
     }
 
