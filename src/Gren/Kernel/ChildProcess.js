@@ -22,10 +22,10 @@ var _ChildProcess_run = function (options) {
     var workingDir = options.__$workingDirectory;
     var env = options.__$environmentVariables;
     var shell = options.__$shell;
+    var cmd = [options.__$program].concat(options.__$arguments).join(" ");
 
-    var subProc = childProcess.execFile(
-      options.__$program,
-      options.__$arguments,
+    var subProc = childProcess.exec(
+      cmd,
       {
         encoding: "buffer",
         timeout: options.__$runDuration,
@@ -130,8 +130,9 @@ function _ChildProcess_getSubProc(options) {
   var workingDir = options.__$workingDirectory;
   var env = options.__$environmentVariables;
   var shell = options.__$shell;
+  var cmd = [options.__$program].concat(options.__$arguments).join(" ");
 
-  var subproc = childProcess.spawn(options.__$program, options.__$arguments, {
+  var subproc = childProcess.spawn(cmd, {
     cwd: _ChildProcess_handleCwd(workingDir),
     env: _ChildProcess_handleEnv(env),
     timeout: options.__$runDuration,
