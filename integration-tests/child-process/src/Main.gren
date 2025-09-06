@@ -1,0 +1,75 @@
+module Main exposing (main)
+
+import Node
+import Init
+import Task
+import HttpClient
+import Stream
+import Stream.Log
+import Json.Encode as Json
+import Json.Decode
+import Dict
+import Bytes exposing (Bytes)
+import Bytes.Encode
+import Bytes.Decode
+import Process
+import ChildProcess
+
+
+type alias Model =
+    { }
+
+
+type Msg 
+    = NoOp
+
+
+main : Node.Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+init : Node.Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await ChildProcess.initialize <| \cpPerm ->
+    Node.startProgram <|
+        when Array.get 2 env.args is
+            Just "Exec" ->
+                { model = {}
+                , command =
+                    { (ChildProcess.defaultRunOptions) | shell = ChildProcess.NoShell }
+                        |> ChildProcess.run cpPerm "node" ["--version"] 
+                        |> Task.andThen (\result -> Stream.Log.bytes env.stdout result.stdout)
+                        |> Task.map (\_ -> Cmd.none)
+                        |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode 1)
+                        |> Task.executeCmd
+                }
+
+            Just "ExecShell" ->
+                { model = {}
+                , command =
+                    { (ChildProcess.defaultRunOptions) | shell = ChildProcess.DefaultShell }
+                        |> ChildProcess.run cpPerm "node" ["--version"] 
+                        |> Task.andThen (\result -> Stream.Log.bytes env.stdout result.stdout)
+                        |> Task.map (\_ -> Cmd.none)
+                        |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode 1)
+                        |> Task.executeCmd
+                }
+
+            _ ->
+                { model = {}
+                , command =
+                    Stream.Log.line env.stdout "Invalid start argument"
+                        |> Task.execute
+                }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update _msg model =
+    { model = model
+    , command = Cmd.none
+    }

@@ -5,6 +5,7 @@ import Init
 import Task
 import HttpClient
 import Stream
+import Stream.Log
 import Json.Encode as Json
 import Json.Decode
 import Dict
@@ -89,9 +90,7 @@ init env =
             _ ->
                 { model = defaultModel
                 , command =
-                    Stream.writeLineAsBytes "Invalid start argument" env.stdout
-                        |> Task.andThen (\_ -> Task.succeed {})
-                        |> Task.onError (\_ -> Task.succeed {})
+                    Stream.Log.line env.stdout "Invalid start argument"
                         |> Task.execute
                 }
 
@@ -102,26 +101,23 @@ update msg model =
         EmptyEventLoop ->
             { model = model
             , command =
-                Stream.writeLineAsBytes "EmptyEventLoop" model.stdout
+                Stream.Log.line model.stdout "EmptyEventLoop"
                     |> Task.map (\_ -> Node.exitWithCode 100)
-                    |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode -1)
                     |> Task.executeCmd
             }
 
         SigInt ->
             { model = model
             , command =
-                Stream.writeLineAsBytes "SIGINT" model.stdout
+                Stream.Log.line model.stdout "SIGINT"
                     |> Task.map (\_ -> Node.exitWithCode 101)
-                    |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode -1)
                     |> Task.executeCmd
             }
 
         SigTerm ->
             { model = model
             , command =
-                Stream.writeLineAsBytes "SIGTERM" model.stdout
+                Stream.Log.line model.stdout "SIGINT"
                     |> Task.map (\_ -> Node.exitWithCode 102)
-                    |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode -1)
                     |> Task.executeCmd
             }

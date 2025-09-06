@@ -16,3 +16,8 @@ echo -e "Running signals tests...\n\n"
 pushd signals
 make test || exit 1
 popd
+
+echo -e "Running child-process tests...\n\n"
+pushd child-process
+make test || exit 1
+popd

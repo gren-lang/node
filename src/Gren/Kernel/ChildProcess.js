@@ -8,7 +8,6 @@ import Maybe exposing (Just, Nothing)
 
 */
 
-var bufferNs = require("node:buffer");
 var process = require("node:process");
 var stream = require("node:stream");
 

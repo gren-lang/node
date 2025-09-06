@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "test": "mocha"
+  },
+  "dependencies": {
+    "clet": "^1.0.1",
+    "mocha": "^10.2.0",
+    "mockttp": "^3.10.0"
+  }
+}
