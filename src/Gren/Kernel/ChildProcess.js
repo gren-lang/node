@@ -22,69 +22,83 @@ var _ChildProcess_run = function (options) {
     var workingDir = options.__$workingDirectory;
     var env = options.__$environmentVariables;
     var shell = options.__$shell;
-    var cmd = [options.__$program].concat(options.__$arguments).join(" ");
 
-    var subProc = childProcess.exec(
-      cmd,
-      {
-        encoding: "buffer",
-        timeout: options.__$runDuration,
-        cwd: _ChildProcess_handleCwd(workingDir),
-        env: _ChildProcess_handleEnv(env),
-        timeout: options.__$runDuration,
-        maxBuffer: options.__$maximumBytesWrittenToStreams,
-        shell: _ChildProcess_handleShell(shell),
-      },
-      function (err, stdout, stderr) {
-        if (err == null) {
+    var cmdOptions = {
+      encoding: "buffer",
+      timeout: options.__$runDuration,
+      cwd: _ChildProcess_handleCwd(workingDir),
+      env: _ChildProcess_handleEnv(env),
+      timeout: options.__$runDuration,
+      maxBuffer: options.__$maximumBytesWrittenToStreams,
+      shell: _ChildProcess_handleShell(shell),
+    };
+
+    function cmdCallback(err, stdout, stderr) {
+      if (err == null) {
+        callback(
+          __Scheduler_succeed({
+            __$stdout: new DataView(
+              stdout.buffer,
+              stdout.byteOffset,
+              stdout.byteLength,
+            ),
+            __$stderr: new DataView(
+              stderr.buffer,
+              stderr.byteOffset,
+              stderr.byteLength,
+            ),
+          }),
+        );
+      } else {
+        if (typeof err.errno === "undefined") {
+          // errno only exists on system errors, the program was run
           callback(
-            __Scheduler_succeed({
-              __$stdout: new DataView(
-                stdout.buffer,
-                stdout.byteOffset,
-                stdout.byteLength,
-              ),
-              __$stderr: new DataView(
-                stderr.buffer,
-                stderr.byteOffset,
-                stderr.byteLength,
-              ),
-            }),
+            __Scheduler_fail(
+              __ChildProcess_ProgramError({
+                __$exitCode: err.code,
+                __$stdout: new DataView(
+                  stdout.buffer,
+                  stdout.byteOffset,
+                  stdout.byteLength,
+                ),
+                __$stderr: new DataView(
+                  stderr.buffer,
+                  stderr.byteOffset,
+                  stderr.byteLength,
+                ),
+              }),
+            ),
           );
         } else {
-          if (typeof err.errno === "undefined") {
-            // errno only exists on system errors, the program was run
-            callback(
-              __Scheduler_fail(
-                __ChildProcess_ProgramError({
-                  __$exitCode: err.code,
-                  __$stdout: new DataView(
-                    stdout.buffer,
-                    stdout.byteOffset,
-                    stdout.byteLength,
-                  ),
-                  __$stderr: new DataView(
-                    stderr.buffer,
-                    stderr.byteOffset,
-                    stderr.byteLength,
-                  ),
-                }),
-              ),
-            );
-          } else {
-            callback(
-              __Scheduler_fail(
-                __ChildProcess_InitError({
-                  __program: err.path,
-                  __arguments: err.spawnargs,
-                  __errorCode: err.code,
-                }),
-              ),
-            );
-          }
+          callback(
+            __Scheduler_fail(
+              __ChildProcess_InitError({
+                __$program: err.path,
+                __$arguments: err.spawnargs,
+                __$errorCode: err.code,
+              }),
+            ),
+          );
         }
-      },
-    );
+      }
+    }
+
+    var subProc;
+
+    if (cmdOptions.shell) {
+      subProc = childProcess.execFile(
+        [options.__$program].concat(options.__$arguments).join(" "),
+        cmdOptions,
+        cmdCallback,
+      );
+    } else {
+      subProc = childProcess.execFile(
+        options.__$program,
+        options.__$arguments,
+        cmdOptions,
+        cmdCallback,
+      );
+    }
 
     return () => {
       subProc.kill();
@@ -94,12 +108,25 @@ var _ChildProcess_run = function (options) {
 
 var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
   return __Scheduler_binding(function (callback) {
-    var subproc = _ChildProcess_getSubProc(options);
+    var subproc;
+    try {
+      subproc = _ChildProcess_getSubProc(options);
+    } catch (e) {
+      callback(
+        __Scheduler_succeed(
+          __Scheduler_rawSpawn(
+            sendExitToApp(typeof code.errno === "undefined" ? -1 : code.errno),
+          ),
+        ),
+      );
+
+      return;
+    }
 
     var proc = __Scheduler_rawSpawn(
       sendInitToApp({
         __$processId: __Scheduler_rawSpawn(
-          __Scheduler_binding(function (callback) {
+          __Scheduler_binding(function () {
             return function () {
               subproc.kill();
             };

@@ -60,6 +60,27 @@ init env =
                         |> Task.executeCmd
                 }
 
+            Just "NotFound" ->
+                { model = {}
+                , command =
+                    { (ChildProcess.defaultRunOptions) | shell = ChildProcess.NoShell }
+                        |> ChildProcess.run cpPerm "foobar3" [] 
+                        |> Task.andThen (\result -> Stream.Log.bytes env.stdout result.stdout)
+                        |> Task.onError
+                            (\err ->
+                                when err is
+                                    ChildProcess.InitError inerr ->
+                                        if inerr.errorCode == "ENOENT" then
+                                            Stream.Log.line env.stdout "Process Not Found"
+                                        else
+                                            Stream.Log.line env.stdout inerr.errorCode
+
+                                    ChildProcess.ProgramError _ ->
+                                        Stream.Log.line env.stdout "Program Error"
+                            )
+                        |> Task.execute
+                }
+
             _ ->
                 { model = {}
                 , command =

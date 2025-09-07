@@ -19,4 +19,11 @@ describe("ChildProcess", () => {
       .stdout(process.version)
       .notStderr(/DeprecationWarning/);
   });
+
+  it("Program not found", async () => {
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["NotFound"], {})
+      .stdout("Process Not Found");
+  });
 });
