@@ -6,7 +6,7 @@ test: app node_modules
 	npm test
 
 node_modules: package.json package-lock.json
-	npm install
+	npm ci
 
 .PHONY: clean
 clean:

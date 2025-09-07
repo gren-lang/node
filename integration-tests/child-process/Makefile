@@ -1,12 +1,12 @@
-app: Makefile gren.json src/Main.gren
+bin/app: Makefile gren.json src/Main.gren
 	gren make --optimize Main --output=bin/app
 
 .PHONY: test
-test: app node_modules
+test: bin/app node_modules
 	npm test
 
 node_modules: package.json package-lock.json
-	npm install
+	npm ci
 
 .PHONY: clean
 clean:

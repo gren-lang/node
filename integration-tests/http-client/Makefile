@@ -1,14 +1,14 @@
-server:
+server-app:
 	gren make TestsServer --output=server-app
 
-tests:
+tests-app:
 	gren make Tests --output=tests-app
 
-stream-tests:
+stream-tests-app:
 	gren make LegacyStreamTests --output=stream-tests-app
 
 .PHONY: test
-test: server tests stream-tests
+test: server-app tests-app stream-tests-app
 	node run.mjs
 
 .PHONY: clean
