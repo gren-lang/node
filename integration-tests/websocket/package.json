@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "test": "mocha --require test/fixtures.mjs"
+  },
+  "dependencies": {
+    "mocha": "^10.2.0",
+    "ws": "^8.0.0"
+  }
+}

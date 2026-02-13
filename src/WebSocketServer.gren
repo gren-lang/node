@@ -1,0 +1,296 @@
+effect module WebSocketServer where { subscription = WebSocketSubscription } exposing
+    -- Init
+    ( Permission
+    , initialize
+
+    -- Server
+    , Server
+    , ServerError(..)
+    , createServer
+
+    -- Connections
+    , Connection
+    , ConnectionId
+    , connectionId
+    , connectionIdToInt
+
+    -- Events
+    , onConnection
+    , onMessage
+    , onClose
+    , onError
+
+    -- Message types
+    , Message(..)
+    , CloseReason
+    )
+
+{-| Create a WebSocket server that can accept connections and exchange messages.
+
+You write your server using The Gren Architecture by subscribing to connection
+and message events and responding with commands via [WebSocketServer.Connection](WebSocketServer.Connection).
+
+## Initialization
+
+@docs Permission, Server, ServerError, initialize, createServer
+
+## Connections
+
+@docs Connection, ConnectionId, connectionId, connectionIdToInt
+
+## Events
+
+@docs onConnection, onMessage, onClose, onError
+
+## Message Types
+
+@docs Message, CloseReason
+
+-}
+
+import Bytes exposing (Bytes)
+import Init
+import Internal.Init
+import Task exposing (Task)
+import Gren.Kernel.WebSocketServer
+
+
+-- INITIALIZATION
+
+
+{-| The permission to start a WebSocket [`Server`](WebSocketServer.Server).
+
+You get this from [`initialize`](WebSocketServer.initialize).
+-}
+type Permission
+    = Permission
+
+
+{-| The WebSocket server.
+-}
+type Server
+    -- Note: Actual implementation in Kernel code
+    = Server
+
+
+{-| Error code and message from node.
+Most likely from a failed attempt to start the server (e.g. `EADDRINUSE`).
+-}
+type ServerError
+    = ServerError { code : String, message : String }
+
+
+{-| Initialize the [`WebSocketServer`](WebSocketServer) module and get permission to create a server.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+{-| Task to create a WebSocket server.
+
+    WebSocketServer.createServer permission { host = "0.0.0.0", port_ = 8080 }
+        |> Task.attempt ServerCreated
+
+-}
+createServer : Permission -> { host : String, port_ : Int } -> Task ServerError Server
+createServer _ options =
+    Gren.Kernel.WebSocketServer.createServer options.host options.port_
+
+
+-- CONNECTIONS
+
+
+{-| An opaque handle representing a single WebSocket client connection.
+
+Use [`connectionId`](WebSocketServer.connectionId) to get a comparable identifier for this connection.
+-}
+type Connection
+    -- Note: Actual implementation in Kernel code. Backed by a JS object with __$id and __$ws fields.
+    = Connection
+
+
+{-| A comparable identifier for a [`Connection`](WebSocketServer.Connection).
+
+Use [`connectionIdToInt`](WebSocketServer.connectionIdToInt) to convert this to an `Int`
+for use as a `Dict` key.
+-}
+type ConnectionId
+    = ConnectionId Int
+
+
+{-| Get the [`ConnectionId`](WebSocketServer.ConnectionId) for a connection.
+-}
+connectionId : Connection -> ConnectionId
+connectionId conn =
+    ConnectionId (Gren.Kernel.WebSocketServer.getConnectionId conn)
+
+
+{-| Convert a [`ConnectionId`](WebSocketServer.ConnectionId) to an `Int`.
+
+Useful for storing connections in a `Dict Int Connection`.
+-}
+connectionIdToInt : ConnectionId -> Int
+connectionIdToInt (ConnectionId id) =
+    id
+
+
+-- MESSAGE TYPES
+
+
+{-| A message received from a WebSocket client.
+-}
+type Message
+    = TextMessage String
+    | BinaryMessage Bytes
+
+
+{-| The reason a WebSocket connection was closed.
+-}
+type alias CloseReason =
+    { code : Int
+    , reason : String
+    }
+
+
+-- SUBSCRIPTIONS
+
+
+{-| Subscribe to new WebSocket client connections on a server.
+
+    WebSocketServer.onConnection server ClientConnected
+
+-}
+onConnection : Server -> (Connection -> msg) -> Sub msg
+onConnection server handler =
+    subscription (OnConnectionSub { server = server, handler = handler })
+
+
+{-| Subscribe to messages received on any connection managed by a server.
+
+    WebSocketServer.onMessage server MessageReceived
+
+-}
+onMessage : Server -> (Connection -> Message -> msg) -> Sub msg
+onMessage server handler =
+    subscription (OnMessageSub { server = server, handler = handler })
+
+
+{-| Subscribe to connection close events on a server.
+
+    WebSocketServer.onClose server ClientDisconnected
+
+-}
+onClose : Server -> (Connection -> CloseReason -> msg) -> Sub msg
+onClose server handler =
+    subscription (OnCloseSub { server = server, handler = handler })
+
+
+{-| Subscribe to connection error events on a server.
+
+    WebSocketServer.onError server ConnectionError
+
+-}
+onError : Server -> (Connection -> String -> msg) -> Sub msg
+onError server handler =
+    subscription (OnErrorSub { server = server, handler = handler })
+
+
+-- EFFECT STUFF
+
+
+type WebSocketSubscription msg
+    = OnConnectionSub { server : Server, handler : Connection -> msg }
+    | OnMessageSub { server : Server, handler : Connection -> Message -> msg }
+    | OnCloseSub { server : Server, handler : Connection -> CloseReason -> msg }
+    | OnErrorSub { server : Server, handler : Connection -> String -> msg }
+
+
+subMap : (a -> b) -> WebSocketSubscription a -> WebSocketSubscription b
+subMap f sub =
+    when sub is
+        OnConnectionSub { server, handler } ->
+            OnConnectionSub { server = server, handler = (\conn -> f (handler conn)) }
+
+        OnMessageSub { server, handler } ->
+            OnMessageSub { server = server, handler = (\conn msg -> f (handler conn msg)) }
+
+        OnCloseSub { server, handler } ->
+            OnCloseSub { server = server, handler = (\conn reason -> f (handler conn reason)) }
+
+        OnErrorSub { server, handler } ->
+            OnErrorSub { server = server, handler = (\conn err -> f (handler conn err)) }
+
+
+type alias State msg =
+    Array (WebSocketSubscription msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed []
+
+
+onEffects
+    : Platform.Router msg SelfMsg
+    -> Array (WebSocketSubscription msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router subs state =
+    let
+        -- Clear all handler references for servers that had subscriptions in the
+        -- previous cycle. clearHandlers is idempotent, so calling it more than
+        -- once on the same server is safe (it just sets null on already-null fields).
+        -- This does not remove the wss-level "connection" EventEmitter listener, 
+        -- it only nulls the mutable handler references that per-ws closures read on 
+        -- each event fire.
+        _clearOldHandlers =
+            state
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnConnectionSub { server } ->
+                                Gren.Kernel.WebSocketServer.clearHandlers server
+
+                            OnMessageSub { server } ->
+                                Gren.Kernel.WebSocketServer.clearHandlers server
+
+                            OnCloseSub { server } ->
+                                Gren.Kernel.WebSocketServer.clearHandlers server
+
+                            OnErrorSub { server } ->
+                                Gren.Kernel.WebSocketServer.clearHandlers server
+                    )
+
+        -- Set the current handler references. Per-websocket event closures read these
+        -- on every event fire, so existing long-lived connections will use the
+        -- updated handlers without needing to be re-wired.
+        _setNewHandlers =
+            subs
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnConnectionSub { server, handler } ->
+                                Gren.Kernel.WebSocketServer.setConnectionHandler server router handler
+
+                            OnMessageSub { server, handler } ->
+                                Gren.Kernel.WebSocketServer.setMessageHandler server router handler
+
+                            OnCloseSub { server, handler } ->
+                                Gren.Kernel.WebSocketServer.setCloseHandler server router handler
+
+                            OnErrorSub { server, handler } ->
+                                Gren.Kernel.WebSocketServer.setErrorHandler server router handler
+                    )
+    in
+    Task.succeed subs
+
+
+type SelfMsg
+    = Never
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task Never (State msg)
+onSelfMsg _ _ state =
+    Task.succeed state
