@@ -1,0 +1,150 @@
+module Main exposing (main)
+
+import Node exposing (Environment, Program)
+import Init
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
+import Stream
+import WebSocketServer
+import WebSocketServer.Connection as WsConn
+import Task exposing (Task)
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias Model =
+    { stdout : Stream.Writable Bytes
+    , stderr : Stream.Writable Bytes
+    , server : Maybe WebSocketServer.Server
+    , connections : Dict Int WebSocketServer.Connection
+    }
+
+
+type Msg
+    = ServerCreated (Result WebSocketServer.ServerError WebSocketServer.Server)
+    | ClientConnected WebSocketServer.Connection
+    | MessageReceived { connection : WebSocketServer.Connection, message : WebSocketServer.Message }
+    | ClientDisconnected { connection : WebSocketServer.Connection, reason : WebSocketServer.CloseReason }
+    | ClientError { connection : WebSocketServer.Connection, error : String }
+    | SendResult (Result WsConn.Error {})
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await WebSocketServer.initialize <| \wsPermission ->
+        Node.startProgram
+            { model =
+                { stdout = env.stdout
+                , stderr = env.stderr
+                , server = Nothing
+                , connections = Dict.empty
+                }
+            , command =
+                WebSocketServer.createServer wsPermission { host = "127.0.0.1", port_ = 8085 }
+                    |> Task.attempt ServerCreated
+            }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ServerCreated result ->
+            when result is
+                Ok server ->
+                    { model = { model | server = Just server }
+                    , command =
+                        Stream.writeLineAsBytes "WebSocket server started on port 8085" model.stdout
+                            |> Task.map (\_ -> {})
+                            |> Task.onError (\_ -> Task.succeed {})
+                            |> Task.execute
+                    }
+
+                Err (WebSocketServer.ServerError { code, message }) ->
+                    { model = model
+                    , command =
+                        Stream.writeLineAsBytes ("Server error: " ++ code ++ " " ++ message) model.stderr
+                            |> Task.map (\_ -> {})
+                            |> Task.onError (\_ -> Task.succeed {})
+                            |> Task.execute
+                    }
+
+        ClientConnected connection ->
+            let
+                connId =
+                    WebSocketServer.connectionIdToInt (WebSocketServer.connectionId connection)
+            in
+            { model =
+                { model
+                    | connections = Dict.set connId connection model.connections
+                }
+            , command =
+                WsConn.send connection "welcome"
+                    |> Task.attempt SendResult
+            }
+
+        MessageReceived { connection, message } ->
+            when message is
+                WebSocketServer.TextMessage text ->
+                    if text == "please-close" then
+                        { model = model
+                        , command =
+                            WsConn.close connection 1000 "server-initiated-close"
+                                |> Task.attempt SendResult
+                        }
+                    else
+                        { model = model
+                        , command =
+                            WsConn.send connection ("echo:" ++ text)
+                                |> Task.attempt SendResult
+                        }
+
+                WebSocketServer.BinaryMessage bytes ->
+                    { model = model
+                    , command =
+                        WsConn.sendBytes connection bytes
+                            |> Task.attempt SendResult
+                    }
+
+        ClientDisconnected { connection } ->
+            let
+                connId =
+                    WebSocketServer.connectionIdToInt (WebSocketServer.connectionId connection)
+            in
+            { model =
+                { model
+                    | connections = Dict.remove connId model.connections
+                }
+            , command = Cmd.none
+            }
+
+        ClientError _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+        SendResult _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    when model.server is
+        Just server ->
+            Sub.batch
+                [ WebSocketServer.onConnection server ClientConnected
+                , WebSocketServer.onMessage server (\conn msg -> MessageReceived { connection = conn, message = msg })
+                , WebSocketServer.onClose server (\conn reason -> ClientDisconnected { connection = conn, reason = reason })
+                , WebSocketServer.onError server (\conn err -> ClientError { connection = conn, error = err })
+                ]
+
+        Nothing ->
+            Sub.none
