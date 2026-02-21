@@ -5,6 +5,7 @@ import Init
 import Bytes exposing (Bytes)
 import Dict exposing (Dict)
 import Stream
+import Stream.Log
 import WebSocketServer
 import WebSocketServer.Connection as WsConn
 import Task exposing (Task)
@@ -60,18 +61,14 @@ update msg model =
                 Ok server ->
                     { model = { model | server = Just server }
                     , command =
-                        Stream.writeLineAsBytes "WebSocket server started on port 8085" model.stdout
-                            |> Task.map (\_ -> {})
-                            |> Task.onError (\_ -> Task.succeed {})
+                        Stream.Log.line model.stdout "WebSocket server started on port 8085"
                             |> Task.execute
                     }
 
                 Err (WebSocketServer.ServerError { code, message }) ->
                     { model = model
                     , command =
-                        Stream.writeLineAsBytes ("Server error: " ++ code ++ " " ++ message) model.stderr
-                            |> Task.map (\_ -> {})
-                            |> Task.onError (\_ -> Task.succeed {})
+                        Stream.Log.line model.stderr ("Server error: " ++ code ++ " " ++ message)
                             |> Task.execute
                     }
 
