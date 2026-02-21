@@ -4,25 +4,26 @@ import * as assert from "node:assert";
 const url = "ws://127.0.0.1:8085";
 
 // Buffer messages from the moment the WebSocket is created.
-// The ws library can emit "message" in the same event-loop tick as "open"
+// The WebSocket library can emit "message" in the same event-loop tick as "open"
 // (when the server response and the first data frame arrive in one TCP read),
 // so any listener added after `await connect()` may miss early messages.
 function connect() {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const client = new WebSocket(url);
     const messageQueue = [];
     const waitingForMessageQueue = [];
 
-    ws.on("message", (data, isBinary) => {
+    client.on("message", (data, isBinary) => {
       const entry = { data, isBinary };
       if (waitingForMessageQueue.length > 0) {
-        waitingForMessageQueue.shift()(entry);
+        const resolve = waitingForMessageQueue.shift();
+        resolve(entry);
       } else {
         messageQueue.push(entry);
       }
     });
 
-    ws._takeMessage = function () {
+    client._takeMessage = function () {
       return new Promise((resolve) => {
         if (messageQueue.length > 0) {
           resolve(messageQueue.shift());
@@ -32,153 +33,153 @@ function connect() {
       });
     };
 
-    ws.on("open", () => resolve(ws));
-    ws.on("error", reject);
+    client.on("open", () => resolve(client));
+    client.on("error", reject);
   });
 }
 
-async function waitForMessage(ws) {
-  const { data } = await ws._takeMessage();
+async function waitForMessage(client) {
+  const { data } = await client._takeMessage();
   return data.toString();
 }
 
-async function waitForRawMessage(ws) {
-  return ws._takeMessage();
+async function waitForRawMessage(client) {
+  return client._takeMessage();
 }
 
-function waitForClose(ws) {
+function waitForClose(client) {
   return new Promise((resolve) => {
-    ws.once("close", (code, reason) => {
+    client.once("close", (code, reason) => {
       resolve({ code, reason: reason.toString() });
     });
   });
 }
 
-function closeConnection(ws) {
+function closeConnection(client) {
   return new Promise((resolve) => {
-    ws.on("close", () => resolve());
-    ws.close();
+    client.on("close", () => resolve());
+    client.close();
   });
 }
 
 describe("WebSocket Server", function () {
   this.timeout(10000);
   it("sends welcome message on connection", async () => {
-    const ws = await connect();
-    const msg = await waitForMessage(ws);
+    const client = await connect();
+    const msg = await waitForMessage(client);
 
     assert.equal(msg, "welcome");
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("echoes text messages", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
-    ws.send("hello");
-    const echo = await waitForMessage(ws);
+    client.send("hello");
+    const echo = await waitForMessage(client);
 
     assert.equal(echo, "echo:hello");
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("echoes multiple messages", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
-    ws.send("first");
-    const echo1 = await waitForMessage(ws);
+    client.send("first");
+    const echo1 = await waitForMessage(client);
     assert.equal(echo1, "echo:first");
 
-    ws.send("second");
-    const echo2 = await waitForMessage(ws);
+    client.send("second");
+    const echo2 = await waitForMessage(client);
     assert.equal(echo2, "echo:second");
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("echoes binary messages", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
     const binaryData = Buffer.from([1, 2, 3, 4, 5]);
-    ws.send(binaryData);
+    client.send(binaryData);
 
-    const echoed = await waitForRawMessage(ws);
+    const echoed = await waitForRawMessage(client);
 
     assert.ok(echoed.isBinary, "Expected binary message");
     assert.deepEqual(Buffer.from(echoed.data), binaryData);
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("handles unicode text messages", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
-    ws.send("snow ❄ flake");
-    const echo = await waitForMessage(ws);
+    client.send("snow ❄ flake");
+    const echo = await waitForMessage(client);
 
     assert.equal(echo, "echo:snow ❄ flake");
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("supports multiple concurrent connections", async () => {
-    const ws1 = await connect();
-    // Consume welcome for ws1 before opening ws2
-    await waitForMessage(ws1);
+    const client1 = await connect();
+    // Consume welcome for client1 before opening client2
+    await waitForMessage(client1);
 
-    const ws2 = await connect();
-    // Consume welcome for ws2
-    await waitForMessage(ws2);
+    const client2 = await connect();
+    // Consume welcome for client2
+    await waitForMessage(client2);
 
-    ws1.send("from-client-1");
-    const echo1 = await waitForMessage(ws1);
+    client1.send("from-client-1");
+    const echo1 = await waitForMessage(client1);
     assert.equal(echo1, "echo:from-client-1");
 
-    ws2.send("from-client-2");
-    const echo2 = await waitForMessage(ws2);
+    client2.send("from-client-2");
+    const echo2 = await waitForMessage(client2);
     assert.equal(echo2, "echo:from-client-2");
 
-    await closeConnection(ws1);
-    await closeConnection(ws2);
+    await closeConnection(client1);
+    await closeConnection(client2);
   });
 
   it("client can close connection", async () => {
     // This test verifies that the server handles client disconnection gracefully
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
-    const closePromise = waitForClose(ws);
-    ws.close(1000, "client closing");
+    const closePromise = waitForClose(client);
+    client.close(1000, "client closing");
 
     const { code } = await closePromise;
     assert.equal(code, 1000);
   });
 
   it("server initiates close when receiving please-close", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
     // Set up close listener before sending the trigger message
-    const closePromise = waitForClose(ws);
+    const closePromise = waitForClose(client);
 
-    ws.send("please-close");
+    client.send("please-close");
 
     const { code, reason } = await closePromise;
     assert.equal(code, 1000);
@@ -186,38 +187,38 @@ describe("WebSocket Server", function () {
   });
 
   it("echoes a large text message", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
     // Create a 100KB message
     const largeMessage = "A".repeat(100 * 1024);
-    ws.send(largeMessage);
-    const echo = await waitForMessage(ws);
+    client.send(largeMessage);
+    const echo = await waitForMessage(client);
 
     assert.equal(echo, "echo:" + largeMessage);
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("echoes rapid messages in order", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
     const messageCount = 50;
 
     // Send all messages rapidly without waiting for echoes
     for (let i = 0; i < messageCount; i++) {
-      ws.send("msg-" + i);
+      client.send("msg-" + i);
     }
 
     // Collect all echoes via the message queue
     const received = [];
     for (let i = 0; i < messageCount; i++) {
-      received.push(await waitForMessage(ws));
+      received.push(await waitForMessage(client));
     }
 
     // Verify all messages were echoed in order
@@ -226,44 +227,44 @@ describe("WebSocket Server", function () {
       assert.equal(received[i], "echo:msg-" + i);
     }
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 
   it("accepts a new connection after a previous one was closed", async () => {
     // First connection
-    const ws1 = await connect();
-    const welcome1 = await waitForMessage(ws1);
+    const client1 = await connect();
+    const welcome1 = await waitForMessage(client1);
     assert.equal(welcome1, "welcome");
 
-    ws1.send("first-connection");
-    const echo1 = await waitForMessage(ws1);
+    client1.send("first-connection");
+    const echo1 = await waitForMessage(client1);
     assert.equal(echo1, "echo:first-connection");
 
-    await closeConnection(ws1);
+    await closeConnection(client1);
 
     // Second connection after close
-    const ws2 = await connect();
-    const welcome2 = await waitForMessage(ws2);
+    const client2 = await connect();
+    const welcome2 = await waitForMessage(client2);
     assert.equal(welcome2, "welcome");
 
-    ws2.send("second-connection");
-    const echo2 = await waitForMessage(ws2);
+    client2.send("second-connection");
+    const echo2 = await waitForMessage(client2);
     assert.equal(echo2, "echo:second-connection");
 
-    await closeConnection(ws2);
+    await closeConnection(client2);
   });
 
   it("echoes an empty string message", async () => {
-    const ws = await connect();
+    const client = await connect();
 
     // Consume the welcome message
-    await waitForMessage(ws);
+    await waitForMessage(client);
 
-    ws.send("");
-    const echo = await waitForMessage(ws);
+    client.send("");
+    const echo = await waitForMessage(client);
 
     assert.equal(echo, "echo:");
 
-    await closeConnection(ws);
+    await closeConnection(client);
   });
 });

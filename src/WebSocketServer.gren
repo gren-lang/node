@@ -107,7 +107,7 @@ createServer _ options =
 Use [`connectionId`](WebSocketServer.connectionId) to get a comparable identifier for this connection.
 -}
 type Connection
-    -- Note: Actual implementation in Kernel code. Backed by a JS object with __$id and __$ws fields.
+    -- Note: Actual implementation in Kernel code. Backed by a JS object with __$id and __$client fields.
     = Connection
 
 
@@ -242,8 +242,8 @@ onEffects router subs state =
         -- Clear all handler references for servers that had subscriptions in the
         -- previous cycle. clearHandlers is idempotent, so calling it more than
         -- once on the same server is safe (it just sets null on already-null fields).
-        -- This does not remove the wss-level "connection" EventEmitter listener, 
-        -- it only nulls the mutable handler references that per-ws closures read on 
+        -- This does not remove the server-level "connection" EventEmitter listener,
+        -- it only nulls the mutable handler references that per-client closures read on
         -- each event fire.
         _clearOldHandlers =
             state
