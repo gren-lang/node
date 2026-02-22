@@ -10,9 +10,7 @@ effect module WebSocketServer where { subscription = WebSocketSubscription } exp
 
     -- Connections
     , Connection
-    , ConnectionId
     , connectionId
-    , connectionIdToInt
 
     -- Events
     , onConnection
@@ -36,7 +34,7 @@ and message events and responding with commands via [WebSocketServer.Connection]
 
 ## Connections
 
-@docs Connection, ConnectionId, connectionId, connectionIdToInt
+@docs Connection, connectionId
 
 ## Events
 
@@ -111,29 +109,13 @@ type Connection
     = Connection
 
 
-{-| A comparable identifier for a [`Connection`](WebSocketServer.Connection).
-
-Use [`connectionIdToInt`](WebSocketServer.connectionIdToInt) to convert this to an `Int`
-for use as a `Dict` key.
--}
-type ConnectionId
-    = ConnectionId Int
-
-
-{-| Get the [`ConnectionId`](WebSocketServer.ConnectionId) for a connection.
--}
-connectionId : Connection -> ConnectionId
-connectionId conn =
-    ConnectionId (Gren.Kernel.WebSocketServer.getConnectionId conn)
-
-
-{-| Convert a [`ConnectionId`](WebSocketServer.ConnectionId) to an `Int`.
+{-| Get a comparable identifier for a connection.
 
 Useful for storing connections in a `Dict Int Connection`.
 -}
-connectionIdToInt : ConnectionId -> Int
-connectionIdToInt (ConnectionId id) =
-    id
+connectionId : Connection -> Int
+connectionId conn =
+    Gren.Kernel.WebSocketServer.getConnectionId conn
 
 
 -- MESSAGE TYPES
