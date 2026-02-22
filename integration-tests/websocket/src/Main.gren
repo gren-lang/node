@@ -75,7 +75,7 @@ update msg model =
         ClientConnected connection ->
             let
                 connId =
-                    WebSocketServer.connectionIdToInt (WebSocketServer.connectionId connection)
+                    WebSocketServer.connectionId connection
             in
             { model =
                 { model
@@ -112,7 +112,7 @@ update msg model =
         ClientDisconnected { connection } ->
             let
                 connId =
-                    WebSocketServer.connectionIdToInt (WebSocketServer.connectionId connection)
+                    WebSocketServer.connectionId connection
             in
             { model =
                 { model
