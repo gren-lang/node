@@ -115,7 +115,7 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
       callback(
         __Scheduler_succeed(
           __Scheduler_rawSpawn(
-            sendExitToApp(typeof code.errno === "undefined" ? -1 : code.errno),
+            sendExitToApp(typeof e.errno === "undefined" ? -1 : e.errno),
           ),
         ),
       );
