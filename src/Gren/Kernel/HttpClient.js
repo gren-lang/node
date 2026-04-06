@@ -1,8 +1,9 @@
 /*
 
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn)
+import Gren.Kernel.Json exposing (wrap)
 import HttpClient exposing (BadUrl, Timeout, BadStatus, BadHeaders, UnexpectedResponseBody, UnknownError, SentChunk, ReceivedChunk, Error, Aborted, Done)
-import Json.Decode as Decode exposing (decodeString, errorToString)
+import Json.Decode as Decode exposing (decodeValue, errorToString)
 import Result exposing (isOk)
 import Maybe exposing (isJust)
 import Dict exposing (empty, set, foldl)
@@ -75,11 +76,11 @@ var _HttpClient_request = function (config) {
             });
 
           case "JSON":
-            return res.text().then((t) => {
+            return res.json().then((t) => {
               const jsonResult = A2(
-                __Decode_decodeString,
+                __Decode_decodeValue,
                 config.__$expect.a,
-                t,
+                _Json_wrap(t),
               );
               if (__Result_isOk(jsonResult)) {
                 return callback(
