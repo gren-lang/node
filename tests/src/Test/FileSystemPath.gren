@@ -85,6 +85,42 @@ tests =
                 \{} ->
                     Path.fromPosixString ""
                         |> Expect.equal (Path.fromPosixString ".")
+            , test "file with multiple dots" <|
+                \{} ->
+                    Path.fromPosixString "archive.tar.gz"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "archive.tar"
+                            , extension = "gz"
+                            }
+            , test "hidden file" <|
+                \{} ->
+                    Path.fromPosixString ".hidden"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = ".hidden"
+                            , extension = ""
+                            }
+            , test "file with multiple extensions" <|
+                \{} ->
+                    Path.fromPosixString "file.backup.old"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "file.backup"
+                            , extension = "old"
+                            }
+            , test "absolute path with trailing slash" <|
+                \{} ->
+                    Path.fromPosixString "/some/path/"
+                        |> Expect.equal
+                            { root = "/"
+                            , directory = [ "some" ]
+                            , filename = "path"
+                            , extension = ""
+                            }
             ]
         , describe "fromWin32String"
             [ test "absolute file" <| 
@@ -95,6 +131,109 @@ tests =
                             , directory = [ "some", "long" ]
                             , filename = "path"
                             , extension = "js"
+                            }
+            , test "absolute file without extension" <|
+                \{} ->
+                    Path.fromWin32String "C:\\some\\long"
+                        |> Expect.equal
+                            { root = "C:\\"
+                            , directory = [ "some" ]
+                            , filename = "long"
+                            , extension = ""
+                            }
+            , test "relative file" <|
+                \{} ->
+                    Path.fromWin32String "some\\other\\file"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "just a file name" <|
+                \{} ->
+                    Path.fromWin32String "file.md"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "file"
+                            , extension = "md"
+                            }
+            , test "paths are normalized" <|
+                \{} ->
+                    Path.fromWin32String "some\\other\\file\\."
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "paths are normalized, leading . is ignored" <|
+                \{} ->
+                    Path.fromWin32String ".\\file"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "paths are normalized, even in extreme cases" <|
+                \{} ->
+                    Path.fromWin32String "some\\other\\\\file\\other\\.."
+                        |> Expect.equal
+                            { root = ""
+                            , directory = [ "some", "other" ]
+                            , filename = "file"
+                            , extension = ""
+                            }
+            , test "empty path" <|
+                \{} ->
+                    Path.fromWin32String ""
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = ""
+                            , extension = ""
+                            }
+            , test "current path" <|
+                \{} ->
+                    Path.fromWin32String ""
+                        |> Expect.equal (Path.fromWin32String ".")
+            , test "UNC path" <|
+                \{} ->
+                    Path.fromWin32String "\\\\server\\share\\file.txt"
+                        |> Expect.equal
+                            { root = "\\\\server\\share\\"
+                            , directory = []
+                            , filename = "file"
+                            , extension = "txt"
+                            }
+            , test "file with multiple dots" <|
+                \{} ->
+                    Path.fromWin32String "archive.tar.gz"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "archive.tar"
+                            , extension = "gz"
+                            }
+            , test "hidden file" <|
+                \{} ->
+                    Path.fromWin32String ".hidden"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = ".hidden"
+                            , extension = ""
+                            }
+            , test "file with multiple extensions" <|
+                \{} ->
+                    Path.fromWin32String "file.backup.old"
+                        |> Expect.equal
+                            { root = ""
+                            , directory = []
+                            , filename = "file.backup"
+                            , extension = "old"
                             }
             ]
         , describe "to*String"
