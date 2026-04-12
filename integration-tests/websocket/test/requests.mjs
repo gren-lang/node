@@ -267,4 +267,23 @@ describe("WebSocket Server", function () {
 
     await closeConnection(client);
   });
+
+  // Keep this test LAST: it tears down the server for the rest of the suite.
+  it("stopServer closes the server and refuses new connections", async () => {
+    const client = await connect();
+    await waitForMessage(client);
+
+    const closePromise = waitForClose(client);
+    client.send("please-stop-server");
+
+    // Existing client gets closed as part of stopServer.
+    await closePromise;
+
+    // New connections should fail with ECONNREFUSED now that the server
+    // is no longer listening.
+    await assert.rejects(
+      connect(),
+      (err) => err && err.code === "ECONNREFUSED",
+    );
+  });
 });
