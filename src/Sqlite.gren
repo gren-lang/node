@@ -11,6 +11,8 @@ import Gren.Kernel.Sqlite
 
 -- TODO: Implement function, aggregate, backup, loadExtension, iterate (with streams)?
 -- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
+--
+-- TODO: Fix error handling in kernel code
 
 
 -- OPEN
@@ -167,5 +169,4 @@ type Error
     = UnknownError { code : String, message : String }
     | NoResultsError
     | MultipleResultsError Int
-    | EncodingError String
     | DecodingError Decode.Error
