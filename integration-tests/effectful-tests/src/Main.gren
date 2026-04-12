@@ -3,12 +3,19 @@ module Main exposing (main)
 import Expect
 import Node
 import Test.Runner.Effectful as Effectful exposing (test, await)
-import Time
+import Sqlite
+
 
 main : Effectful.Program a
 main = 
     Node.defineSimpleProgram <| \env ->
-        Effectful.run env <|
-            await "the current time" Time.now <| \now ->
-                test "is not Jan 1, 1970" <| \_ ->
-                    Expect.notEqual (Time.millisToPosix 0) now
+        Effectful.run env tests
+
+
+tests : Effectful.Test
+tests =
+    Effectful.concat
+        [ await "Opening a in-memory database" (Sqlite.openInMemory Sqlite.defaultOptions) <| \db ->
+            test "Works" <| \_ ->
+                Expect.pass
+        ]

@@ -1,0 +1,171 @@
+module Sqlite exposing (..)
+
+
+import FileSystem
+import FileSystem.Path exposing (Path)
+import Json.Encode as Encode
+import Json.Decode as Decode exposing (Decoder)
+import Task exposing (Task)
+import Gren.Kernel.Sqlite
+
+
+-- TODO: Implement function, aggregate, backup, loadExtension, iterate (with streams)?
+-- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
+
+
+-- OPEN
+
+
+type Database
+    -- NOTE: implemented in kernel code
+    = Database
+
+
+{-| When opening the database, you can define a set of restrictions that apply for all
+queries and statements executed.
+
+    * `readOnly` - If true, the database is opened in read-only mode. All attempted modifications will fail.
+    * `allowExtension` - If true, the loadExtension SQL function and the loadExtension() method are enabled.
+    * `enableForeignKeyConstraints` - If true, foreign key constraints are enabled. This is recommended but can be disabled for compatibility with legacy database schemas. The enforcement of foreign key constraints can be enabled and disabled after opening the database using PRAGMA foreign_keys.
+    * `timeout` - The busy timeout in milliseconds. This is the maximum amount of time that SQLite will wait for a database lock to be released before returning an error. 0 or negative number means no timeout.
+-}
+type alias Options =
+    { readOnly : Bool
+    , enableForeignKeyConstraints : Bool
+    , allowExtension : Bool
+    , timeout : Int
+    }
+
+
+defaultOptions : Options
+defaultOptions =
+    { readOnly = False
+    , enableForeignKeyConstraints = True
+    , allowExtension = False
+    , timeout = 5000
+    }
+
+
+open : FileSystem.Permission -> Options -> Path -> Task Error Database
+open _ opts path =
+    Gren.Kernel.Sqlite.open opts path
+
+
+openInMemory : Options -> Task Never Database
+openInMemory =
+    Gren.Kernel.Sqlite.openInMemory
+
+
+close : Database -> Task Error {}
+close =
+    Gren.Kernel.Sqlite.close
+
+
+-- Query
+
+
+type alias Query value =
+    { query : String
+    , parameters : Encode.Value
+    , rowDecoder : Decoder value
+    }
+
+
+getOne : Database -> Query value -> Task Error value
+getOne db query =
+    getAll db query
+        |> Task.andThen
+            (\results ->
+                when results is
+                    [] ->
+                        Task.fail NoResultsError
+
+                    [ value ] ->
+                        Task.succeed value
+
+                    _ ->
+                        Task.fail (MultipleResultsError (Array.length results))
+            )
+
+
+getMaybeOne : Database -> Query value -> Task Error (Maybe value)
+getMaybeOne db query =
+    getAll db query
+        |> Task.andThen
+            (\results ->
+                when results is
+                    [] ->
+                        Task.succeed Nothing
+
+                    [ value ] ->
+                        Task.succeed (Just value)
+
+                    _ ->
+                        Task.fail (MultipleResultsError (Array.length results))
+            )
+        
+
+getAll : Database -> Query value -> Task Error (Array value)
+getAll =
+    Gren.Kernel.Sqlite.getAll
+
+
+-- EXECUTIONS
+
+
+type alias Statement value =
+    { statement : String
+    , encoder : (value -> Encode.Value)
+    }
+
+
+{-| A summary of how an execution changed the database.
+
+    * `changes` - how many rows were inserted/updated/removed
+    * `lastInsertRowId` - the ID of the last row inserted. Might be negative if no row was inserted
+-}
+type alias ExecutionSummary =
+    { changes : Int
+    , lastInsertRowid : Int
+    }
+
+
+execute : Database -> Statement value -> value -> Task Error {}
+execute db stmt val =
+    executeMany db stmt [val]
+
+
+executeMany : Database -> Statement value -> (Array value) -> Task Error {}
+executeMany =
+    Gren.Kernel.Sqlite.executeMany
+
+
+executeScript : Database -> String -> Task Error {}
+executeScript =
+    Gren.Kernel.Sqlite.executeScript
+
+
+-- TRANSACTIONS
+
+
+inTransaction : Database -> Task Error a -> Task Error a
+inTransaction db f =
+    -- TODO: probably wrong sql syntax for starting transaction
+    executeScript db "START TRANSACTION"
+        |> Task.andThen (\_ -> f)
+        |> Task.andThen
+            (\v ->
+                executeScript db "END TRANSACTION"
+                    |> Task.map (\_ -> v)
+            )
+
+
+-- ERRORS
+
+
+type Error
+    = UnknownError { code : String, message : String }
+    | NoResultsError
+    | MultipleResultsError Int
+    | EncodingError String
+    | DecodingError Decode.Error
