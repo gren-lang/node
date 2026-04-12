@@ -53,7 +53,7 @@ open _ opts path =
     Gren.Kernel.Sqlite.open opts path
 
 
-openInMemory : Options -> Task Never Database
+openInMemory : Options -> Task x Database
 openInMemory =
     Gren.Kernel.Sqlite.openInMemory
 

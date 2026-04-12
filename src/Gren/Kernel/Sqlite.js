@@ -33,8 +33,7 @@ var _Sqlite_openImpl = function (opts, path) {
         ),
       );
     } catch (e) {
-      console.error(e);
-      callback(__Scheduler_fail(e));
+      callback(_Sqlite_constructError(e));
     }
   });
 };
@@ -45,8 +44,7 @@ var _Sqlite_close = function (db) {
       db.close();
       callback(__Scheduler_succeed({}));
     } catch (e) {
-      console.error(e);
-      callback(__Scheduler_fail(e));
+      callback(_Sqlite_constructError(e));
     }
   });
 };
@@ -75,8 +73,7 @@ var _Sqlite_getAll = F2(function (db, query) {
 
       callback(__Scheduler_succeed(results));
     } catch (e) {
-      console.error(e);
-      callback(__Scheduler_fail(e));
+      callback(_Sqlite_constructError(e));
     }
   });
 });
@@ -102,8 +99,7 @@ var _Sqlite_executeMany = F3(function (db, statement, values) {
 
       callback(__Scheduler_succeed(result));
     } catch (e) {
-      console.error(e);
-      callback(__Scheduler_fail(e));
+      callback(_Sqlite_constructError(e));
     }
   });
 });
@@ -111,11 +107,21 @@ var _Sqlite_executeMany = F3(function (db, statement, values) {
 var _Sqlite_executeScript = F2(function (db, script) {
   return __Scheduler_binding(function (callback) {
     try {
-      db.execute(script);
+      db.exec(script);
       callback(__Scheduler_succeed({}));
     } catch (e) {
-      console.error(e);
-      callback(__Scheduler_fail(e));
+      callback(_Sqlite_constructError(e));
     }
   });
 });
+
+var _Sqlite_constructError = function (e) {
+  // log to console while we're figuring things out
+  console.error(e);
+  return __Scheduler_fail(
+    __Sqlite_UnknownError({
+      __$code: e.code,
+      __$message: e.message,
+    }),
+  );
+};

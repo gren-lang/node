@@ -4,6 +4,9 @@ import Expect
 import Node
 import Test.Runner.Effectful as Effectful exposing (test, await)
 import Sqlite
+import Json.Encode as Encode
+import Json.Decode as Decode
+import Task exposing (Task)
 
 
 main : Effectful.Program a
@@ -18,4 +21,42 @@ tests =
         [ await "Opening a in-memory database" (Sqlite.openInMemory Sqlite.defaultOptions) <| \db ->
             test "Works" <| \_ ->
                 Expect.pass
+        , await "Open db" createDefaultTestDb <| \db ->
+            let
+                personEncoder p =
+                    Encode.object
+                        [ { key = "name", value = Encode.string p.name }
+                        , { key = "age", value = Encode.int p.age }
+                        ]
+            in
+            await "Insert data"
+                (Sqlite.execute db
+                    { statement = "INSERT INTO people (name, age) VALUES (:name, :age)"
+                    , encoder = personEncoder
+                    }
+                    { name = "Robin", age = 36 }
+                )
+                <| \_ ->
+                await "Read data"
+                    (Sqlite.getOne db
+                        { query = "SELECT * FROM people WHERE name = :name"
+                        , parameters = Encode.object [ { key = "name", value = Encode.string "Robin" } ]
+                        , rowDecoder = Decode.field "age" Decode.int
+                        }
+                    ) <| \age ->
+                    test "Can insert and read back data from db" <| \_ ->
+                        Expect.equal 36 age
         ]
+
+
+createDefaultTestDb : Task Sqlite.Error Sqlite.Database
+createDefaultTestDb =
+    Sqlite.openInMemory Sqlite.defaultOptions
+        |> Task.andThen
+            (\db ->
+                Sqlite.executeScript db
+                    """
+                    CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, age INTEGER) STRICT;
+                    """
+                    |> Task.map (\_ -> db)
+            )
