@@ -1,0 +1,20 @@
+{
+    "type": "application",
+    "platform": "node",
+    "source-directories": [
+        "src"
+    ],
+    "gren-version": "0.6.2",
+    "dependencies": {
+        "direct": {
+            "blaix/gren-effectful-tests": "6.0.0",
+            "gren-lang/core": "7.4.0",
+            "gren-lang/node": "6.1.1",
+            "gren-lang/test": "5.0.0",
+            "gren-lang/test-runner-node": "7.0.0"
+        },
+        "indirect": {
+            "gren-lang/url": "6.0.0"
+        }
+    }
+}

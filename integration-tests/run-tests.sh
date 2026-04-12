@@ -21,3 +21,8 @@ echo -e "Running child-process tests...\n\n"
 pushd child-process
 make test || exit 1
 popd
+
+echo -e "Running effectful tests...\n\n"
+pushd effectful-tests
+make test || exit 1
+popd
