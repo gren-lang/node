@@ -21,14 +21,27 @@ tests =
         [ await "Creating a database" createTestDb <| \db ->
             test "Works" <| \_ ->
                 Expect.pass
-        , await "Open db" createTestDb <| \db ->
+        , await "Open db for single insert" createTestDb <| \db ->
             await "Insert robin" (insertPerson robin db) <| \_ ->
-            await "Read data" (getPersonByName robin.name db) <| \p ->
+            await "Read robin from db" (getPersonByName robin.name db) <| \p ->
                 concat
                     [ test "Name is robin.name" <| \_ ->
                         Expect.equal robin.name p.name
                     , test "Role is robin.role" <| \_ ->
                         Expect.equal robin.role p.role
+                    ]
+        , await "Open db for multiple inserts" createTestDb <| \db ->
+            await "Insert all people" (insertPeople people db) <| \summary ->
+            await "Read all people from db" (getAllPeople db) <| \fromDB ->
+                concat
+                    [ test "summary.changes is 1 (only reports from last execution)" <| \_ ->
+                        Expect.equal 1 summary.changes
+                    , test "summary.lastInsertedRowid is > 0" <| \_ ->
+                        Expect.greaterThan 0 summary.lastInsertRowid
+                    , test "Users are what we'd expect" <| \_ ->
+                        Expect.equalArrays
+                            (Array.sortBy .name people)
+                            (Array.sortBy .name fromDB)
                     ]
         ]
 
@@ -55,8 +68,8 @@ justin =
     }
 
 
-users : Array Person
-users = [ robin, justin ]
+people : Array Person
+people = [ robin, justin ]
 
 
 createTestDb : Task Sqlite.Error Sqlite.Database
@@ -105,6 +118,26 @@ getPersonByName name db =
     Sqlite.getOne
         { query = "SELECT * FROM people WHERE name = :name"
         , parameters = Encode.object [ { key = "name", value = Encode.string name } ]
+        , rowDecoder = personDecoder
+        }
+        db
+
+
+insertPeople : Array Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+insertPeople persons db =
+    Sqlite.executeMany
+        { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
+        , encoder = personEncoder
+        }
+        persons
+        db
+
+
+getAllPeople : Sqlite.Database -> Task Sqlite.Error (Array Person)
+getAllPeople db =
+    Sqlite.getAll
+        { query = "SELECT * FROM people"
+        , parameters = Encode.object []
         , rowDecoder = personDecoder
         }
         db
