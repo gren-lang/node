@@ -73,9 +73,9 @@ type alias Query value =
     }
 
 
-getOne : Database -> Query value -> Task Error value
-getOne db query =
-    getAll db query
+getOne : Query value -> Database -> Task Error value
+getOne query db =
+    getAll query db
         |> Task.andThen
             (\results ->
                 when results is
@@ -90,9 +90,9 @@ getOne db query =
             )
 
 
-getMaybeOne : Database -> Query value -> Task Error (Maybe value)
-getMaybeOne db query =
-    getAll db query
+getMaybeOne : Query value -> Database -> Task Error (Maybe value)
+getMaybeOne query db =
+    getAll query db
         |> Task.andThen
             (\results ->
                 when results is
@@ -107,7 +107,7 @@ getMaybeOne db query =
             )
         
 
-getAll : Database -> Query value -> Task Error (Array value)
+getAll : Query value -> Database -> Task Error (Array value)
 getAll =
     Gren.Kernel.Sqlite.getAll
 
@@ -132,17 +132,17 @@ type alias ExecutionSummary =
     }
 
 
-execute : Database -> Statement value -> value -> Task Error {}
-execute db stmt val =
-    executeMany db stmt [val]
+execute : Statement value -> value -> Database -> Task Error ExecutionSummary
+execute stmt val db =
+    executeMany stmt [val] db
 
 
-executeMany : Database -> Statement value -> (Array value) -> Task Error {}
+executeMany : Statement value -> (Array value) -> Database -> Task Error ExecutionSummary
 executeMany =
     Gren.Kernel.Sqlite.executeMany
 
 
-executeScript : Database -> String -> Task Error {}
+executeScript : String -> Database -> Task Error Database
 executeScript =
     Gren.Kernel.Sqlite.executeScript
 
@@ -153,11 +153,11 @@ executeScript =
 inTransaction : Database -> Task Error a -> Task Error a
 inTransaction db f =
     -- TODO: probably wrong sql syntax for starting transaction
-    executeScript db "START TRANSACTION"
+    executeScript "START TRANSACTION" db
         |> Task.andThen (\_ -> f)
         |> Task.andThen
             (\v ->
-                executeScript db "END TRANSACTION"
+                executeScript "END TRANSACTION" db
                     |> Task.map (\_ -> v)
             )
 

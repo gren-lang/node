@@ -49,7 +49,7 @@ var _Sqlite_close = function (db) {
   });
 };
 
-var _Sqlite_getAll = F2(function (db, query) {
+var _Sqlite_getAll = F2(function (query, db) {
   return __Scheduler_binding(function (callback) {
     try {
       const results = [];
@@ -78,7 +78,7 @@ var _Sqlite_getAll = F2(function (db, query) {
   });
 });
 
-var _Sqlite_executeMany = F3(function (db, statement, values) {
+var _Sqlite_executeMany = F3(function (statement, values, db) {
   return __Scheduler_binding(function (callback) {
     try {
       const prepped = db.prepare(statement.__$statement);
@@ -104,11 +104,11 @@ var _Sqlite_executeMany = F3(function (db, statement, values) {
   });
 });
 
-var _Sqlite_executeScript = F2(function (db, script) {
+var _Sqlite_executeScript = F2(function (script, db) {
   return __Scheduler_binding(function (callback) {
     try {
       db.exec(script);
-      callback(__Scheduler_succeed({}));
+      callback(__Scheduler_succeed(db));
     } catch (e) {
       callback(_Sqlite_constructError(e));
     }

@@ -2,10 +2,10 @@ module Main exposing (main)
 
 import Expect
 import Node
-import Test.Runner.Effectful as Effectful exposing (test, await)
+import Test.Runner.Effectful as Effectful exposing (test, await, concat)
 import Sqlite
 import Json.Encode as Encode
-import Json.Decode as Decode
+import Json.Decode as Decode exposing (Decoder)
 import Task exposing (Task)
 
 
@@ -18,45 +18,93 @@ main =
 tests : Effectful.Test
 tests =
     Effectful.concat
-        [ await "Opening a in-memory database" (Sqlite.openInMemory Sqlite.defaultOptions) <| \db ->
+        [ await "Creating a database" createTestDb <| \db ->
             test "Works" <| \_ ->
                 Expect.pass
-        , await "Open db" createDefaultTestDb <| \db ->
-            let
-                personEncoder p =
-                    Encode.object
-                        [ { key = "name", value = Encode.string p.name }
-                        , { key = "age", value = Encode.int p.age }
-                        ]
-            in
-            await "Insert data"
-                (Sqlite.execute db
-                    { statement = "INSERT INTO people (name, age) VALUES (:name, :age)"
-                    , encoder = personEncoder
-                    }
-                    { name = "Robin", age = 36 }
-                )
-                <| \_ ->
-                await "Read data"
-                    (Sqlite.getOne db
-                        { query = "SELECT * FROM people WHERE name = :name"
-                        , parameters = Encode.object [ { key = "name", value = Encode.string "Robin" } ]
-                        , rowDecoder = Decode.field "age" Decode.int
-                        }
-                    ) <| \age ->
-                    test "Can insert and read back data from db" <| \_ ->
-                        Expect.equal 36 age
+        , await "Open db" createTestDb <| \db ->
+            await "Insert robin" (insertPerson robin db) <| \_ ->
+            await "Read data" (getPersonByName robin.name db) <| \p ->
+                concat
+                    [ test "Name is robin.name" <| \_ ->
+                        Expect.equal robin.name p.name
+                    , test "Role is robin.role" <| \_ ->
+                        Expect.equal robin.role p.role
+                    ]
         ]
 
 
-createDefaultTestDb : Task Sqlite.Error Sqlite.Database
-createDefaultTestDb =
+-- Helpers
+
+
+type alias Person =
+    { name : String
+    , role : String
+    }
+
+robin : Person
+robin =
+    { name = "Robin"
+    , role = "Creator"
+    }
+
+
+justin : Person
+justin =
+    { name = "Justin"
+    , role = "Core developer"
+    }
+
+
+users : Array Person
+users = [ robin, justin ]
+
+
+createTestDb : Task Sqlite.Error Sqlite.Database
+createTestDb =
     Sqlite.openInMemory Sqlite.defaultOptions
         |> Task.andThen
-            (\db ->
-                Sqlite.executeScript db
-                    """
-                    CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, age INTEGER) STRICT;
-                    """
-                    |> Task.map (\_ -> db)
+            (Sqlite.executeScript
+                """
+                CREATE TABLE people (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    role TEXT NOT NULL
+                ) STRICT;
+                """
             )
+
+
+personEncoder : Person -> Encode.Value
+personEncoder p =
+    Encode.object
+        [ { key = "name", value = Encode.string p.name }
+        , { key = "role", value = Encode.string p.role }
+        ]
+
+
+personDecoder : Decoder Person
+personDecoder =
+    Decode.map2 (\name role -> { name = name, role = role })
+        (Decode.field "name" Decode.string)
+        (Decode.field "role" Decode.string)
+
+
+insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.Database
+insertPerson person db =
+    Sqlite.execute
+        { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
+        , encoder = personEncoder
+        }
+        person
+        db
+        |> Task.map (\_ -> db)
+
+
+getPersonByName : String -> Sqlite.Database -> Task Sqlite.Error Person
+getPersonByName name db =
+    Sqlite.getOne
+        { query = "SELECT * FROM people WHERE name = :name"
+        , parameters = Encode.object [ { key = "name", value = Encode.string name } ]
+        , rowDecoder = personDecoder
+        }
+        db
