@@ -9,7 +9,7 @@ import Task exposing (Task)
 import Gren.Kernel.Sqlite
 
 
--- TODO: Implement function, aggregate, backup, loadExtension, iterate (with streams)?
+-- TODO: Implement function, aggregate, backup
 -- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
 --
 -- TODO: Fix error handling in kernel code
@@ -53,9 +53,9 @@ open _ opts path =
     Gren.Kernel.Sqlite.open opts path
 
 
-openInMemory : Options -> Task x Database
-openInMemory =
-    Gren.Kernel.Sqlite.openInMemory
+openInMemory : FileSystem.Permission -> Options -> Task x Database
+openInMemory _ opts =
+    Gren.Kernel.Sqlite.openInMemory opts
 
 
 close : Database -> Task Error {}
@@ -152,13 +152,20 @@ executeScript =
 
 inTransaction : Database -> Task Error a -> Task Error a
 inTransaction db f =
-    -- TODO: probably wrong sql syntax for starting transaction
-    executeScript "START TRANSACTION" db
-        |> Task.andThen (\_ -> f)
+    executeScript "BEGIN TRANSACTION" db
         |> Task.andThen
-            (\v ->
-                executeScript "END TRANSACTION" db
-                    |> Task.map (\_ -> v)
+            (\_ ->
+                f
+                    |> Task.andThen
+                        (\v ->
+                            executeScript "COMMIT" db
+                                |> Task.map (\_ -> v)
+                        )
+                    |> Task.onError
+                        (\err ->
+                            executeScript "ROLLBACK" db
+                                |> Task.andThen (\_ -> Task.fail err)
+                        )
             )
 
 
@@ -166,7 +173,7 @@ inTransaction db f =
 
 
 type Error
-    = UnknownError { code : String, message : String }
+    = GenericError String
     | NoResultsError
     | MultipleResultsError Int
     | DecodingError Decode.Error

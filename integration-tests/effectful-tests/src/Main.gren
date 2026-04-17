@@ -2,48 +2,97 @@ module Main exposing (main)
 
 import Expect
 import Node
-import Test.Runner.Effectful as Effectful exposing (test, await, concat)
+import Test.Runner.Effectful as Effectful exposing (test, await, awaitError, concat)
 import Sqlite
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
 import Task exposing (Task)
+import FileSystem
+import Init
 
 
 main : Effectful.Program a
 main = 
     Node.defineSimpleProgram <| \env ->
-        Effectful.run env tests
+    Init.await FileSystem.initialize <| \fsPerm ->
+        Effectful.run env (tests fsPerm)
 
 
-tests : Effectful.Test
-tests =
-    Effectful.concat
-        [ await "Creating a database" createTestDb <| \db ->
-            test "Works" <| \_ ->
-                Expect.pass
+tests : FileSystem.Permission -> Effectful.Test
+tests fsPerm =
+    let
+        createTestDb =
+            initializeDb fsPerm
+    in
+    concat
+        [ await "Creating empty database" createTestDb <| \db ->
+            concat
+                [ await "getMaybeOne" (Sqlite.getMaybeOne (personByNameQ robin.name) db) <| \p ->
+                    test "Is Nothing" <| \_ ->
+                        Expect.equal Nothing p
+                , awaitError "getOne" (Sqlite.getOne (personByNameQ robin.name) db) <| \err ->
+                    test "Fails due to missing value" <| \_ ->
+                        Expect.equal Sqlite.NoResultsError err
+                , await "getAll" (Sqlite.getAll allPeopleQ db) <| \res ->
+                    test "Is empty" <| \_ ->
+                        Expect.equalArrays [] res
+                , awaitError "syntax error" (Sqlite.executeScript "SELECT *" db) <| \err ->
+                    test "Is right type" <| \_ ->
+                        when err is
+                            Sqlite.GenericError _ ->
+                                Expect.pass
+
+                            _ ->
+                                Expect.fail "Unexpected error type"
+                , await "Closing the database" (Sqlite.close db) <| \_ ->
+                    test "Works" <| \_ ->
+                        Expect.pass
+                ]
         , await "Open db for single insert" createTestDb <| \db ->
             await "Insert robin" (insertPerson robin db) <| \_ ->
-            await "Read robin from db" (getPersonByName robin.name db) <| \p ->
                 concat
-                    [ test "Name is robin.name" <| \_ ->
-                        Expect.equal robin.name p.name
-                    , test "Role is robin.role" <| \_ ->
-                        Expect.equal robin.role p.role
+                    [ await "Read robin from db" (Sqlite.getOne (personByNameQ robin.name) db) <| \p ->
+                        concat
+                            [ test "Name is robin.name" <| \_ ->
+                                Expect.equal robin.name p.name
+                            , test "Role is robin.role" <| \_ ->
+                                Expect.equal robin.role p.role
+                            ]
+                    , await "Read robin with maybeOne" (Sqlite.getMaybeOne (personByNameQ robin.name) db) <| \p ->
+                        concat
+                            [ test "Name is robin.name" <| \_ ->
+                                Expect.equal (Just robin.name) (Maybe.map .name p)
+                            , test "Role is robin.role" <| \_ ->
+                                Expect.equal (Just robin.role) (Maybe.map .role p)
+                            ]
                     ]
         , await "Open db for multiple inserts" createTestDb <| \db ->
             await "Insert all people" (insertPeople people db) <| \summary ->
-            await "Read all people from db" (getAllPeople db) <| \fromDB ->
                 concat
                     [ test "summary.changes is 1 (only reports from last execution)" <| \_ ->
                         Expect.equal 1 summary.changes
                     , test "summary.lastInsertedRowid is > 0" <| \_ ->
                         Expect.greaterThan 0 summary.lastInsertRowid
-                    , test "Users are what we'd expect" <| \_ ->
-                        Expect.equalArrays
-                            (Array.sortBy .name people)
-                            (Array.sortBy .name fromDB)
-                    ]
+                    , await "Read all people from db" (Sqlite.getAll allPeopleQ db) <| \fromDB ->
+                        test "Users are what we'd expect" <| \_ ->
+                            Expect.equalArrays
+                                (Array.sortBy .name people)
+                                (Array.sortBy .name fromDB)
+                    , awaitError "getOne" (Sqlite.getOne allPeopleQ db) <| \err ->
+                        test "Right error type" <| \_ ->
+                            Expect.equal (Sqlite.MultipleResultsError 2) err
+                    , awaitError "getMaybeOne" (Sqlite.getMaybeOne allPeopleQ db) <| \err ->
+                        test "Right error type" <| \_ ->
+                            Expect.equal (Sqlite.MultipleResultsError 2) err
+                    , await "Define friends" (defineFriends robin.name justin.name db) <| \friendSum ->
+                        test "summary.changes is 1 (only reports from last execution)" <| \_ ->
+                            Expect.equal 1 friendSum.changes
+                     ]
         ]
+        -- TODO: test file-backed db
+        -- TODO: Test transactions
+        -- TODO: Test foreign key error
+        -- TODO: Test decoding error
 
 
 -- Helpers
@@ -53,6 +102,7 @@ type alias Person =
     { name : String
     , role : String
     }
+
 
 robin : Person
 robin =
@@ -72,9 +122,9 @@ people : Array Person
 people = [ robin, justin ]
 
 
-createTestDb : Task Sqlite.Error Sqlite.Database
-createTestDb =
-    Sqlite.openInMemory Sqlite.defaultOptions
+initializeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
+initializeDb fsPerm =
+    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
         |> Task.andThen
             (Sqlite.executeScript
                 """
@@ -82,6 +132,12 @@ createTestDb =
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     role TEXT NOT NULL
+                ) STRICT;
+
+                CREATE TABLE friends (
+                    person_a INTEGER REFERENCES people(id),
+                    person_b INTEGER REFERENCES people(id),
+                    UNIQUE(person_a, person_b)
                 ) STRICT;
                 """
             )
@@ -102,7 +158,7 @@ personDecoder =
         (Decode.field "role" Decode.string)
 
 
-insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.Database
+insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertPerson person db =
     Sqlite.execute
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
@@ -110,17 +166,38 @@ insertPerson person db =
         }
         person
         db
-        |> Task.map (\_ -> db)
 
 
-getPersonByName : String -> Sqlite.Database -> Task Sqlite.Error Person
-getPersonByName name db =
-    Sqlite.getOne
-        { query = "SELECT * FROM people WHERE name = :name"
-        , parameters = Encode.object [ { key = "name", value = Encode.string name } ]
-        , rowDecoder = personDecoder
+defineFriends : String -> String -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+defineFriends nameA nameB db =
+    Sqlite.execute
+        { statement =
+            """
+            INSERT INTO friends (person_a, person_b)
+            SELECT a.id, b.id
+            FROM people a, people b
+            WHERE a.name = :personA AND b.name = :personB
+            """
+        , encoder =
+            \{} ->
+                -- TODO: having values here which are not used by the above template
+                -- causes a specific error. I assume the reverse is also true.
+                -- WRITE TESTS FOR THIS
+                Encode.object
+                    [ { key = "personA", value = Encode.string nameA }
+                    , { key = "personB", value = Encode.string nameB }
+                    ]
         }
+        {}
         db
+
+
+personByNameQ : String -> Sqlite.Query Person
+personByNameQ name =
+    { query = "SELECT * FROM people WHERE name = :name"
+    , parameters = Encode.object [ { key = "name", value = Encode.string name } ]
+    , rowDecoder = personDecoder
+    }
 
 
 insertPeople : Array Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
@@ -133,11 +210,9 @@ insertPeople persons db =
         db
 
 
-getAllPeople : Sqlite.Database -> Task Sqlite.Error (Array Person)
-getAllPeople db =
-    Sqlite.getAll
-        { query = "SELECT * FROM people"
-        , parameters = Encode.object []
-        , rowDecoder = personDecoder
-        }
-        db
+allPeopleQ : Sqlite.Query Person
+allPeopleQ =
+    { query = "SELECT * FROM people"
+    , parameters = Encode.object []
+    , rowDecoder = personDecoder
+    }

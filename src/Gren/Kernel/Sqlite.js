@@ -1,6 +1,6 @@
 /*
 
-import Sqlite exposing (UnknownError, DecodingError)
+import Sqlite exposing (GenericError, DecodingError)
 import Gren.Kernel.FilePath exposing (toString)
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
 import Gren.Kernel.Json exposing (wrap, unwrap)
@@ -119,9 +119,6 @@ var _Sqlite_constructError = function (e) {
   // log to console while we're figuring things out
   console.error(e);
   return __Scheduler_fail(
-    __Sqlite_UnknownError({
-      __$code: e.code,
-      __$message: e.message,
-    }),
+    __Sqlite_GenericError(e.message),
   );
 };
