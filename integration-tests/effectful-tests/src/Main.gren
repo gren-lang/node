@@ -8,6 +8,7 @@ import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
 import Task exposing (Task)
 import FileSystem
+import FileSystem.Path as Path exposing (Path)
 import Init
 
 
@@ -18,6 +19,12 @@ main =
         Effectful.run env (tests fsPerm)
 
 
+diskDbPath : Path
+diskDbPath =
+    Path.fromPosixString ".secret.db"
+
+
+-- TODO: Test transactions
 tests : FileSystem.Permission -> Effectful.Test
 tests fsPerm =
     let
@@ -44,10 +51,30 @@ tests fsPerm =
 
                             _ ->
                                 Expect.fail "Unexpected error type"
+                , awaitError "Define friends" (defineFriendsById 1 2 db) <| \err ->
+                    test "Fails due to foreign key constraints" <| \_ ->
+                        when err is
+                            Sqlite.ConstraintError message ->
+                                if String.contains "foreign key" (String.toLower message) then
+                                    Expect.pass
+
+                                else
+                                    Expect.fail "Correct error type, but message doesn't mention foreign key"
+
+                            _ ->
+                                Expect.fail "Failed for unknown reason"
+                , awaitError "Too many templates" (execBadTemplate 3 db) <| \err ->
+                    test "Is invalid" <| \_ ->
+                        Expect.equal (Sqlite.GenericError "Unknown named parameter 'id1'") err
                 , await "Closing the database" (Sqlite.close db) <| \_ ->
                     test "Works" <| \_ ->
                         Expect.pass
                 ]
+        , await "Open physical database" (initializePhysicalDb fsPerm) <| \db ->
+            await "Can be closed" (Sqlite.close db) <| \_ ->
+                await "Remove from disk" (FileSystem.remove fsPerm { recursive = False } diskDbPath) <| \_ ->
+                    test "Worked" <| \_ ->
+                        Expect.pass
         , await "Open db for single insert" createTestDb <| \db ->
             await "Insert robin" (insertPerson robin db) <| \_ ->
                 concat
@@ -65,6 +92,14 @@ tests fsPerm =
                             , test "Role is robin.role" <| \_ ->
                                 Expect.equal (Just robin.role) (Maybe.map .role p)
                             ]
+                    , awaitError "Bad decoder" (badDecoder db) <| \err ->
+                        test "Fails because decoding fails" <| \_ ->
+                            when err is
+                                Sqlite.DecodingError _ ->
+                                    Expect.pass
+
+                                _ ->
+                                    Expect.fail "Failed for unknown reason"
                     ]
         , await "Open db for multiple inserts" createTestDb <| \db ->
             await "Insert all people" (insertPeople people db) <| \summary ->
@@ -73,11 +108,11 @@ tests fsPerm =
                         Expect.equal 1 summary.changes
                     , test "summary.lastInsertedRowid is > 0" <| \_ ->
                         Expect.greaterThan 0 summary.lastInsertRowid
-                    , await "Read all people from db" (Sqlite.getAll allPeopleQ db) <| \fromDB ->
+                    , await "Read all people from db" (Sqlite.getAll allPeopleQ db) <| \fromDb ->
                         test "Users are what we'd expect" <| \_ ->
                             Expect.equalArrays
                                 (Array.sortBy .name people)
-                                (Array.sortBy .name fromDB)
+                                (Array.sortBy .name fromDb)
                     , awaitError "getOne" (Sqlite.getOne allPeopleQ db) <| \err ->
                         test "Right error type" <| \_ ->
                             Expect.equal (Sqlite.MultipleResultsError 2) err
@@ -89,10 +124,6 @@ tests fsPerm =
                             Expect.equal 1 friendSum.changes
                      ]
         ]
-        -- TODO: test file-backed db
-        -- TODO: Test transactions
-        -- TODO: Test foreign key error
-        -- TODO: Test decoding error
 
 
 -- Helpers
@@ -125,22 +156,32 @@ people = [ robin, justin ]
 initializeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
 initializeDb fsPerm =
     Sqlite.openInMemory fsPerm Sqlite.defaultOptions
-        |> Task.andThen
-            (Sqlite.executeScript
-                """
-                CREATE TABLE people (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    role TEXT NOT NULL
-                ) STRICT;
+        |> Task.andThen execDbSchema
 
-                CREATE TABLE friends (
-                    person_a INTEGER REFERENCES people(id),
-                    person_b INTEGER REFERENCES people(id),
-                    UNIQUE(person_a, person_b)
-                ) STRICT;
-                """
-            )
+
+initializePhysicalDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
+initializePhysicalDb fsPerm =
+    Sqlite.open fsPerm Sqlite.defaultOptions diskDbPath
+        |> Task.andThen execDbSchema
+
+
+execDbSchema : Sqlite.Database -> Task Sqlite.Error Sqlite.Database
+execDbSchema db =
+    Sqlite.executeScript
+        """
+        CREATE TABLE people (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TABLE friends (
+            person_a INTEGER REFERENCES people(id),
+            person_b INTEGER REFERENCES people(id),
+            UNIQUE(person_a, person_b)
+        ) STRICT;
+        """
+        db
 
 
 personEncoder : Person -> Encode.Value
@@ -180,12 +221,27 @@ defineFriends nameA nameB db =
             """
         , encoder =
             \{} ->
-                -- TODO: having values here which are not used by the above template
-                -- causes a specific error. I assume the reverse is also true.
-                -- WRITE TESTS FOR THIS
                 Encode.object
                     [ { key = "personA", value = Encode.string nameA }
                     , { key = "personB", value = Encode.string nameB }
+                    ]
+        }
+        {}
+        db
+
+
+defineFriendsById : Int -> Int -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+defineFriendsById idA idB db =
+    Sqlite.execute
+        { statement =
+            """
+            INSERT INTO friends (person_a, person_b) VALUES (:idA, :idB)
+            """
+        , encoder =
+            \{} ->
+                Encode.object
+                    [ { key = "idA", value = Encode.int idA }
+                    , { key = "idB", value = Encode.int idB }
                     ]
         }
         {}
@@ -216,3 +272,35 @@ allPeopleQ =
     , parameters = Encode.object []
     , rowDecoder = personDecoder
     }
+
+
+execBadTemplate : Int -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+execBadTemplate num db =
+    Sqlite.execute
+        { statement =
+            """
+            SELECT * FROM people WHERE id = :id0
+            """
+        , encoder =
+            \{} ->
+                Encode.object <|
+                    Array.initialize num 0
+                        (\idx ->
+                            { key = "id" ++ String.fromInt idx, value = Encode.int idx }
+                        )
+        }
+        {}
+        db
+
+
+badDecoder : Sqlite.Database -> Task Sqlite.Error { name : Int, role : String }
+badDecoder db =
+    Sqlite.getOne
+        { query = "SELECT * FROM people WHERE name = :name"
+        , parameters = Encode.object [ { key = "name", value = Encode.string "Robin" } ]
+        , rowDecoder = 
+            Decode.map2 (\name role -> { name = name, role = role })
+                (Decode.field "name" Decode.int)
+                (Decode.field "role" Decode.string)
+        }
+        db

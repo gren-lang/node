@@ -9,13 +9,8 @@ import Task exposing (Task)
 import Gren.Kernel.Sqlite
 
 
--- TODO: Implement function, aggregate, backup
+-- TODO: Implement function, aggregate, backup, db encoder, db decoder
 -- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
---
--- TODO: Fix error handling in kernel code
-
-
--- OPEN
 
 
 type Database
@@ -172,8 +167,10 @@ inTransaction db f =
 -- ERRORS
 
 
+-- TODO: How detailed should we be with errors?
 type Error
     = GenericError String
     | NoResultsError
     | MultipleResultsError Int
+    | ConstraintError String
     | DecodingError Decode.Error
