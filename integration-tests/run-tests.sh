@@ -2,27 +2,17 @@
 
 set -e
 
-echo -e "Running http-server tests...\n\n"
-pushd http-server
-make test || exit 1
-popd
+test_dirs=(
+  "http-server"
+  "http-client"
+  "signals"
+  "child-process"
+  "sqlite"
+)
 
-echo -e "Running http-client tests...\n\n"
-pushd http-client
-make test || exit 1
-popd
-
-echo -e "Running signals tests...\n\n"
-pushd signals
-make test || exit 1
-popd
-
-echo -e "Running child-process tests...\n\n"
-pushd child-process
-make test || exit 1
-popd
-
-echo -e "Running effectful tests...\n\n"
-pushd effectful-tests
-make test || exit 1
-popd
+for dir in "${test_dirs[@]}"; do
+  echo -e "Running $dir tests...\n\n"
+  pushd "$dir"
+  make test || exit 1
+  popd
+done
