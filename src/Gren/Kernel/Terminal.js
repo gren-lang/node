@@ -9,7 +9,7 @@ var process = require("node:process");
 var _Terminal_init = __Scheduler_binding(function (callback) {
   callback(
     __Scheduler_succeed({
-      __$isTTY: process.stdout.isTTY,
+      __$isTTY: process.stdout.isTTY && process.stdin.isTTY,
       __$colorDepth: process.stdout.getColorDepth
         ? process.stdout.getColorDepth()
         : 0,
