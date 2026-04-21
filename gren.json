@@ -2,7 +2,7 @@
     "type": "package",
     "platform": "node",
     "name": "gren-lang/node",
-    "summary": "Run Gren on NodeJS",
+    "summary": "Run Gren on Node.js",
     "license": "BSD-3-Clause",
     "version": "6.1.2",
     "exposed-modules": [

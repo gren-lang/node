@@ -1,6 +1,6 @@
-# Gren on NodeJS
+# Gren on Node.js
 
-This package allows you to create Gren programs that run on the NodeJS runtime.
+This package allows you to create Gren programs that run on the Node.js runtime.
 
 **I highly recommend working through the [guide](https://gren-lang.org/book/) to learn how to use Gren.**
 
