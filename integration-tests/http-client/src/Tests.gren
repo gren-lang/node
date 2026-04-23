@@ -51,95 +51,86 @@ suite permission =
     in
     concat
         [ describe "Request methods"
-            [ await
+            [ await "GET request"
                 (HttpClient.get "/hello" |> send)
-                "GET request"
                 (\res ->
                     test "succeeds with status"
                         (\_ -> Expect.equal 200 res.statusCode)
                 )
-            , await
+            , await "POST request"
                 (HttpClient.post "/hello" |> send)
-                "POST request"
                 (\res ->
                     test "succeeds with status"
                         (\_ -> Expect.equal 200 res.statusCode)
                 )
-            , await
+            , await "Other request method"
                 (HttpClient.request HttpServer.DELETE "/hello" |> send)
-                "Other request method"
                 (\res ->
                     test "succeeeds with status"
                         (\_ -> Expect.equal 200 res.statusCode)
                 )
             ]
         , describe "Request / response body"
-            [ await
+            [ await "with string body"
                 (HttpClient.post "/echo"
                     |> HttpClient.withStringBody "text/plain" "ping!"
                     |> HttpClient.expectString
                     |> send
                 )
-                "with string body"
                 (\res ->
                     test "gets response as string"
                         (\_ -> Expect.equal "ping!" res.data)
                 )
-            , await
+            , await "with JSON body"
                 (HttpClient.post "/echo"
                     |> HttpClient.withJsonBody (JE.object [ { key = "message", value = JE.string "ping!" } ])
                     |> HttpClient.expectJson (DE.field "message" DE.string)
                     |> send
                 )
-                "with JSON body"
                 (\res ->
                     test "gets response as JSON"
                         (\_ -> Expect.equal "ping!" res.data)
                 )
-            , await
+            , await "with bytes body"
                 (HttpClient.post "/echo"
                     |> HttpClient.withBytesBody "application/octet-stream" meaningOfLifeInBytes
                     |> HttpClient.expectBytes
                     |> send
                 )
-                "with bytes body"
                 (\res ->
                     test "gets response as bytes"
                         (\_ -> Expect.equal meaningOfLifeInBytes res.data)
                 )
-            , await
+            , await "with empty body"
                 (HttpClient.post "/echo"
                     |> HttpClient.expectNothing
                     |> send
                 )
-                "with empty body"
                 (\res ->
                     test "succeeds if response body is empty"
                         (\_ -> Expect.equal {} res.data)
                 )
-            , awaitError
+            , awaitError "with non-empty body"
                 (HttpClient.post "/echo"
                     |> HttpClient.expectNothing
                     |> HttpClient.withStringBody "text/plain" "message"
                     |> send
                 )
-                "with non-empty body"
                 (\err ->
                     test "fails if respoonse body not empty"
                         (\_ -> Expect.equal (HttpClient.UnexpectedResponseBody "Received response body where I expected none.") err)
                 )
-            , await
+            , await "with expect anything"
                 (HttpClient.post "/echo"
                     |> HttpClient.withStringBody "text/plain" "message"
                     |> HttpClient.expectAnything
                     |> send
                 )
-                "with expect anything"
                 (\res ->
                     test "succeeds with empty record"
                         (\_ -> Expect.equal {} res.data)
                 )
-            , await
+            , await "with streaming request body"
                 (Stream.fromArray [ meaningOfLifeInBytes ]
                     |> Task.mapError StreamErr
                     |> Task.andThen
@@ -151,11 +142,10 @@ suite permission =
                                 |> Task.mapError HttpErr
                         )
                 )
-                "with streaming request body"
                 (\res ->
                     test "streams request body" (\_ -> Expect.equal meaningOfLifeInBytes res.data)
                 )
-            , await
+            , await "with writable stream"
                 (Stream.identityTransformation
                     |> Task.andThen
                         (\transform ->
@@ -174,11 +164,10 @@ suite permission =
                                 |> Task.mapError HttpErr
                         )
                 )
-                "with writable stream"
                 (\res ->
                     test "streams request body" (\_ -> Expect.equal "Hello!" res.data)
                 )
-            , await
+            , await "with piped streaming requests"
                 (let
                     request1 : Task Error (HttpClient.Response (Stream.Readable Bytes))
                     request1 =
@@ -199,11 +188,10 @@ suite permission =
                  request1
                     |> Task.andThen (\res -> request2 res.data)
                 )
-                "with piped streaming requests"
                 (\res ->
                     test "receives bytes through piped request chain" (\_ -> Expect.equal meaningOfLifeInBytes res.data)
                 )
-            , await
+            , await "streaming response"
                 (HttpClient.post "/echo"
                     |> HttpClient.withBytesBody "application/octet-stream" meaningOfLifeInBytes
                     |> HttpClient.expectStream
@@ -216,29 +204,26 @@ suite permission =
                             >> Task.mapError StreamErr
                         )
                 )
-                "streaming response"
                 (\res ->
                     test "streams bytes response" (\_ -> Expect.equal meaningOfLifeInBytes res)
                 )
             ]
-        , awaitError
+        , awaitError "Request with timeout"
             (HttpClient.get "/slow"
                 |> HttpClient.withTimeout 50
                 |> send
             )
-            "Request with timeout"
             (\err ->
                 test "errors with timeout"
                     (\_ -> Expect.equal HttpClient.Timeout err)
             )
-        , await
+        , await "with custom headers"
             (HttpClient.get "/headers"
                 |> HttpClient.withHeader "a" "b"
                 |> HttpClient.withHeader "c" "d"
                 |> HttpClient.expectJson (DE.dict DE.string)
                 |> send
             )
-            "with custom headers"
             (\res ->
                 test "sends headers"
                     (\_ ->
