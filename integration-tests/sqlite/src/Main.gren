@@ -10,6 +10,8 @@ import Task exposing (Task)
 import FileSystem
 import FileSystem.Path as Path exposing (Path)
 import Init
+import Json.Decode
+import Json.Encode
 
 
 main : Effectful.Program a
@@ -314,6 +316,7 @@ type alias AllFieldTypes =
     , floatField : Float
     , boolTrue : Bool
     , boolFalse : Bool
+    , jsonField : Array String
     , maybeJustString : Maybe String
     , maybeNothingString : Maybe String
     }
@@ -326,6 +329,7 @@ allFieldTypes =
     , floatField = 3.14
     , boolTrue = True
     , boolFalse = False
+    , jsonField = [ "hello", "world" ]
     , maybeJustString = Just "yo"
     , maybeNothingString = Nothing
     }
@@ -344,6 +348,7 @@ initializeFieldTypeDb fsPerm =
                         float_field REAL NOT NULL,
                         bool_true INTEGER NOT NULL,
                         bool_false INTEGER NOT NULL,
+                        json_field TEXT NOT NULL,
                         maybe_just_string TEXT,
                         maybe_nothing_string TEXT
                     )
@@ -359,6 +364,7 @@ allFieldTypesEncoder row =
     , Encode.float "float_field" row.floatField
     , Encode.bool "bool_true" row.boolTrue
     , Encode.bool "bool_false" row.boolFalse
+    , Encode.json "json_field" (Json.Encode.array Json.Encode.string row.jsonField)
     , Encode.maybe Encode.string "maybe_just_string" row.maybeJustString
     , Encode.maybe Encode.string "maybe_nothing_string" row.maybeNothingString
     ]
@@ -371,6 +377,7 @@ allFieldTypesDecoder =
     Decode.float "float_field" <| \floatField ->
     Decode.bool "bool_true" <| \boolTrue ->
     Decode.bool "bool_false" <| \boolFalse ->
+    Decode.json (Json.Decode.array Json.Decode.string) "json_field" <| \jsonField ->
     Decode.maybe Decode.string "maybe_just_string" <| \maybeJustString ->
     Decode.maybe Decode.string "maybe_nothing_string" <| \maybeNothingString ->
         Decode.succeed
@@ -379,6 +386,7 @@ allFieldTypesDecoder =
             , floatField = floatField
             , boolTrue = boolTrue
             , boolFalse = boolFalse
+            , jsonField = jsonField
             , maybeJustString = maybeJustString
             , maybeNothingString = maybeNothingString
             }
@@ -395,6 +403,7 @@ insertAllFieldTypes row db =
                 float_field,
                 bool_true,
                 bool_false,
+                json_field,
                 maybe_just_string,
                 maybe_nothing_string
             ) VALUES (
@@ -403,6 +412,7 @@ insertAllFieldTypes row db =
                 :float_field,
                 :bool_true,
                 :bool_false,
+                :json_field,
                 :maybe_just_string,
                 :maybe_nothing_string
             )
@@ -414,7 +424,19 @@ insertAllFieldTypes row db =
 
 allFieldTypesQ : Sqlite.Query AllFieldTypes
 allFieldTypesQ =
-    { query = "SELECT * FROM all_field_types"
+    { query =
+        """
+        SELECT
+            string_field,
+            int_field,
+            float_field,
+            bool_true,
+            bool_false,
+            json(json_field) as json_field,
+            maybe_just_string,
+            maybe_nothing_string
+        FROM all_field_types
+        """
     , parameters = []
     , rowDecoder = allFieldTypesDecoder
     }

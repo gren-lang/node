@@ -6,6 +6,7 @@ module Sqlite.Decode exposing
     , float
     , int
     , string
+    , json
     , maybe
 
     -- Composing
@@ -36,7 +37,7 @@ For example:
 
 ## Field Decoders
 
-@docs string, int, float, bool, maybe
+@docs string, int, float, bool, json, maybe
 
 ## Composing Decoders
 
@@ -121,6 +122,39 @@ bool fieldName cont =
                 ]
     in
     fieldHelper fieldName boolDecoder cont
+
+
+{-| Decode a JSON field.
+
+The first parameter is a `Json.Decode.Decoder` for the value stored in the column.
+Use `json()` in your SELECT to ensure you get text regardless of how the JSON was stored:
+
+    Sqlite.getOne
+        { query = "SELECT json(tags) as tags FROM items WHERE id = 1"
+        , parameters = []
+        , rowDecoder =
+            Sqlite.Decode.json (Json.Decode.array Json.Decode.string) "tags" <| \tags ->
+                Sqlite.Decode.succeed { tags = tags }
+        }
+
+See <https://www.sqlite.org/json1.html>
+-}
+json : Json.Decode.Decoder a -> String -> (a -> Decoder b) -> Decoder b
+json jsonDecoder fieldName cont =
+    let
+        decoder =
+            Json.Decode.string
+                |> Json.Decode.andThen
+                    (\str ->
+                        when Json.Decode.decodeString jsonDecoder str is
+                            Ok val ->
+                                Json.Decode.succeed val
+
+                            Err err ->
+                                Json.Decode.fail (Json.Decode.errorToString err)
+                    )
+    in
+    fieldHelper fieldName decoder cont
 
 
 {-| Decode a nullable field in the database.
