@@ -1,8 +1,9 @@
 module Main exposing (main)
 
 import Expect
+import Fuzz
 import Node
-import Test.Runner.Effectful as Effectful exposing (test, await, awaitError, concat)
+import Test.Runner.Effectful as Effectful exposing (test, fuzz, await, awaitError, concat)
 import Sqlite
 import Sqlite.Encode as Encode
 import Sqlite.Decode as Decode exposing (Decoder)
@@ -139,6 +140,24 @@ tests fsPerm =
                 await "Read row with all field types" (Sqlite.getOne allFieldTypesQ db) <| \row ->
                     test "All field types get encoded and decoded correctly" <| \_ ->
                         Expect.equal allFieldTypes row
+        , await "Open db for time precision tests" (initializeTimeDb fsPerm) <| \db ->
+            await "Get base time" Time.now <| \now ->
+                let
+                    millis =
+                        Time.posixToMillis now
+
+                    testTimes =
+                        [ now
+                        , Time.millisToPosix (millis + 1)
+                        , Time.millisToPosix (millis + 999)
+                        , Time.millisToPosix (millis - 9999)
+                        , Time.millisToPosix (millis * 2)
+                        ]
+                in
+                await "Insert test times" (insertTimes testTimes db) <| \_ ->
+                    await "Read test times back" (Sqlite.getAll allTimesQ db) <| \fromDb ->
+                        test "Time values survive float round-trip through db" <| \_ ->
+                            Expect.equalArrays testTimes fromDb
         ]
 
 
@@ -308,6 +327,19 @@ failDecoder db =
         db
 
 
+badDecoder : Sqlite.Database -> Task Sqlite.Error { name : Int, role : String }
+badDecoder db =
+    Sqlite.getOne
+        { query = "SELECT * FROM people WHERE name = :name"
+        , parameters = [ Encode.string "name" "Robin" ]
+        , rowDecoder = 
+            Decode.int "name" <| \name ->
+            Decode.string "role" <| \role ->
+                Decode.succeed { name = name, role = role }
+        }
+        db
+
+
 -- Encoder/Decoder test helpers
 
 
@@ -452,14 +484,39 @@ allFieldTypesQ =
     }
 
 
-badDecoder : Sqlite.Database -> Task Sqlite.Error { name : Int, role : String }
-badDecoder db =
-    Sqlite.getOne
-        { query = "SELECT * FROM people WHERE name = :name"
-        , parameters = [ Encode.string "name" "Robin" ]
-        , rowDecoder = 
-            Decode.int "name" <| \name ->
-            Decode.string "role" <| \role ->
-                Decode.succeed { name = name, role = role }
+-- Time precision test helpers
+
+
+initializeTimeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
+initializeTimeDb fsPerm =
+    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+        |> Task.andThen
+            (\db ->
+                Sqlite.executeScript
+                    """
+                    CREATE TABLE times (
+                        t REAL NOT NULL
+                    )
+                    """
+                    db
+            )
+
+
+insertTimes : Array Time.Posix -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+insertTimes times db =
+    Sqlite.executeMany
+        { statement = "INSERT INTO times (t) VALUES (:t)"
+        , parameters = \t -> [ Encode.time "t" t ]
         }
+        times
         db
+
+
+allTimesQ : Sqlite.Query Time.Posix
+allTimesQ =
+    { query = "SELECT t FROM times ORDER BY rowid"
+    , parameters = []
+    , rowDecoder =
+        Decode.time "t" <| \t ->
+            Decode.succeed t
+    }

@@ -51,6 +51,7 @@ For example:
 -}
 
 import Json.Decode
+import Math
 import Time
 
 
@@ -161,15 +162,18 @@ json jsonDecoder fieldName cont =
 
 {-| Decode a Time.Posix value.
 
-Expects an int value in the db results representing millis since epoch
-(this is what [Sqlite.Encode.time](Sqlite.Encode#time) stores).
-If you are using SQLite's date and time functions, you will need to convert
-accordingly. See <https://sqlite.org/lang_datefunc.html>
+Expects the db field to hold number of seconds (not milliseconds) since epoch,
+which is how [`Sqlite.Encode.time`](Sqlite.Encode.time) stores it, and aligns
+with SQLite's `unixepoch()` function.
+See <https://sqlite.org/lang_datefunc.html>
 -}
 time : String -> (Time.Posix -> Decoder a) -> Decoder a
 time fieldName cont =
     fieldHelper fieldName
-        (Json.Decode.map Time.millisToPosix Json.Decode.int)
+        (Json.Decode.map
+            (\seconds -> Time.millisToPosix (Math.round (seconds * 1000.0)))
+            Json.Decode.float
+        )
         cont
 
 

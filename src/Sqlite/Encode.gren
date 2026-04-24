@@ -117,15 +117,15 @@ json field val =
 
 {-| Encode a Time.Posix value.
 
-The value will be converted to millis and stored as Int. If you want to use
-SQLite's date and time functions, you will need to convert accordingly.
+The value will be stored as a float representing seconds since unix epoch,
+which aligns with SQLite's `unixepoch()` function.
 See <https://sqlite.org/lang_datefunc.html>
 -}
 time : String -> Time.Posix -> Value
 time field t =
     Value
         { key = field
-        , value = Json.Encode.int (Time.posixToMillis t)
+        , value = Json.Encode.float (toFloat (Time.posixToMillis t) / 1000.0)
         }
 
 
