@@ -4,8 +4,8 @@ import Expect
 import Node
 import Test.Runner.Effectful as Effectful exposing (test, await, awaitError, concat)
 import Sqlite
-import Json.Encode as Encode
-import Json.Decode as Decode exposing (Decoder)
+import Sqlite.Encode as Encode
+import Sqlite.Decode as Decode exposing (Decoder)
 import Task exposing (Task)
 import FileSystem
 import FileSystem.Path as Path exposing (Path)
@@ -100,6 +100,14 @@ tests fsPerm =
 
                                 _ ->
                                     Expect.fail "Failed for unknown reason"
+                    , awaitError "Decode.fail" (failDecoder db) <| \err ->
+                        test "Forces a decode failure" <| \_ ->
+                            when err is
+                                Sqlite.DecodingError _ ->
+                                    Expect.pass
+
+                                _ ->
+                                    Expect.fail "Expected DecodingError"
                     ]
         , await "Open db for multiple inserts" createTestDb <| \db ->
             await "Insert all people" (insertPeople people db) <| \summary ->
@@ -123,6 +131,11 @@ tests fsPerm =
                         test "summary.changes is 1 (only reports from last execution)" <| \_ ->
                             Expect.equal 1 friendSum.changes
                      ]
+        , await "Open db for field type tests" (initializeFieldTypeDb fsPerm) <| \db ->
+            await "Insert row with all field types" (insertAllFieldTypes allFieldTypes db) <| \_ ->
+                await "Read row with all field types" (Sqlite.getOne allFieldTypesQ db) <| \row ->
+                    test "All field types get encoded and decoded correctly" <| \_ ->
+                        Expect.equal allFieldTypes row
         ]
 
 
@@ -184,28 +197,26 @@ execDbSchema db =
         db
 
 
-personEncoder : Person -> Encode.Value
+personEncoder : Person -> Array Encode.Value
 personEncoder p =
-    Encode.object
-        [ { key = "name", value = Encode.string p.name }
-        , { key = "role", value = Encode.string p.role }
-        ]
+    [ Encode.string "name" p.name
+    , Encode.string "role" p.role
+    ]
 
 
 personDecoder : Decoder Person
 personDecoder =
-    Decode.map2 (\name role -> { name = name, role = role })
-        (Decode.field "name" Decode.string)
-        (Decode.field "role" Decode.string)
+    Decode.string "name" <| \name ->
+    Decode.string "role" <| \role ->
+        Decode.succeed { name = name, role = role }
 
 
 insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertPerson person db =
     Sqlite.execute
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
-        , encoder = personEncoder
+        , encoder = personEncoder person
         }
-        person
         db
 
 
@@ -220,13 +231,10 @@ defineFriends nameA nameB db =
             WHERE a.name = :personA AND b.name = :personB
             """
         , encoder =
-            \{} ->
-                Encode.object
-                    [ { key = "personA", value = Encode.string nameA }
-                    , { key = "personB", value = Encode.string nameB }
-                    ]
+            [ Encode.string "personA" nameA
+            , Encode.string "personB" nameB
+            ]
         }
-        {}
         db
 
 
@@ -238,20 +246,17 @@ defineFriendsById idA idB db =
             INSERT INTO friends (person_a, person_b) VALUES (:idA, :idB)
             """
         , encoder =
-            \{} ->
-                Encode.object
-                    [ { key = "idA", value = Encode.int idA }
-                    , { key = "idB", value = Encode.int idB }
-                    ]
+            [ Encode.int "idA" idA
+            , Encode.int "idB" idB
+            ]
         }
-        {}
         db
 
 
 personByNameQ : String -> Sqlite.Query Person
 personByNameQ name =
     { query = "SELECT * FROM people WHERE name = :name"
-    , parameters = Encode.object [ { key = "name", value = Encode.string name } ]
+    , parameters = [ Encode.string "name" name ]
     , rowDecoder = personDecoder
     }
 
@@ -269,7 +274,7 @@ insertPeople persons db =
 allPeopleQ : Sqlite.Query Person
 allPeopleQ =
     { query = "SELECT * FROM people"
-    , parameters = Encode.object []
+    , parameters = []
     , rowDecoder = personDecoder
     }
 
@@ -282,25 +287,147 @@ execBadTemplate num db =
             SELECT * FROM people WHERE id = :id0
             """
         , encoder =
-            \{} ->
-                Encode.object <|
-                    Array.initialize num 0
-                        (\idx ->
-                            { key = "id" ++ String.fromInt idx, value = Encode.int idx }
-                        )
+            Array.initialize num 0
+                (\idx ->
+                    Encode.int ("id" ++ String.fromInt idx) idx
+                )
         }
-        {}
         db
+
+
+failDecoder : Sqlite.Database -> Task Sqlite.Error Int
+failDecoder db =
+    Sqlite.getOne
+        { query = "SELECT * FROM people WHERE name = :name"
+        , parameters = [ Encode.string "name" "Robin" ]
+        , rowDecoder = Decode.fail "Oopsy!"
+        }
+        db
+
+
+-- Encoder/Decoder test helpers
+
+
+type alias AllFieldTypes =
+    { stringField : String
+    , intField : Int
+    , floatField : Float
+    , boolTrue : Bool
+    , boolFalse : Bool
+    , maybeJustString : Maybe String
+    , maybeNothingString : Maybe String
+    }
+
+
+allFieldTypes : AllFieldTypes
+allFieldTypes =
+    { stringField = "test"
+    , intField = 42
+    , floatField = 3.14
+    , boolTrue = True
+    , boolFalse = False
+    , maybeJustString = Just "yo"
+    , maybeNothingString = Nothing
+    }
+
+
+initializeFieldTypeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
+initializeFieldTypeDb fsPerm =
+    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+        |> Task.andThen
+            (\db ->
+                Sqlite.executeScript
+                    """
+                    CREATE TABLE all_field_types (
+                        string_field TEXT NOT NULL,
+                        int_field INTEGER NOT NULL,
+                        float_field REAL NOT NULL,
+                        bool_true INTEGER NOT NULL,
+                        bool_false INTEGER NOT NULL,
+                        maybe_just_string TEXT,
+                        maybe_nothing_string TEXT
+                    )
+                    """
+                    db
+            )
+
+
+allFieldTypesEncoder : AllFieldTypes -> Array Encode.Value
+allFieldTypesEncoder row =
+    [ Encode.string "string_field" row.stringField
+    , Encode.int "int_field" row.intField
+    , Encode.float "float_field" row.floatField
+    , Encode.bool "bool_true" row.boolTrue
+    , Encode.bool "bool_false" row.boolFalse
+    , Encode.maybe Encode.string "maybe_just_string" row.maybeJustString
+    , Encode.maybe Encode.string "maybe_nothing_string" row.maybeNothingString
+    ]
+
+
+allFieldTypesDecoder : Decoder AllFieldTypes
+allFieldTypesDecoder =
+    Decode.string "string_field" <| \stringField ->
+    Decode.int "int_field" <| \intField ->
+    Decode.float "float_field" <| \floatField ->
+    Decode.bool "bool_true" <| \boolTrue ->
+    Decode.bool "bool_false" <| \boolFalse ->
+    Decode.maybe Decode.string "maybe_just_string" <| \maybeJustString ->
+    Decode.maybe Decode.string "maybe_nothing_string" <| \maybeNothingString ->
+        Decode.succeed
+            { stringField = stringField
+            , intField = intField
+            , floatField = floatField
+            , boolTrue = boolTrue
+            , boolFalse = boolFalse
+            , maybeJustString = maybeJustString
+            , maybeNothingString = maybeNothingString
+            }
+
+
+insertAllFieldTypes : AllFieldTypes -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+insertAllFieldTypes row db =
+    Sqlite.execute
+        { statement =
+            """
+            INSERT INTO all_field_types (
+                string_field,
+                int_field,
+                float_field,
+                bool_true,
+                bool_false,
+                maybe_just_string,
+                maybe_nothing_string
+            ) VALUES (
+                :string_field,
+                :int_field,
+                :float_field,
+                :bool_true,
+                :bool_false,
+                :maybe_just_string,
+                :maybe_nothing_string
+            )
+            """
+        , encoder = allFieldTypesEncoder row
+        }
+        db
+
+
+allFieldTypesQ : Sqlite.Query AllFieldTypes
+allFieldTypesQ =
+    { query = "SELECT * FROM all_field_types"
+    , parameters = []
+    , rowDecoder = allFieldTypesDecoder
+    }
 
 
 badDecoder : Sqlite.Database -> Task Sqlite.Error { name : Int, role : String }
 badDecoder db =
     Sqlite.getOne
         { query = "SELECT * FROM people WHERE name = :name"
-        , parameters = Encode.object [ { key = "name", value = Encode.string "Robin" } ]
+        , parameters = [ Encode.string "name" "Robin" ]
         , rowDecoder = 
-            Decode.map2 (\name role -> { name = name, role = role })
-                (Decode.field "name" Decode.int)
-                (Decode.field "role" Decode.string)
+            Decode.int "name" <| \name ->
+            Decode.string "role" <| \role ->
+                Decode.succeed { name = name, role = role }
         }
         db

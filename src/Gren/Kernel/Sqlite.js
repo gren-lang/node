@@ -6,6 +6,8 @@ import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
 import Gren.Kernel.Json exposing (wrap, unwrap)
 import Json.Decode as Decode exposing (decodeValue)
 import Result exposing (isOk)
+import Sqlite.Encode as SqliteEncode exposing (toJson)
+import Sqlite.Decode as SqliteDecode exposing (toJson)
 
 */
 
@@ -54,11 +56,13 @@ var _Sqlite_getAll = F2(function (query, db) {
     try {
       const results = [];
       const prepped = db.prepare(query.__$query);
+      const params = __Json_unwrap(__SqliteEncode_toJson(query.__$parameters));
+      const rowDecoder = __SqliteDecode_toJson(query.__$rowDecoder);
 
-      for (const value of prepped.iterate(__Json_unwrap(query.__$parameters))) {
+      for (const value of prepped.iterate(params)) {
         const jsonResult = A2(
           __Decode_decodeValue,
-          query.__$rowDecoder,
+          rowDecoder,
           _Json_wrap(value),
         );
 
@@ -88,7 +92,7 @@ var _Sqlite_executeMany = F3(function (statement, values, db) {
         lastResult = prepped.run();
       } else {
         for (const val of values) {
-          lastResult = prepped.run(__Json_unwrap(statement.__$encoder(val)));
+          lastResult = prepped.run(__Json_unwrap(__SqliteEncode_toJson(statement.__$encoder(val))));
         }
       }
 

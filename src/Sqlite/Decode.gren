@@ -1,0 +1,193 @@
+module Sqlite.Decode exposing
+    ( Decoder
+
+    -- Field decoders
+    , bool
+    , float
+    , int
+    , string
+    , maybe
+
+    -- Composing
+    , succeed
+    , fail
+
+    -- Helpers
+    , toJson
+    )
+
+{-| Decode SQL results into Gren values.
+
+Decoders can be chained to decode all fields in the result set,
+with the string parameter matching the name of the field in the query.
+
+For example:
+
+    Sqlite.getOne
+        { query = "SELECT id, name FROM users WHERE id = :id"
+        , parameters = [ Sqlite.Encode.int "id" 1 ]
+        , rowDecoder =
+            Sqlite.Decode.int "id" <| \id ->
+            Sqlite.Decode.string "name" <| \name ->
+                Sqlite.Decode.succeed
+                    { id = id
+                    , name = name
+                    }
+        }
+
+@docs Decoder
+
+## Field Decoders
+
+@docs string, int, float, bool, maybe
+
+## Composing Decoders
+
+@docs succeed, fail
+
+## Helpers
+
+@docs toJson
+
+-}
+
+import Json.Decode
+
+
+{-| A decoder for a database row.
+-}
+type Decoder a
+    = Decoder (Json.Decode.Decoder a)
+
+
+-- FIELD DECODERS
+
+
+{-| Decode a string field.
+-}
+string : String -> (String -> Decoder a) -> Decoder a
+string fieldName cont =
+    fieldHelper fieldName Json.Decode.string cont
+
+
+{-| Decode an integer field.
+-}
+int : String -> (Int -> Decoder a) -> Decoder a
+int fieldName cont =
+    fieldHelper fieldName Json.Decode.int cont
+
+
+{-| Decode a float field.
+-}
+float : String -> (Float -> Decoder a) -> Decoder a
+float fieldName cont =
+    fieldHelper fieldName Json.Decode.float cont
+
+
+{-| Decode a boolean field.
+
+Booleans in sqlite can be stored as integers with 1 and 0 as True and False,
+or as a string with value "TRUE" or "FALSE". All other values will fail decoding.
+See <https://www.sqlite.org/datatype3.html#boolean_datatype>
+-}
+bool : String -> (Bool -> Decoder a) -> Decoder a
+bool fieldName cont =
+    let
+        boolDecoder =
+            Json.Decode.oneOf
+                [ Json.Decode.int
+                    |> Json.Decode.andThen
+                        (\i ->
+                            when i is
+                                0 ->
+                                    Json.Decode.succeed False
+
+                                1 ->
+                                    Json.Decode.succeed True
+
+                                _ ->
+                                    Json.Decode.fail "Got unexpected integer in boolean field"
+                        )
+                , Json.Decode.string
+                    |> Json.Decode.andThen
+                        (\s ->
+                            when s is
+                                "TRUE" ->
+                                    Json.Decode.succeed True
+
+                                "FALSE" ->
+                                    Json.Decode.succeed False
+
+                                _ ->
+                                    Json.Decode.fail "Got unexpected string in boolean field"
+                        )
+                ]
+    in
+    fieldHelper fieldName boolDecoder cont
+
+
+{-| Decode a nullable field in the database.
+
+The first parameter is the field decoder function for the type if the value is not null.
+For example, to decode a nullable TEXT field:
+
+    Sqlite.Decode.maybe Decode.string "nickname" <| \maybeNickname ->
+        Sqlite.Decode.succeed maybeNickname
+-}
+maybe : (String -> (a -> Decoder b) -> Decoder b) -> String -> (Maybe a -> Decoder b) -> Decoder b
+maybe decoderFn fieldName cont =
+    Decoder <|
+        Json.Decode.oneOf
+            [ unwrap (decoderFn fieldName (\val -> cont (Just val)))
+            , Json.Decode.andThen
+                (\_ -> unwrap (cont Nothing))
+                (Json.Decode.field fieldName (Json.Decode.null {}))
+            ]
+
+
+-- COMPOSING
+
+
+{-| Create a decoder that always succeeds with the given value.
+
+Often used as the final step when chaining field decoders:
+
+    Sqlite.Decode.string "name" <| \name ->
+    Sqlite.Decode.int "age" <| \age ->
+        Sqlite.Decode.succeed { name = name, age = age }
+-}
+succeed : a -> Decoder a
+succeed val =
+    Decoder (Json.Decode.succeed val)
+
+
+{-| Force a decoder to fail with the given message.
+-}
+fail : String -> Decoder a
+fail reason =
+    Decoder (Json.Decode.fail reason)
+
+
+-- HELPERS
+
+
+{-| Convert to a Json.Decode.Decoder.
+
+You should never need this unless you are bypassing this package's API to interact with the db directly.
+-}
+toJson : Decoder a -> Json.Decode.Decoder a
+toJson =
+    unwrap
+
+
+fieldHelper : String -> Json.Decode.Decoder a -> (a -> Decoder b) -> Decoder b
+fieldHelper fieldName jsonDecoder cont =
+    Decoder <|
+        Json.Decode.andThen
+            (\val -> unwrap (cont val))
+            (Json.Decode.field fieldName jsonDecoder)
+
+
+unwrap : Decoder a -> Json.Decode.Decoder a
+unwrap (Decoder d) =
+    d

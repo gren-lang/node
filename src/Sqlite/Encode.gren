@@ -1,0 +1,144 @@
+module Sqlite.Encode exposing
+    ( Value
+
+    -- fields
+    , bool
+    , float
+    , int
+    , string
+    , maybe
+    , null
+
+    -- helpers
+    , toJson
+    )
+
+{-| Encode SQL parameters.
+
+You will typically use these in the `parameters` field for queries,
+and the `encoder` field for statements.
+
+For example:
+
+    Sqlite.execute
+        { statement = "INSERT INTO hero (name, level) VALUES (:name, :level)"
+        , encoder =
+            [ Encode.string "name" "Peach"
+            , Encode.int "level" 99
+            ]
+        }
+        db
+
+@docs Value, string, int, float, bool, null, maybe, toJson
+
+-}
+
+import Json.Encode
+import Time
+
+
+{-| An encoded parameter value.
+-}
+type Value
+    = Value
+        { key : String
+        , value : Json.Encode.Value
+        }
+
+
+{-| Encode a boolean value.
+
+This will be stored in the db as 1 for true and 0 for false.
+See <https://www.sqlite.org/datatype3.html#boolean_datatype>
+-}
+bool : String -> Bool -> Value
+bool field b =
+    Value
+        { key = field
+        , value =
+            if b then
+                Json.Encode.int 1
+            else
+                Json.Encode.int 0
+        }
+
+
+{-| Encode a float.
+-}
+float : String -> Float -> Value
+float field f =
+    Value
+        { key = field
+        , value = Json.Encode.float f
+        }
+
+
+{-| Encode an integer.
+-}
+int : String -> Int -> Value
+int field i =
+    Value
+        { key = field
+        , value = Json.Encode.int i
+        }
+
+
+{-| Encode a nullable value.
+
+The first parameter is the encoder for the type if the value is not null.
+For example, to encode a nullable TEXT field:
+
+    Sqlite.Encode.maybe Sqlite.Encode.string "nickname" maybeName
+-}
+maybe : (String -> a -> Value) -> String -> Maybe a -> Value
+maybe encoder name maybeVal =
+    when maybeVal is
+        Just val ->
+            encoder name val
+
+        Nothing ->
+            null name
+
+
+{-| Encode null.
+-}
+null : String -> Value
+null field =
+    Value
+        { key = field
+        , value = Json.Encode.null
+        }
+
+
+{-| Encode a String value.
+-}
+string : String -> String -> Value
+string field s =
+    Value
+        { key = field
+        , value = Json.Encode.string s
+        }
+
+
+-- HELPERS
+
+
+{-| Convert an array of encoded values to a Json object.
+
+You should never need this unless you are bypassing this package's API to interact with the db directly.
+
+    [ Sqlite.Encode.int "id" 123 ]
+        |> Sqlite.Encode.toJson
+        |> Json.Encode.encode 0
+        -- results in: {"id": 123}
+-}
+toJson : Array Value -> Json.Encode.Value
+toJson values =
+    values
+        |> Array.map unwrap
+        |> Json.Encode.object
+
+
+unwrap : Value -> { key : String, value : Json.Encode.Value }
+unwrap (Value v) =
+    v
