@@ -11,9 +11,6 @@ module Sqlite.Decode exposing
     -- Composing
     , succeed
     , fail
-
-    -- Helpers
-    , toJson
     )
 
 {-| Decode SQL results into Gren values.
@@ -173,7 +170,7 @@ fail reason =
 
 {-| Convert to a Json.Decode.Decoder.
 
-You should never need this unless you are bypassing this package's API to interact with the db directly.
+This is used internally to communicate with sqlite in the kernel.
 -}
 toJson : Decoder a -> Json.Decode.Decoder a
 toJson =

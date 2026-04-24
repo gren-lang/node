@@ -8,9 +8,6 @@ module Sqlite.Encode exposing
     , string
     , maybe
     , null
-
-    -- helpers
-    , toJson
     )
 
 {-| Encode SQL parameters.
@@ -125,12 +122,7 @@ string field s =
 
 {-| Convert an array of encoded values to a Json object.
 
-You should never need this unless you are bypassing this package's API to interact with the db directly.
-
-    [ Sqlite.Encode.int "id" 123 ]
-        |> Sqlite.Encode.toJson
-        |> Json.Encode.encode 0
-        -- results in: {"id": 123}
+This is used internally to communicate with sqlite in the kernel.
 -}
 toJson : Array Value -> Json.Encode.Value
 toJson values =
