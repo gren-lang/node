@@ -12,6 +12,7 @@ import FileSystem.Path as Path exposing (Path)
 import Init
 import Json.Decode
 import Json.Encode
+import Time
 
 
 main : Effectful.Program a
@@ -317,6 +318,7 @@ type alias AllFieldTypes =
     , boolTrue : Bool
     , boolFalse : Bool
     , jsonField : Array String
+    , timeField : Time.Posix
     , maybeJustString : Maybe String
     , maybeNothingString : Maybe String
     }
@@ -330,6 +332,7 @@ allFieldTypes =
     , boolTrue = True
     , boolFalse = False
     , jsonField = [ "hello", "world" ]
+    , timeField = Time.millisToPosix 1234567890
     , maybeJustString = Just "yo"
     , maybeNothingString = Nothing
     }
@@ -349,6 +352,7 @@ initializeFieldTypeDb fsPerm =
                         bool_true INTEGER NOT NULL,
                         bool_false INTEGER NOT NULL,
                         json_field TEXT NOT NULL,
+                        time_field INTEGER NOT NULL,
                         maybe_just_string TEXT,
                         maybe_nothing_string TEXT
                     )
@@ -365,6 +369,7 @@ allFieldTypesEncoder row =
     , Encode.bool "bool_true" row.boolTrue
     , Encode.bool "bool_false" row.boolFalse
     , Encode.json "json_field" (Json.Encode.array Json.Encode.string row.jsonField)
+    , Encode.time "time_field" row.timeField
     , Encode.maybe Encode.string "maybe_just_string" row.maybeJustString
     , Encode.maybe Encode.string "maybe_nothing_string" row.maybeNothingString
     ]
@@ -378,6 +383,7 @@ allFieldTypesDecoder =
     Decode.bool "bool_true" <| \boolTrue ->
     Decode.bool "bool_false" <| \boolFalse ->
     Decode.json (Json.Decode.array Json.Decode.string) "json_field" <| \jsonField ->
+    Decode.time "time_field" <| \timeField ->
     Decode.maybe Decode.string "maybe_just_string" <| \maybeJustString ->
     Decode.maybe Decode.string "maybe_nothing_string" <| \maybeNothingString ->
         Decode.succeed
@@ -387,6 +393,7 @@ allFieldTypesDecoder =
             , boolTrue = boolTrue
             , boolFalse = boolFalse
             , jsonField = jsonField
+            , timeField = timeField
             , maybeJustString = maybeJustString
             , maybeNothingString = maybeNothingString
             }
@@ -404,6 +411,7 @@ insertAllFieldTypes row db =
                 bool_true,
                 bool_false,
                 json_field,
+                time_field,
                 maybe_just_string,
                 maybe_nothing_string
             ) VALUES (
@@ -413,6 +421,7 @@ insertAllFieldTypes row db =
                 :bool_true,
                 :bool_false,
                 :json_field,
+                :time_field,
                 :maybe_just_string,
                 :maybe_nothing_string
             )
@@ -433,6 +442,7 @@ allFieldTypesQ =
             bool_true,
             bool_false,
             json(json_field) as json_field,
+            time_field,
             maybe_just_string,
             maybe_nothing_string
         FROM all_field_types

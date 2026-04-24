@@ -7,6 +7,7 @@ module Sqlite.Encode exposing
     , int
     , string
     , json
+    , time
     , maybe
     , null
     )
@@ -24,7 +25,7 @@ You will typically use these in the `parameters` field. For example:
         }
         db
 
-@docs Value, string, int, float, bool, json, null, maybe, toJson
+@docs Value, string, int, float, bool, json, time, null, maybe, toJson
 
 -}
 
@@ -111,6 +112,20 @@ json field val =
     Value
         { key = field
         , value = Json.Encode.string (Json.Encode.encode 0 val)
+        }
+
+
+{-| Encode a Time.Posix value.
+
+The value will be converted to millis and stored as Int. If you want to use
+SQLite's date and time functions, you will need to convert accordingly.
+See <https://sqlite.org/lang_datefunc.html>
+-}
+time : String -> Time.Posix -> Value
+time field t =
+    Value
+        { key = field
+        , value = Json.Encode.int (Time.posixToMillis t)
         }
 
 

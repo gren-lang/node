@@ -7,6 +7,7 @@ module Sqlite.Decode exposing
     , int
     , string
     , json
+    , time
     , maybe
 
     -- Composing
@@ -37,7 +38,7 @@ For example:
 
 ## Field Decoders
 
-@docs string, int, float, bool, json, maybe
+@docs string, int, float, bool, json, time, maybe
 
 ## Composing Decoders
 
@@ -50,6 +51,7 @@ For example:
 -}
 
 import Json.Decode
+import Time
 
 
 {-| A decoder for a database row.
@@ -155,6 +157,20 @@ json jsonDecoder fieldName cont =
                     )
     in
     fieldHelper fieldName decoder cont
+
+
+{-| Decode a Time.Posix value.
+
+Expects an int value in the db results representing millis since epoch
+(this is what [Sqlite.Encode.time](Sqlite.Encode#time) stores).
+If you are using SQLite's date and time functions, you will need to convert
+accordingly. See <https://sqlite.org/lang_datefunc.html>
+-}
+time : String -> (Time.Posix -> Decoder a) -> Decoder a
+time fieldName cont =
+    fieldHelper fieldName
+        (Json.Decode.map Time.millisToPosix Json.Decode.int)
+        cont
 
 
 {-| Decode a nullable field in the database.
