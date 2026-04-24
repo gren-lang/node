@@ -92,7 +92,7 @@ var _Sqlite_executeMany = F3(function (statement, values, db) {
         lastResult = prepped.run();
       } else {
         for (const val of values) {
-          lastResult = prepped.run(__Json_unwrap(__SqliteEncode_toJson(statement.__$encoder(val))));
+          lastResult = prepped.run(__Json_unwrap(__SqliteEncode_toJson(statement.__$parameters(val))));
         }
       }
 

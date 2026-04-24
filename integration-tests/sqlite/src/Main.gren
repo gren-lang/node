@@ -215,7 +215,7 @@ insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSu
 insertPerson person db =
     Sqlite.execute
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
-        , encoder = personEncoder person
+        , parameters = personEncoder person
         }
         db
 
@@ -230,7 +230,7 @@ defineFriends nameA nameB db =
             FROM people a, people b
             WHERE a.name = :personA AND b.name = :personB
             """
-        , encoder =
+        , parameters =
             [ Encode.string "personA" nameA
             , Encode.string "personB" nameB
             ]
@@ -245,7 +245,7 @@ defineFriendsById idA idB db =
             """
             INSERT INTO friends (person_a, person_b) VALUES (:idA, :idB)
             """
-        , encoder =
+        , parameters =
             [ Encode.int "idA" idA
             , Encode.int "idB" idB
             ]
@@ -265,7 +265,7 @@ insertPeople : Array Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.Execu
 insertPeople persons db =
     Sqlite.executeMany
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
-        , encoder = personEncoder
+        , parameters = personEncoder
         }
         persons
         db
@@ -286,7 +286,7 @@ execBadTemplate num db =
             """
             SELECT * FROM people WHERE id = :id0
             """
-        , encoder =
+        , parameters =
             Array.initialize num 0
                 (\idx ->
                     Encode.int ("id" ++ String.fromInt idx) idx
@@ -407,7 +407,7 @@ insertAllFieldTypes row db =
                 :maybe_nothing_string
             )
             """
-        , encoder = allFieldTypesEncoder row
+        , parameters = allFieldTypesEncoder row
         }
         db
 

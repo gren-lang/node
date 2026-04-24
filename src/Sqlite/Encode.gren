@@ -12,14 +12,11 @@ module Sqlite.Encode exposing
 
 {-| Encode SQL parameters.
 
-You will typically use these in the `parameters` field for queries,
-and the `encoder` field for statements.
-
-For example:
+You will typically use these in the `parameters` field. For example:
 
     Sqlite.execute
         { statement = "INSERT INTO hero (name, level) VALUES (:name, :level)"
-        , encoder =
+        , parameters =
             [ Encode.string "name" "Peach"
             , Encode.int "level" 99
             ]

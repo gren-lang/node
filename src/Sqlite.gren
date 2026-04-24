@@ -124,14 +124,14 @@ type alias ExecutionSummary =
 
 execute :
     { statement : String
-    , encoder : Array Sqlite.Encode.Value
+    , parameters : Array Sqlite.Encode.Value
     }
     -> Database 
     -> Task Error ExecutionSummary
-execute { statement, encoder } db =
+execute { statement, parameters } db =
     executeMany
         { statement = statement
-        , encoder = (\_ -> encoder)
+        , parameters = (\_ -> parameters)
         }
         [{}]
         db
@@ -139,7 +139,7 @@ execute { statement, encoder } db =
 
 executeMany :
     { statement : String
-    , encoder : value -> Array Sqlite.Encode.Value
+    , parameters : value -> Array Sqlite.Encode.Value
     }
     -> Array value
     -> Database 
