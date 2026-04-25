@@ -1,9 +1,8 @@
 module Main exposing (main)
 
 import Expect
-import Fuzz
 import Node
-import Test.Runner.Effectful as Effectful exposing (test, fuzz, await, awaitError, concat)
+import Test.Runner.Effectful as Effectful exposing (test, await, awaitError, concat)
 import Sqlite
 import Sqlite.Encode as Encode
 import Sqlite.Decode as Decode exposing (Decoder)
