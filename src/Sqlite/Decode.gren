@@ -87,42 +87,28 @@ float fieldName cont =
 
 {-| Decode a boolean field.
 
-Booleans in sqlite can be stored as integers with 1 and 0 as True and False,
-or as a string with value "TRUE" or "FALSE". All other values will fail decoding.
+Booleans in sqlite are stored as integers with 1 and 0 as True and False.
 See <https://www.sqlite.org/datatype3.html#boolean_datatype>
 -}
 bool : String -> (Bool -> Decoder a) -> Decoder a
 bool fieldName cont =
     let
         boolDecoder =
-            Json.Decode.oneOf
-                [ Json.Decode.int
-                    |> Json.Decode.andThen
-                        (\i ->
-                            when i is
-                                0 ->
-                                    Json.Decode.succeed False
+            Json.Decode.int
+                |> Json.Decode.andThen
+                    (\i ->
+                        when i is
+                            0 ->
+                                Json.Decode.succeed False
 
-                                1 ->
-                                    Json.Decode.succeed True
+                            1 ->
+                                Json.Decode.succeed True
 
-                                _ ->
-                                    Json.Decode.fail "Got unexpected integer in boolean field"
-                        )
-                , Json.Decode.string
-                    |> Json.Decode.andThen
-                        (\s ->
-                            when s is
-                                "TRUE" ->
-                                    Json.Decode.succeed True
-
-                                "FALSE" ->
-                                    Json.Decode.succeed False
-
-                                _ ->
-                                    Json.Decode.fail "Got unexpected string in boolean field"
-                        )
-                ]
+                            n ->
+                                Json.Decode.fail <|
+                                    "Expected 0 or 1 in boolean field, got " ++
+                                    String.fromInt n
+                    )
     in
     fieldHelper fieldName boolDecoder cont
 
