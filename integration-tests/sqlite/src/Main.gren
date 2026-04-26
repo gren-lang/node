@@ -350,6 +350,7 @@ type alias AllFieldTypes =
     , boolFalse : Bool
     , jsonField : Array String
     , timeField : Time.Posix
+    , timeWithMillisField : Time.Posix
     , maybeJustString : Maybe String
     , maybeNothingString : Maybe String
     }
@@ -363,7 +364,8 @@ allFieldTypes =
     , boolTrue = True
     , boolFalse = False
     , jsonField = [ "hello", "world" ]
-    , timeField = Time.millisToPosix 1234567890
+    , timeField = Time.millisToPosix 1234567000
+    , timeWithMillisField = Time.millisToPosix 1234567890
     , maybeJustString = Just "yo"
     , maybeNothingString = Nothing
     }
@@ -384,6 +386,7 @@ initializeFieldTypeDb fsPerm =
                         bool_false INTEGER NOT NULL,
                         json_field TEXT NOT NULL,
                         time_field INTEGER NOT NULL,
+                        time_with_millis_field REAL NOT NULL,
                         maybe_just_string TEXT,
                         maybe_nothing_string TEXT
                     )
@@ -401,6 +404,7 @@ allFieldTypesEncoder row =
     , Encode.bool "bool_false" row.boolFalse
     , Encode.json "json_field" (Json.Encode.array Json.Encode.string row.jsonField)
     , Encode.time "time_field" row.timeField
+    , Encode.timeWithMillis "time_with_millis_field" row.timeWithMillisField
     , Encode.maybe Encode.string "maybe_just_string" row.maybeJustString
     , Encode.maybe Encode.string "maybe_nothing_string" row.maybeNothingString
     ]
@@ -415,6 +419,7 @@ allFieldTypesDecoder =
     Decode.bool "bool_false" <| \boolFalse ->
     Decode.json (Json.Decode.array Json.Decode.string) "json_field" <| \jsonField ->
     Decode.time "time_field" <| \timeField ->
+    Decode.time "time_with_millis_field" <| \timeWithMillisField ->
     Decode.maybe Decode.string "maybe_just_string" <| \maybeJustString ->
     Decode.maybe Decode.string "maybe_nothing_string" <| \maybeNothingString ->
         Decode.succeed
@@ -425,6 +430,7 @@ allFieldTypesDecoder =
             , boolFalse = boolFalse
             , jsonField = jsonField
             , timeField = timeField
+            , timeWithMillisField = timeWithMillisField
             , maybeJustString = maybeJustString
             , maybeNothingString = maybeNothingString
             }
@@ -443,6 +449,7 @@ insertAllFieldTypes row db =
                 bool_false,
                 json_field,
                 time_field,
+                time_with_millis_field,
                 maybe_just_string,
                 maybe_nothing_string
             ) VALUES (
@@ -453,6 +460,7 @@ insertAllFieldTypes row db =
                 :bool_false,
                 :json_field,
                 :time_field,
+                :time_with_millis_field,
                 :maybe_just_string,
                 :maybe_nothing_string
             )
@@ -474,6 +482,7 @@ allFieldTypesQ =
             bool_false,
             json(json_field) as json_field,
             time_field,
+            time_with_millis_field,
             maybe_just_string,
             maybe_nothing_string
         FROM all_field_types
@@ -505,7 +514,7 @@ insertTimes : Array Time.Posix -> Sqlite.Database -> Task Sqlite.Error Sqlite.Ex
 insertTimes times db =
     Sqlite.executeMany
         { statement = "INSERT INTO times (t) VALUES (:t)"
-        , parameters = \t -> [ Encode.time "t" t ]
+        , parameters = \t -> [ Encode.timeWithMillis "t" t ]
         }
         times
         db

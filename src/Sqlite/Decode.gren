@@ -148,9 +148,10 @@ json jsonDecoder fieldName cont =
 
 {-| Decode a Time.Posix value.
 
-Expects the db field to hold number of seconds (not milliseconds) since epoch,
-which is how [`Sqlite.Encode.time`](Sqlite.Encode.time) stores it, and aligns
-with SQLite's `unixepoch()` function.
+Expects the db field to hold the number of seconds since unix epoch, which is
+how both [Sqlite.Encode.time](Sqlite.Encode#time) and
+[Sqlite.Encode.timeWithMillis](Sqlite.Encode#timeWithMillis) store it, and
+which aligns with SQLite's `unixepoch` function.
 See <https://sqlite.org/lang_datefunc.html>
 -}
 time : String -> (Time.Posix -> Decoder a) -> Decoder a

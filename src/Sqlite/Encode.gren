@@ -8,6 +8,7 @@ module Sqlite.Encode exposing
     , string
     , json
     , time
+    , timeWithMillis
     , maybe
     , null
     )
@@ -25,7 +26,7 @@ You will typically use these in the `parameters` field. For example:
         }
         db
 
-@docs Value, string, int, float, bool, json, time, null, maybe, toJson
+@docs Value, string, int, float, bool, json, time, timeWithMillis, null, maybe, toJson
 
 -}
 
@@ -117,12 +118,32 @@ json field val =
 
 {-| Encode a Time.Posix value.
 
-The value will be stored as a float representing seconds since unix epoch,
-which aligns with SQLite's `unixepoch()` function.
+The value will be encoded as an int representing the number of seconds since
+unix epoch, which aligns with SQLite's `unixepoch()` function.
 See <https://sqlite.org/lang_datefunc.html>
+
+If you need subsecond precision, use [timeWithMillis](#timeWithMillis).
 -}
 time : String -> Time.Posix -> Value
 time field t =
+    Value
+        { key = field
+        , value = Json.Encode.int (Time.posixToMillis t // 1000)
+        }
+
+
+{-| Encode a Time.Posix value with subsecond precision.
+
+The value will be encoded as a float representing the number of seconds since
+unix epoch, with subsecond precision to the millisecond, which aligns with
+SQLite's `unixepoch` function using the `"subsec"` modifier.
+See <https://sqlite.org/lang_datefunc.html>
+
+If you don't need subsecond precision, use [time](#time), which will save
+storage for large data sets.
+-}
+timeWithMillis : String -> Time.Posix -> Value
+timeWithMillis field t =
     Value
         { key = field
         , value = Json.Encode.float (toFloat (Time.posixToMillis t) / 1000.0)
