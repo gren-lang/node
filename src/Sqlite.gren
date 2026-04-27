@@ -129,7 +129,7 @@ execute :
        }
     -> Task Error ExecutionSummary
 execute db { statement, parameters } =
-    executeMany
+    executeForEach
         db
         { statement = statement
         , parameters = (\_ -> parameters)
@@ -137,14 +137,27 @@ execute db { statement, parameters } =
         [{}]
 
 
-executeMany :
+executeAll :
+    Database
+    -> Array
+        { statement : String
+        , parameters : Array Sqlite.Encode.Value
+        }
+    -> Task Error (Array ExecutionSummary)
+executeAll db statements =
+    statements
+        |> Array.map (execute db)
+        |> Task.sequence
+
+
+executeForEach :
     Database
     -> { statement : String
        , parameters : value -> Array Sqlite.Encode.Value
        }
     -> Array value
     -> Task Error ExecutionSummary
-executeMany db stmt vals =
+executeForEach db stmt vals =
     Gren.Kernel.Sqlite.executeMany stmt vals db
 
 
