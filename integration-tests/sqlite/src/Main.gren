@@ -4,12 +4,15 @@ import Expect
 import Node
 import Test.Runner.Effectful as Effectful exposing (test, await, awaitError, concat)
 import Sqlite
-import Json.Encode as Encode
-import Json.Decode as Decode exposing (Decoder)
+import Sqlite.Encode as Encode
+import Sqlite.Decode as Decode exposing (Decoder)
 import Task exposing (Task)
 import FileSystem
 import FileSystem.Path as Path exposing (Path)
 import Init
+import Json.Decode
+import Json.Encode
+import Time
 
 
 main : Effectful.Program a
@@ -100,6 +103,14 @@ tests fsPerm =
 
                                 _ ->
                                     Expect.fail "Failed for unknown reason"
+                    , awaitError "Decode.fail" (failDecoder db) <| \err ->
+                        test "Forces a decode failure" <| \_ ->
+                            when err is
+                                Sqlite.DecodingError _ ->
+                                    Expect.pass
+
+                                _ ->
+                                    Expect.fail "Expected DecodingError"
                     ]
         , await "Open db for multiple inserts" createTestDb <| \db ->
             await "Insert all people" (insertPeople people db) <| \summary ->
@@ -123,6 +134,29 @@ tests fsPerm =
                         test "summary.changes is 1 (only reports from last execution)" <| \_ ->
                             Expect.equal 1 friendSum.changes
                      ]
+        , await "Open db for field type tests" (initializeFieldTypeDb fsPerm) <| \db ->
+            await "Insert row with all field types" (insertAllFieldTypes allFieldTypes db) <| \_ ->
+                await "Read row with all field types" (Sqlite.getOne allFieldTypesQ db) <| \row ->
+                    test "All field types get encoded and decoded correctly" <| \_ ->
+                        Expect.equal allFieldTypes row
+        , await "Open db for time precision tests" (initializeTimeDb fsPerm) <| \db ->
+            await "Get base time" Time.now <| \now ->
+                let
+                    millis =
+                        Time.posixToMillis now
+
+                    testTimes =
+                        [ now
+                        , Time.millisToPosix (millis + 1)
+                        , Time.millisToPosix (millis + 999)
+                        , Time.millisToPosix (millis - 9999)
+                        , Time.millisToPosix (millis * 2)
+                        ]
+                in
+                await "Insert test times" (insertTimes testTimes db) <| \_ ->
+                    await "Read test times back" (Sqlite.getAll allTimesQ db) <| \fromDb ->
+                        test "Time values survive float round-trip through db" <| \_ ->
+                            Expect.equalArrays testTimes fromDb
         ]
 
 
@@ -184,28 +218,26 @@ execDbSchema db =
         db
 
 
-personEncoder : Person -> Encode.Value
+personEncoder : Person -> Array Encode.Value
 personEncoder p =
-    Encode.object
-        [ { key = "name", value = Encode.string p.name }
-        , { key = "role", value = Encode.string p.role }
-        ]
+    [ Encode.string "name" p.name
+    , Encode.string "role" p.role
+    ]
 
 
 personDecoder : Decoder Person
 personDecoder =
-    Decode.map2 (\name role -> { name = name, role = role })
-        (Decode.field "name" Decode.string)
-        (Decode.field "role" Decode.string)
+    Decode.string "name" <| \name ->
+    Decode.string "role" <| \role ->
+        Decode.succeed { name = name, role = role }
 
 
 insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertPerson person db =
     Sqlite.execute
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
-        , encoder = personEncoder
+        , parameters = personEncoder person
         }
-        person
         db
 
 
@@ -219,14 +251,11 @@ defineFriends nameA nameB db =
             FROM people a, people b
             WHERE a.name = :personA AND b.name = :personB
             """
-        , encoder =
-            \{} ->
-                Encode.object
-                    [ { key = "personA", value = Encode.string nameA }
-                    , { key = "personB", value = Encode.string nameB }
-                    ]
+        , parameters =
+            [ Encode.string "personA" nameA
+            , Encode.string "personB" nameB
+            ]
         }
-        {}
         db
 
 
@@ -237,21 +266,18 @@ defineFriendsById idA idB db =
             """
             INSERT INTO friends (person_a, person_b) VALUES (:idA, :idB)
             """
-        , encoder =
-            \{} ->
-                Encode.object
-                    [ { key = "idA", value = Encode.int idA }
-                    , { key = "idB", value = Encode.int idB }
-                    ]
+        , parameters =
+            [ Encode.int "idA" idA
+            , Encode.int "idB" idB
+            ]
         }
-        {}
         db
 
 
 personByNameQ : String -> Sqlite.Query Person
 personByNameQ name =
     { query = "SELECT * FROM people WHERE name = :name"
-    , parameters = Encode.object [ { key = "name", value = Encode.string name } ]
+    , parameters = [ Encode.string "name" name ]
     , rowDecoder = personDecoder
     }
 
@@ -260,7 +286,7 @@ insertPeople : Array Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.Execu
 insertPeople persons db =
     Sqlite.executeMany
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
-        , encoder = personEncoder
+        , parameters = personEncoder
         }
         persons
         db
@@ -269,7 +295,7 @@ insertPeople persons db =
 allPeopleQ : Sqlite.Query Person
 allPeopleQ =
     { query = "SELECT * FROM people"
-    , parameters = Encode.object []
+    , parameters = []
     , rowDecoder = personDecoder
     }
 
@@ -281,15 +307,22 @@ execBadTemplate num db =
             """
             SELECT * FROM people WHERE id = :id0
             """
-        , encoder =
-            \{} ->
-                Encode.object <|
-                    Array.initialize num 0
-                        (\idx ->
-                            { key = "id" ++ String.fromInt idx, value = Encode.int idx }
-                        )
+        , parameters =
+            Array.initialize num 0
+                (\idx ->
+                    Encode.int ("id" ++ String.fromInt idx) idx
+                )
         }
-        {}
+        db
+
+
+failDecoder : Sqlite.Database -> Task Sqlite.Error Int
+failDecoder db =
+    Sqlite.getOne
+        { query = "SELECT * FROM people WHERE name = :name"
+        , parameters = [ Encode.string "name" "Robin" ]
+        , rowDecoder = Decode.fail "Oopsy!"
+        }
         db
 
 
@@ -297,10 +330,201 @@ badDecoder : Sqlite.Database -> Task Sqlite.Error { name : Int, role : String }
 badDecoder db =
     Sqlite.getOne
         { query = "SELECT * FROM people WHERE name = :name"
-        , parameters = Encode.object [ { key = "name", value = Encode.string "Robin" } ]
+        , parameters = [ Encode.string "name" "Robin" ]
         , rowDecoder = 
-            Decode.map2 (\name role -> { name = name, role = role })
-                (Decode.field "name" Decode.int)
-                (Decode.field "role" Decode.string)
+            Decode.int "name" <| \name ->
+            Decode.string "role" <| \role ->
+                Decode.succeed { name = name, role = role }
         }
         db
+
+
+-- Encoder/Decoder test helpers
+
+
+type alias AllFieldTypes =
+    { stringField : String
+    , intField : Int
+    , floatField : Float
+    , boolTrue : Bool
+    , boolFalse : Bool
+    , jsonField : Array String
+    , timeField : Time.Posix
+    , timeWithMillisField : Time.Posix
+    , maybeJustString : Maybe String
+    , maybeNothingString : Maybe String
+    }
+
+
+allFieldTypes : AllFieldTypes
+allFieldTypes =
+    { stringField = "test"
+    , intField = 42
+    , floatField = 3.14
+    , boolTrue = True
+    , boolFalse = False
+    , jsonField = [ "hello", "world" ]
+    , timeField = Time.millisToPosix 1234567000
+    , timeWithMillisField = Time.millisToPosix 1234567890
+    , maybeJustString = Just "yo"
+    , maybeNothingString = Nothing
+    }
+
+
+initializeFieldTypeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
+initializeFieldTypeDb fsPerm =
+    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+        |> Task.andThen
+            (\db ->
+                Sqlite.executeScript
+                    """
+                    CREATE TABLE all_field_types (
+                        string_field TEXT NOT NULL,
+                        int_field INTEGER NOT NULL,
+                        float_field REAL NOT NULL,
+                        bool_true INTEGER NOT NULL,
+                        bool_false INTEGER NOT NULL,
+                        json_field TEXT NOT NULL,
+                        time_field INTEGER NOT NULL,
+                        time_with_millis_field REAL NOT NULL,
+                        maybe_just_string TEXT,
+                        maybe_nothing_string TEXT
+                    )
+                    """
+                    db
+            )
+
+
+allFieldTypesEncoder : AllFieldTypes -> Array Encode.Value
+allFieldTypesEncoder row =
+    [ Encode.string "string_field" row.stringField
+    , Encode.int "int_field" row.intField
+    , Encode.float "float_field" row.floatField
+    , Encode.bool "bool_true" row.boolTrue
+    , Encode.bool "bool_false" row.boolFalse
+    , Encode.json "json_field" (Json.Encode.array Json.Encode.string row.jsonField)
+    , Encode.time "time_field" row.timeField
+    , Encode.timeWithMillis "time_with_millis_field" row.timeWithMillisField
+    , Encode.maybe Encode.string "maybe_just_string" row.maybeJustString
+    , Encode.maybe Encode.string "maybe_nothing_string" row.maybeNothingString
+    ]
+
+
+allFieldTypesDecoder : Decoder AllFieldTypes
+allFieldTypesDecoder =
+    Decode.string "string_field" <| \stringField ->
+    Decode.int "int_field" <| \intField ->
+    Decode.float "float_field" <| \floatField ->
+    Decode.bool "bool_true" <| \boolTrue ->
+    Decode.bool "bool_false" <| \boolFalse ->
+    Decode.json (Json.Decode.array Json.Decode.string) "json_field" <| \jsonField ->
+    Decode.time "time_field" <| \timeField ->
+    Decode.time "time_with_millis_field" <| \timeWithMillisField ->
+    Decode.maybe Decode.string "maybe_just_string" <| \maybeJustString ->
+    Decode.maybe Decode.string "maybe_nothing_string" <| \maybeNothingString ->
+        Decode.succeed
+            { stringField = stringField
+            , intField = intField
+            , floatField = floatField
+            , boolTrue = boolTrue
+            , boolFalse = boolFalse
+            , jsonField = jsonField
+            , timeField = timeField
+            , timeWithMillisField = timeWithMillisField
+            , maybeJustString = maybeJustString
+            , maybeNothingString = maybeNothingString
+            }
+
+
+insertAllFieldTypes : AllFieldTypes -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+insertAllFieldTypes row db =
+    Sqlite.execute
+        { statement =
+            """
+            INSERT INTO all_field_types (
+                string_field,
+                int_field,
+                float_field,
+                bool_true,
+                bool_false,
+                json_field,
+                time_field,
+                time_with_millis_field,
+                maybe_just_string,
+                maybe_nothing_string
+            ) VALUES (
+                :string_field,
+                :int_field,
+                :float_field,
+                :bool_true,
+                :bool_false,
+                :json_field,
+                :time_field,
+                :time_with_millis_field,
+                :maybe_just_string,
+                :maybe_nothing_string
+            )
+            """
+        , parameters = allFieldTypesEncoder row
+        }
+        db
+
+
+allFieldTypesQ : Sqlite.Query AllFieldTypes
+allFieldTypesQ =
+    { query =
+        """
+        SELECT
+            string_field,
+            int_field,
+            float_field,
+            bool_true,
+            bool_false,
+            json(json_field) as json_field,
+            time_field,
+            time_with_millis_field,
+            maybe_just_string,
+            maybe_nothing_string
+        FROM all_field_types
+        """
+    , parameters = []
+    , rowDecoder = allFieldTypesDecoder
+    }
+
+
+-- Time precision test helpers
+
+
+initializeTimeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
+initializeTimeDb fsPerm =
+    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+        |> Task.andThen
+            (\db ->
+                Sqlite.executeScript
+                    """
+                    CREATE TABLE times (
+                        t REAL NOT NULL
+                    )
+                    """
+                    db
+            )
+
+
+insertTimes : Array Time.Posix -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
+insertTimes times db =
+    Sqlite.executeMany
+        { statement = "INSERT INTO times (t) VALUES (:t)"
+        , parameters = \t -> [ Encode.timeWithMillis "t" t ]
+        }
+        times
+        db
+
+
+allTimesQ : Sqlite.Query Time.Posix
+allTimesQ =
+    { query = "SELECT t FROM times ORDER BY rowid"
+    , parameters = []
+    , rowDecoder =
+        Decode.time "t" <| \t ->
+            Decode.succeed t
+    }

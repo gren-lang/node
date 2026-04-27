@@ -3,8 +3,9 @@ module Sqlite exposing (..)
 
 import FileSystem
 import FileSystem.Path exposing (Path)
-import Json.Encode as Encode
-import Json.Decode as Decode exposing (Decoder)
+import Json.Decode as Decode
+import Sqlite.Decode
+import Sqlite.Encode
 import Task exposing (Task)
 import Gren.Kernel.Sqlite
 
@@ -63,8 +64,8 @@ close =
 
 type alias Query value =
     { query : String
-    , parameters : Encode.Value
-    , rowDecoder : Decoder value
+    , parameters : Array Sqlite.Encode.Value
+    , rowDecoder : Sqlite.Decode.Decoder value
     }
 
 
@@ -110,12 +111,6 @@ getAll =
 -- EXECUTIONS
 
 
-type alias Statement value =
-    { statement : String
-    , encoder : (value -> Encode.Value)
-    }
-
-
 {-| A summary of how an execution changed the database.
 
     * `changes` - how many rows were inserted/updated/removed
@@ -127,12 +122,28 @@ type alias ExecutionSummary =
     }
 
 
-execute : Statement value -> value -> Database -> Task Error ExecutionSummary
-execute stmt val db =
-    executeMany stmt [val] db
+execute :
+    { statement : String
+    , parameters : Array Sqlite.Encode.Value
+    }
+    -> Database 
+    -> Task Error ExecutionSummary
+execute { statement, parameters } db =
+    executeMany
+        { statement = statement
+        , parameters = (\_ -> parameters)
+        }
+        [{}]
+        db
 
 
-executeMany : Statement value -> (Array value) -> Database -> Task Error ExecutionSummary
+executeMany :
+    { statement : String
+    , parameters : value -> Array Sqlite.Encode.Value
+    }
+    -> Array value
+    -> Database 
+    -> Task Error ExecutionSummary
 executeMany =
     Gren.Kernel.Sqlite.executeMany
 

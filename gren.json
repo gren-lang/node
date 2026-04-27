@@ -16,7 +16,9 @@
         "HttpClient",
         "HttpServer",
         "HttpServer.Response",
-        "Sqlite"
+        "Sqlite",
+        "Sqlite.Decode",
+        "Sqlite.Encode"
     ],
     "gren-version": "0.6.0 <= v < 0.7.0",
     "dependencies": {
