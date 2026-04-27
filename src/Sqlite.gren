@@ -111,6 +111,12 @@ getAll db query =
 -- EXECUTIONS
 
 
+type alias Statement =
+    { statement : String
+    , parameters : Array Sqlite.Encode.Value
+    }
+
+
 {-| A summary of how an execution changed the database.
 
     * `changes` - how many rows were inserted/updated/removed
@@ -122,12 +128,7 @@ type alias ExecutionSummary =
     }
 
 
-execute :
-    Database
-    -> { statement : String
-       , parameters : Array Sqlite.Encode.Value
-       }
-    -> Task Error ExecutionSummary
+execute : Database -> Statement -> Task Error ExecutionSummary
 execute db { statement, parameters } =
     executeForEach
         db
@@ -137,13 +138,7 @@ execute db { statement, parameters } =
         [{}]
 
 
-executeAll :
-    Database
-    -> Array
-        { statement : String
-        , parameters : Array Sqlite.Encode.Value
-        }
-    -> Task Error (Array ExecutionSummary)
+executeAll : Database -> Array Statement -> Task Error (Array ExecutionSummary)
 executeAll db statements =
     statements
         |> Array.map (execute db)
