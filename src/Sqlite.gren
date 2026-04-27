@@ -185,3 +185,22 @@ type Error
     | MultipleResultsError Int
     | ConstraintError String
     | DecodingError Decode.Error
+
+
+errorToString : Error -> String
+errorToString error =
+    when error is
+        GenericError s ->
+            s
+
+        NoResultsError ->
+            "Expected a result but got none."
+
+        MultipleResultsError n ->
+            "Expected one result but got " ++ String.fromInt n
+
+        ConstraintError s ->
+            "Constraint error: " ++ s
+
+        DecodingError e ->
+            "Error decoding results: " ++ Decode.errorToString e
