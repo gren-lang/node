@@ -69,9 +69,9 @@ type alias Query value =
     }
 
 
-getOne : Query value -> Database -> Task Error value
-getOne query db =
-    getAll query db
+getOne : Database -> Query value -> Task Error value
+getOne db query =
+    getAll db query
         |> Task.andThen
             (\results ->
                 when results is
@@ -86,9 +86,9 @@ getOne query db =
             )
 
 
-getMaybeOne : Query value -> Database -> Task Error (Maybe value)
-getMaybeOne query db =
-    getAll query db
+getMaybeOne : Database -> Query value -> Task Error (Maybe value)
+getMaybeOne db query =
+    getAll db query
         |> Task.andThen
             (\results ->
                 when results is
@@ -103,9 +103,9 @@ getMaybeOne query db =
             )
         
 
-getAll : Query value -> Database -> Task Error (Array value)
-getAll =
-    Gren.Kernel.Sqlite.getAll
+getAll : Database -> Query value -> Task Error (Array value)
+getAll db query =
+    Gren.Kernel.Sqlite.getAll query db
 
 
 -- EXECUTIONS
@@ -123,34 +123,34 @@ type alias ExecutionSummary =
 
 
 execute :
-    { statement : String
-    , parameters : Array Sqlite.Encode.Value
-    }
-    -> Database 
+    Database
+    -> { statement : String
+       , parameters : Array Sqlite.Encode.Value
+       }
     -> Task Error ExecutionSummary
-execute { statement, parameters } db =
+execute db { statement, parameters } =
     executeMany
+        db
         { statement = statement
         , parameters = (\_ -> parameters)
         }
         [{}]
-        db
 
 
 executeMany :
-    { statement : String
-    , parameters : value -> Array Sqlite.Encode.Value
-    }
+    Database
+    -> { statement : String
+       , parameters : value -> Array Sqlite.Encode.Value
+       }
     -> Array value
-    -> Database 
     -> Task Error ExecutionSummary
-executeMany =
-    Gren.Kernel.Sqlite.executeMany
+executeMany db stmt vals =
+    Gren.Kernel.Sqlite.executeMany stmt vals db
 
 
-executeScript : String -> Database -> Task Error Database
-executeScript =
-    Gren.Kernel.Sqlite.executeScript
+executeScript : Database -> String -> Task Error Database
+executeScript db script =
+    Gren.Kernel.Sqlite.executeScript script db
 
 
 -- TRANSACTIONS
@@ -158,18 +158,18 @@ executeScript =
 
 inTransaction : Database -> Task Error a -> Task Error a
 inTransaction db f =
-    executeScript "BEGIN TRANSACTION" db
+    executeScript db "BEGIN TRANSACTION"
         |> Task.andThen
             (\_ ->
                 f
                     |> Task.andThen
                         (\v ->
-                            executeScript "COMMIT" db
+                            executeScript db "COMMIT"
                                 |> Task.map (\_ -> v)
                         )
                     |> Task.onError
                         (\err ->
-                            executeScript "ROLLBACK" db
+                            executeScript db "ROLLBACK"
                                 |> Task.andThen (\_ -> Task.fail err)
                         )
             )

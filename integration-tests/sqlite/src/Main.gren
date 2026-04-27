@@ -37,16 +37,16 @@ tests fsPerm =
     concat
         [ await "Creating empty database" createTestDb <| \db ->
             concat
-                [ await "getMaybeOne" (Sqlite.getMaybeOne (personByNameQ robin.name) db) <| \p ->
+                [ await "getMaybeOne" (Sqlite.getMaybeOne db (personByNameQ robin.name)) <| \p ->
                     test "Is Nothing" <| \_ ->
                         Expect.equal Nothing p
-                , awaitError "getOne" (Sqlite.getOne (personByNameQ robin.name) db) <| \err ->
+                , awaitError "getOne" (Sqlite.getOne db (personByNameQ robin.name)) <| \err ->
                     test "Fails due to missing value" <| \_ ->
                         Expect.equal Sqlite.NoResultsError err
-                , await "getAll" (Sqlite.getAll allPeopleQ db) <| \res ->
+                , await "getAll" (Sqlite.getAll db allPeopleQ) <| \res ->
                     test "Is empty" <| \_ ->
                         Expect.equalArrays [] res
-                , awaitError "syntax error" (Sqlite.executeScript "SELECT *" db) <| \err ->
+                , awaitError "syntax error" (Sqlite.executeScript db "SELECT *") <| \err ->
                     test "Is right type" <| \_ ->
                         when err is
                             Sqlite.GenericError _ ->
@@ -81,14 +81,14 @@ tests fsPerm =
         , await "Open db for single insert" createTestDb <| \db ->
             await "Insert robin" (insertPerson robin db) <| \_ ->
                 concat
-                    [ await "Read robin from db" (Sqlite.getOne (personByNameQ robin.name) db) <| \p ->
+                    [ await "Read robin from db" (Sqlite.getOne db (personByNameQ robin.name)) <| \p ->
                         concat
                             [ test "Name is robin.name" <| \_ ->
                                 Expect.equal robin.name p.name
                             , test "Role is robin.role" <| \_ ->
                                 Expect.equal robin.role p.role
                             ]
-                    , await "Read robin with maybeOne" (Sqlite.getMaybeOne (personByNameQ robin.name) db) <| \p ->
+                    , await "Read robin with maybeOne" (Sqlite.getMaybeOne db (personByNameQ robin.name)) <| \p ->
                         concat
                             [ test "Name is robin.name" <| \_ ->
                                 Expect.equal (Just robin.name) (Maybe.map .name p)
@@ -119,15 +119,15 @@ tests fsPerm =
                         Expect.equal 1 summary.changes
                     , test "summary.lastInsertedRowid is > 0" <| \_ ->
                         Expect.greaterThan 0 summary.lastInsertRowid
-                    , await "Read all people from db" (Sqlite.getAll allPeopleQ db) <| \fromDb ->
+                    , await "Read all people from db" (Sqlite.getAll db allPeopleQ) <| \fromDb ->
                         test "Users are what we'd expect" <| \_ ->
                             Expect.equalArrays
                                 (Array.sortBy .name people)
                                 (Array.sortBy .name fromDb)
-                    , awaitError "getOne" (Sqlite.getOne allPeopleQ db) <| \err ->
+                    , awaitError "getOne" (Sqlite.getOne db allPeopleQ) <| \err ->
                         test "Right error type" <| \_ ->
                             Expect.equal (Sqlite.MultipleResultsError 2) err
-                    , awaitError "getMaybeOne" (Sqlite.getMaybeOne allPeopleQ db) <| \err ->
+                    , awaitError "getMaybeOne" (Sqlite.getMaybeOne db allPeopleQ) <| \err ->
                         test "Right error type" <| \_ ->
                             Expect.equal (Sqlite.MultipleResultsError 2) err
                     , await "Define friends" (defineFriends robin.name justin.name db) <| \friendSum ->
@@ -136,7 +136,7 @@ tests fsPerm =
                      ]
         , await "Open db for field type tests" (initializeFieldTypeDb fsPerm) <| \db ->
             await "Insert row with all field types" (insertAllFieldTypes allFieldTypes db) <| \_ ->
-                await "Read row with all field types" (Sqlite.getOne allFieldTypesQ db) <| \row ->
+                await "Read row with all field types" (Sqlite.getOne db allFieldTypesQ) <| \row ->
                     test "All field types get encoded and decoded correctly" <| \_ ->
                         Expect.equal allFieldTypes row
         , await "Open db for time precision tests" (initializeTimeDb fsPerm) <| \db ->
@@ -154,7 +154,7 @@ tests fsPerm =
                         ]
                 in
                 await "Insert test times" (insertTimes testTimes db) <| \_ ->
-                    await "Read test times back" (Sqlite.getAll allTimesQ db) <| \fromDb ->
+                    await "Read test times back" (Sqlite.getAll db allTimesQ) <| \fromDb ->
                         test "Time values survive float round-trip through db" <| \_ ->
                             Expect.equalArrays testTimes fromDb
         ]
@@ -201,7 +201,7 @@ initializePhysicalDb fsPerm =
 
 execDbSchema : Sqlite.Database -> Task Sqlite.Error Sqlite.Database
 execDbSchema db =
-    Sqlite.executeScript
+    Sqlite.executeScript db
         """
         CREATE TABLE people (
             id INTEGER PRIMARY KEY,
@@ -215,7 +215,6 @@ execDbSchema db =
             UNIQUE(person_a, person_b)
         ) STRICT;
         """
-        db
 
 
 personEncoder : Person -> Array Encode.Value
@@ -234,16 +233,15 @@ personDecoder =
 
 insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertPerson person db =
-    Sqlite.execute
+    Sqlite.execute db
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
         , parameters = personEncoder person
         }
-        db
 
 
 defineFriends : String -> String -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 defineFriends nameA nameB db =
-    Sqlite.execute
+    Sqlite.execute db
         { statement =
             """
             INSERT INTO friends (person_a, person_b)
@@ -256,12 +254,11 @@ defineFriends nameA nameB db =
             , Encode.string "personB" nameB
             ]
         }
-        db
 
 
 defineFriendsById : Int -> Int -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 defineFriendsById idA idB db =
-    Sqlite.execute
+    Sqlite.execute db
         { statement =
             """
             INSERT INTO friends (person_a, person_b) VALUES (:idA, :idB)
@@ -271,7 +268,6 @@ defineFriendsById idA idB db =
             , Encode.int "idB" idB
             ]
         }
-        db
 
 
 personByNameQ : String -> Sqlite.Query Person
@@ -284,12 +280,11 @@ personByNameQ name =
 
 insertPeople : Array Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertPeople persons db =
-    Sqlite.executeMany
+    Sqlite.executeMany db
         { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
         , parameters = personEncoder
         }
         persons
-        db
 
 
 allPeopleQ : Sqlite.Query Person
@@ -302,7 +297,7 @@ allPeopleQ =
 
 execBadTemplate : Int -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 execBadTemplate num db =
-    Sqlite.execute
+    Sqlite.execute db
         { statement =
             """
             SELECT * FROM people WHERE id = :id0
@@ -313,30 +308,27 @@ execBadTemplate num db =
                     Encode.int ("id" ++ String.fromInt idx) idx
                 )
         }
-        db
 
 
 failDecoder : Sqlite.Database -> Task Sqlite.Error Int
 failDecoder db =
-    Sqlite.getOne
+    Sqlite.getOne db
         { query = "SELECT * FROM people WHERE name = :name"
         , parameters = [ Encode.string "name" "Robin" ]
         , rowDecoder = Decode.fail "Oopsy!"
         }
-        db
 
 
 badDecoder : Sqlite.Database -> Task Sqlite.Error { name : Int, role : String }
 badDecoder db =
-    Sqlite.getOne
+    Sqlite.getOne db
         { query = "SELECT * FROM people WHERE name = :name"
         , parameters = [ Encode.string "name" "Robin" ]
-        , rowDecoder = 
+        , rowDecoder =
             Decode.int "name" <| \name ->
             Decode.string "role" <| \role ->
                 Decode.succeed { name = name, role = role }
         }
-        db
 
 
 -- Encoder/Decoder test helpers
@@ -376,7 +368,7 @@ initializeFieldTypeDb fsPerm =
     Sqlite.openInMemory fsPerm Sqlite.defaultOptions
         |> Task.andThen
             (\db ->
-                Sqlite.executeScript
+                Sqlite.executeScript db
                     """
                     CREATE TABLE all_field_types (
                         string_field TEXT NOT NULL,
@@ -391,7 +383,6 @@ initializeFieldTypeDb fsPerm =
                         maybe_nothing_string TEXT
                     )
                     """
-                    db
             )
 
 
@@ -438,7 +429,7 @@ allFieldTypesDecoder =
 
 insertAllFieldTypes : AllFieldTypes -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertAllFieldTypes row db =
-    Sqlite.execute
+    Sqlite.execute db
         { statement =
             """
             INSERT INTO all_field_types (
@@ -467,7 +458,6 @@ insertAllFieldTypes row db =
             """
         , parameters = allFieldTypesEncoder row
         }
-        db
 
 
 allFieldTypesQ : Sqlite.Query AllFieldTypes
@@ -500,24 +490,22 @@ initializeTimeDb fsPerm =
     Sqlite.openInMemory fsPerm Sqlite.defaultOptions
         |> Task.andThen
             (\db ->
-                Sqlite.executeScript
+                Sqlite.executeScript db
                     """
                     CREATE TABLE times (
                         t REAL NOT NULL
                     )
                     """
-                    db
             )
 
 
 insertTimes : Array Time.Posix -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
 insertTimes times db =
-    Sqlite.executeMany
+    Sqlite.executeMany db
         { statement = "INSERT INTO times (t) VALUES (:t)"
         , parameters = \t -> [ Encode.timeWithMillis "t" t ]
         }
         times
-        db
 
 
 allTimesQ : Sqlite.Query Time.Posix
