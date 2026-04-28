@@ -111,6 +111,12 @@ getAll db query =
 -- EXECUTIONS
 
 
+type alias Statement =
+    { statement : String
+    , parameters : Array Sqlite.Encode.Value
+    }
+
+
 {-| A summary of how an execution changed the database.
 
     * `changes` - how many rows were inserted/updated/removed
@@ -122,14 +128,9 @@ type alias ExecutionSummary =
     }
 
 
-execute :
-    Database
-    -> { statement : String
-       , parameters : Array Sqlite.Encode.Value
-       }
-    -> Task Error ExecutionSummary
+execute : Database -> Statement -> Task Error ExecutionSummary
 execute db { statement, parameters } =
-    executeMany
+    executeForEach
         db
         { statement = statement
         , parameters = (\_ -> parameters)
@@ -137,14 +138,21 @@ execute db { statement, parameters } =
         [{}]
 
 
-executeMany :
+executeAll : Database -> Array Statement -> Task Error (Array ExecutionSummary)
+executeAll db statements =
+    statements
+        |> Array.map (execute db)
+        |> Task.sequence
+
+
+executeForEach :
     Database
     -> { statement : String
        , parameters : value -> Array Sqlite.Encode.Value
        }
     -> Array value
     -> Task Error ExecutionSummary
-executeMany db stmt vals =
+executeForEach db stmt vals =
     Gren.Kernel.Sqlite.executeMany stmt vals db
 
 
