@@ -85,6 +85,21 @@ suite permission =
                     test "gets response as string"
                         (\_ -> Expect.equal "ping!" res.data)
                 )
+            , awaitError
+                (HttpClient.get "/nopath"
+                    |> HttpClient.expectString
+                    |> send
+                )
+                "bad path"
+                (\err ->
+                    test "gets 404" <| \_ ->
+                        when err is
+                            HttpClient.BadStatus { statusCode } ->
+                                Expect.equal 404 statusCode
+
+                            _ ->
+                                Expect.fail "Expected BadStatus error"
+                )
             , await
                 (HttpClient.post "/echo"
                     |> HttpClient.withJsonBody (JE.object [ { key = "message", value = JE.string "ping!" } ])

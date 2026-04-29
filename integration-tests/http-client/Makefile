@@ -1,10 +1,10 @@
-server-app:
+server-app: src/TestsServer.gren
 	gren make TestsServer --output=server-app
 
-tests-app:
+tests-app: src/Tests.gren
 	gren make Tests --output=tests-app
 
-stream-tests-app:
+stream-tests-app: src/LegacyStreamTests.gren
 	gren make LegacyStreamTests --output=stream-tests-app
 
 .PHONY: test

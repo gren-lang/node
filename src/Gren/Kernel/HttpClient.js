@@ -46,6 +46,16 @@ var _HttpClient_request = function (config) {
       signal: controller.signal,
     })
       .then((res) => {
+        if (!res.ok) {
+          return res.arrayBuffer().then((b) => {
+            return callback(
+              __Scheduler_fail(
+                __HttpClient_BadStatus(_HttpClient_formatResponse(res, new DataView(b))),
+              ),
+            );
+          });
+        }
+
         switch (config.__$expectType) {
           case "NOTHING":
             return res.blob().then((b) => {
