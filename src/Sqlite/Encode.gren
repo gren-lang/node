@@ -1,0 +1,206 @@
+module Sqlite.Encode exposing
+    ( Value
+
+    -- fields
+    , bool
+    , float
+    , int
+    , string
+    , json
+    , time
+    , timeWithMillis
+    , maybe
+    , null
+    )
+
+{-| Encode SQL parameters.
+
+You will typically use these in the `parameters` field. For example:
+
+    Sqlite.execute
+        { statement = "INSERT INTO hero (name, level) VALUES (:name, :level)"
+        , parameters =
+            [ Encode.string "name" "Peach"
+            , Encode.int "level" 99
+            ]
+        }
+        db
+
+@docs Value, string, int, float, bool, json, time, timeWithMillis, null, maybe, toJson
+
+-}
+
+import Json.Encode
+import Time
+
+
+{-| An encoded parameter value.
+-}
+type Value
+    = Value
+        { key : String
+        , value : Json.Encode.Value
+        }
+
+
+{-| Encode a boolean value.
+
+This will be stored in the db as 1 for true and 0 for false.
+See <https://www.sqlite.org/datatype3.html#boolean_datatype>
+-}
+bool : String -> Bool -> Value
+bool field b =
+    Value
+        { key = field
+        , value =
+            if b then
+                Json.Encode.int 1
+            else
+                Json.Encode.int 0
+        }
+
+
+{-| Encode a float.
+-}
+float : String -> Float -> Value
+float field f =
+    Value
+        { key = field
+        , value = Json.Encode.float f
+        }
+
+
+{-| Encode an integer.
+-}
+int : String -> Int -> Value
+int field i =
+    Value
+        { key = field
+        , value = Json.Encode.int i
+        }
+
+
+{-| Encode a JSON value.
+
+    Sqlite.execute
+        { statement = "INSERT INTO players (name, tags) VALUES (:name, :tags)"
+        , parameters =
+            [ Sqlite.Encode.string "name" "Peach"
+            , Sqlite.Encode.json "tags" 
+                (Json.Encode.array Json.Encode.string [ "hero", "princess" ])
+            ]
+        }
+        db
+
+JSON can be stored as human-readable text or as a more compact binary format
+using SQLite's `jsonb()` function:
+
+    -- Store as text (TEXT column)
+    "INSERT INTO items (data) VALUES (:data)"
+
+    -- Store as binary (BLOB column)
+    "INSERT INTO items (data) VALUES (jsonb(:data))"
+
+When reading back, use `json()` in your SELECT to ensure you get text
+regardless of how it was stored:
+
+    "SELECT json(data) as data FROM items"
+
+See <https://www.sqlite.org/json1.html>
+-}
+json : String -> Json.Encode.Value -> Value
+json field val =
+    Value
+        { key = field
+        , value = Json.Encode.string (Json.Encode.encode 0 val)
+        }
+
+
+{-| Encode a Time.Posix value.
+
+The value will be encoded as an int representing the number of seconds since
+unix epoch, which aligns with SQLite's `unixepoch()` function.
+See <https://sqlite.org/lang_datefunc.html>
+
+If you need subsecond precision, use [timeWithMillis](#timeWithMillis).
+-}
+time : String -> Time.Posix -> Value
+time field t =
+    Value
+        { key = field
+        , value = Json.Encode.int (Time.posixToMillis t // 1000)
+        }
+
+
+{-| Encode a Time.Posix value with subsecond precision.
+
+The value will be encoded as a float representing the number of seconds since
+unix epoch, with subsecond precision to the millisecond, which aligns with
+SQLite's `unixepoch` function using the `"subsec"` modifier.
+See <https://sqlite.org/lang_datefunc.html>
+
+If you don't need subsecond precision, use [time](#time), which will save
+storage for large data sets.
+-}
+timeWithMillis : String -> Time.Posix -> Value
+timeWithMillis field t =
+    Value
+        { key = field
+        , value = Json.Encode.float (toFloat (Time.posixToMillis t) / 1000.0)
+        }
+
+
+{-| Encode a nullable value.
+
+The first parameter is the encoder for the type if the value is not null.
+For example, to encode a nullable TEXT field:
+
+    Sqlite.Encode.maybe Sqlite.Encode.string "nickname" maybeName
+-}
+maybe : (String -> a -> Value) -> String -> Maybe a -> Value
+maybe encoder name maybeVal =
+    when maybeVal is
+        Just val ->
+            encoder name val
+
+        Nothing ->
+            null name
+
+
+{-| Encode null.
+-}
+null : String -> Value
+null field =
+    Value
+        { key = field
+        , value = Json.Encode.null
+        }
+
+
+{-| Encode a String value.
+-}
+string : String -> String -> Value
+string field s =
+    Value
+        { key = field
+        , value = Json.Encode.string s
+        }
+
+
+-- HELPERS
+
+
+{-| Convert an array of encoded values to a Json object.
+
+This is used internally to communicate with sqlite in the kernel.
+-}
+toJson : Array Value -> Json.Encode.Value
+toJson values =
+    values
+        |> Array.map unwrap
+        |> Json.Encode.object
+
+
+unwrap : Value -> { key : String, value : Json.Encode.Value }
+unwrap (Value v) =
+    v

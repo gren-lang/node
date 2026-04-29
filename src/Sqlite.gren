@@ -1,0 +1,214 @@
+module Sqlite exposing (..)
+
+
+import FileSystem
+import FileSystem.Path exposing (Path)
+import Json.Decode as Decode
+import Sqlite.Decode
+import Sqlite.Encode
+import Task exposing (Task)
+import Gren.Kernel.Sqlite
+
+
+-- TODO: Implement function, aggregate, backup, db encoder, db decoder
+-- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
+
+
+type Database
+    -- NOTE: implemented in kernel code
+    = Database
+
+
+{-| When opening the database, you can define a set of restrictions that apply for all
+queries and statements executed.
+
+    * `readOnly` - If true, the database is opened in read-only mode. All attempted modifications will fail.
+    * `allowExtension` - If true, the loadExtension SQL function and the loadExtension() method are enabled.
+    * `enableForeignKeyConstraints` - If true, foreign key constraints are enabled. This is recommended but can be disabled for compatibility with legacy database schemas. The enforcement of foreign key constraints can be enabled and disabled after opening the database using PRAGMA foreign_keys.
+    * `timeout` - The busy timeout in milliseconds. This is the maximum amount of time that SQLite will wait for a database lock to be released before returning an error. 0 or negative number means no timeout.
+-}
+type alias Options =
+    { readOnly : Bool
+    , enableForeignKeyConstraints : Bool
+    , allowExtension : Bool
+    , timeout : Int
+    }
+
+
+defaultOptions : Options
+defaultOptions =
+    { readOnly = False
+    , enableForeignKeyConstraints = True
+    , allowExtension = False
+    , timeout = 5000
+    }
+
+
+open : FileSystem.Permission -> Options -> Path -> Task Error Database
+open _ opts path =
+    Gren.Kernel.Sqlite.open opts path
+
+
+openInMemory : FileSystem.Permission -> Options -> Task x Database
+openInMemory _ opts =
+    Gren.Kernel.Sqlite.openInMemory opts
+
+
+close : Database -> Task Error {}
+close =
+    Gren.Kernel.Sqlite.close
+
+
+-- Query
+
+
+type alias Query value =
+    { query : String
+    , parameters : Array Sqlite.Encode.Value
+    , rowDecoder : Sqlite.Decode.Decoder value
+    }
+
+
+getOne : Database -> Query value -> Task Error value
+getOne db query =
+    getAll db query
+        |> Task.andThen
+            (\results ->
+                when results is
+                    [] ->
+                        Task.fail NoResultsError
+
+                    [ value ] ->
+                        Task.succeed value
+
+                    _ ->
+                        Task.fail (MultipleResultsError (Array.length results))
+            )
+
+
+getMaybeOne : Database -> Query value -> Task Error (Maybe value)
+getMaybeOne db query =
+    getAll db query
+        |> Task.andThen
+            (\results ->
+                when results is
+                    [] ->
+                        Task.succeed Nothing
+
+                    [ value ] ->
+                        Task.succeed (Just value)
+
+                    _ ->
+                        Task.fail (MultipleResultsError (Array.length results))
+            )
+        
+
+getAll : Database -> Query value -> Task Error (Array value)
+getAll db query =
+    Gren.Kernel.Sqlite.getAll query db
+
+
+-- EXECUTIONS
+
+
+type alias Statement =
+    { statement : String
+    , parameters : Array Sqlite.Encode.Value
+    }
+
+
+{-| A summary of how an execution changed the database.
+
+    * `changes` - how many rows were inserted/updated/removed
+    * `lastInsertRowId` - the ID of the last row inserted. Might be negative if no row was inserted
+-}
+type alias ExecutionSummary =
+    { changes : Int
+    , lastInsertRowid : Int
+    }
+
+
+execute : Database -> Statement -> Task Error ExecutionSummary
+execute db { statement, parameters } =
+    executeForEach
+        db
+        { statement = statement
+        , parameters = (\_ -> parameters)
+        }
+        [{}]
+
+
+executeAll : Database -> Array Statement -> Task Error (Array ExecutionSummary)
+executeAll db statements =
+    statements
+        |> Array.map (execute db)
+        |> Task.sequence
+
+
+executeForEach :
+    Database
+    -> { statement : String
+       , parameters : value -> Array Sqlite.Encode.Value
+       }
+    -> Array value
+    -> Task Error ExecutionSummary
+executeForEach db stmt vals =
+    Gren.Kernel.Sqlite.executeMany stmt vals db
+
+
+executeScript : Database -> String -> Task Error Database
+executeScript db script =
+    Gren.Kernel.Sqlite.executeScript script db
+
+
+-- TRANSACTIONS
+
+
+inTransaction : Database -> Task Error a -> Task Error a
+inTransaction db f =
+    executeScript db "BEGIN TRANSACTION"
+        |> Task.andThen
+            (\_ ->
+                f
+                    |> Task.andThen
+                        (\v ->
+                            executeScript db "COMMIT"
+                                |> Task.map (\_ -> v)
+                        )
+                    |> Task.onError
+                        (\err ->
+                            executeScript db "ROLLBACK"
+                                |> Task.andThen (\_ -> Task.fail err)
+                        )
+            )
+
+
+-- ERRORS
+
+
+-- TODO: How detailed should we be with errors?
+type Error
+    = GenericError String
+    | NoResultsError
+    | MultipleResultsError Int
+    | ConstraintError String
+    | DecodingError Decode.Error
+
+
+errorToString : Error -> String
+errorToString error =
+    when error is
+        GenericError s ->
+            s
+
+        NoResultsError ->
+            "Expected a result but got none."
+
+        MultipleResultsError n ->
+            "Expected one result but got " ++ String.fromInt n
+
+        ConstraintError s ->
+            "Constraint error: " ++ s
+
+        DecodingError e ->
+            "Error decoding results: " ++ Decode.errorToString e

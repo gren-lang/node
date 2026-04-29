@@ -15,7 +15,10 @@
         "FileSystem.Path",
         "HttpClient",
         "HttpServer",
-        "HttpServer.Response"
+        "HttpServer.Response",
+        "Sqlite",
+        "Sqlite.Decode",
+        "Sqlite.Encode"
     ],
     "gren-version": "0.6.0 <= v < 0.7.0",
     "dependencies": {
