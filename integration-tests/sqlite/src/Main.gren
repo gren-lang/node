@@ -131,8 +131,18 @@ tests fsPerm =
                         test "Right error type" <| \_ ->
                             Expect.equal (Sqlite.MultipleResultsError 2) err
                     , await "Define friends" (defineFriends robin.name justin.name db) <| \friendSum ->
-                        test "summary.changes is 1 (only reports from last execution)" <| \_ ->
-                            Expect.equal 1 friendSum.changes
+                        concat
+                            [ test "summary.changes is 1 (only reports from last execution)" <| \_ ->
+                                Expect.equal 1 friendSum.changes
+                            , awaitError "Define same friends again" (defineFriends robin.name justin.name db) <| \err ->
+                                test "Fails due to unique constraint" <| \_ ->
+                                    when err is
+                                        Sqlite.UniqueConstraintError _ ->
+                                            Expect.pass
+
+                                        _ ->
+                                            Expect.fail ("Expected UniqueConstraintError, but got: " ++ Sqlite.errorToString err)
+                            ]
                      ]
         , await "Open db for executeAll tests" createTestDb <| \db ->
             let
