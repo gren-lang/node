@@ -191,7 +191,8 @@ type Error
     = GenericError String
     | NoResultsError
     | MultipleResultsError Int
-    | ConstraintError String
+    | ForeignKeyError String
+    | UniqueConstraintError String
     | DecodingError Decode.Error
 
 
@@ -207,8 +208,11 @@ errorToString error =
         MultipleResultsError n ->
             "Expected one result but got " ++ String.fromInt n
 
-        ConstraintError s ->
-            "Constraint error: " ++ s
+        ForeignKeyError s ->
+            "Foreign key error: " ++ s
+
+        UniqueConstraintError s ->
+            "Unique constraint error: " ++ s
 
         DecodingError e ->
             "Error decoding results: " ++ Decode.errorToString e

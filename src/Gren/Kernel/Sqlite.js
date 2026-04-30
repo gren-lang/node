@@ -1,6 +1,6 @@
 /*
 
-import Sqlite exposing (GenericError, ConstraintError, DecodingError)
+import Sqlite exposing (GenericError, ForeignKeyError, UniqueConstraintError, DecodingError)
 import Gren.Kernel.FilePath exposing (toString)
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
 import Gren.Kernel.Json exposing (wrap, unwrap)
@@ -122,7 +122,13 @@ var _Sqlite_executeScript = F2(function (script, db) {
 var _Sqlite_constructError = function (e) {
   if (e.errcode === 787) {
     return __Scheduler_fail(
-      __Sqlite_ConstraintError(e.message)
+      __Sqlite_ForeignKeyError(e.message)
+    );
+  }
+
+  if (e.errcode === 2067) {
+    return __Scheduler_fail(
+      __Sqlite_UniqueConstraintError(e.message)
     );
   }
 
