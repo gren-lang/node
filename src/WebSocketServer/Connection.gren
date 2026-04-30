@@ -1,0 +1,153 @@
+module WebSocketServer.Connection exposing
+    ( Error
+    , errorCode
+    , errorToString
+    , errorIsConnectionNotOpen
+    , errorIsConnectionReset
+    , errorIsBrokenPipe
+    , errorIsInvalidCloseCode
+    , errorIsCloseReasonTooLong
+    , send
+    , sendBytes
+    , close
+    )
+
+{-| Send messages and close WebSocket connections.
+
+These operations return Tasks that can fail if the connection is no longer
+open or if a network error occurs. This lets your application detect and
+handle failures explicitly.
+
+    WebSocketServer.Connection.send connection "Hello!"
+        |> Task.attempt MessageSent
+
+## Errors
+
+@docs Error, errorCode, errorToString, errorIsConnectionNotOpen, errorIsConnectionReset, errorIsBrokenPipe, errorIsInvalidCloseCode, errorIsCloseReasonTooLong
+
+## Sending
+
+@docs send, sendBytes
+
+## Closing
+
+@docs close
+
+-}
+
+import Bytes exposing (Bytes)
+import Task exposing (Task)
+import WebSocketServer exposing (Connection)
+import Gren.Kernel.WebSocketServer
+
+
+-- ERRORS
+
+
+{-| An error from a WebSocket connection operation.
+
+Use the `errorIs*` helper functions to check for specific error conditions,
+or [`errorToString`](#errorToString) for a human-readable description.
+-}
+type Error
+    = Error { code : String, message : String }
+
+
+{-| Get the error code, if one is available.
+
+Network-level errors from the operating system will have a code like
+`"EPIPE"` or `"ECONNRESET"`. Errors originating from the WebSocket library
+itself (such as sending on a closed connection) do not have error codes and
+will return an empty string.
+-}
+errorCode : Error -> String
+errorCode (Error { code }) =
+    code
+
+
+{-| Get a human-readable description of the error.
+-}
+errorToString : Error -> String
+errorToString (Error { message }) =
+    message
+
+
+{-| If `True`, the operation failed because the WebSocket connection is not
+in the open state. This is the most common error and typically occurs when
+a message or close frame races with the connection closing.
+-}
+errorIsConnectionNotOpen : Error -> Bool
+errorIsConnectionNotOpen (Error { message }) =
+    String.startsWith "WebSocket is not open" message
+
+
+{-| If `True`, the connection was reset by the remote peer.
+-}
+errorIsConnectionReset : Error -> Bool
+errorIsConnectionReset (Error { code }) =
+    code == "ECONNRESET"
+
+
+{-| If `True`, the write failed because the connection has been closed.
+
+This is a system-level error that can occur when the underlying TCP socket
+is closed while a write is in progress.
+-}
+errorIsBrokenPipe : Error -> Bool
+errorIsBrokenPipe (Error { code }) =
+    code == "EPIPE" || code == "ERR_STREAM_DESTROYED"
+
+
+{-| If `True`, [`close`](#close) was called with an invalid status code.
+
+Valid WebSocket close codes are: 1000-1003, 1007-1014, and 3000-4999.
+Codes 1004, 1005, and 1006 are reserved and cannot be sent.
+-}
+errorIsInvalidCloseCode : Error -> Bool
+errorIsInvalidCloseCode (Error { message }) =
+    String.startsWith "First argument must be a valid error code" message
+
+
+{-| If `True`, [`close`](#close) was called with a reason string that exceeds
+the WebSocket protocol limit of 123 bytes.
+-}
+errorIsCloseReasonTooLong : Error -> Bool
+errorIsCloseReasonTooLong (Error { message }) =
+    String.startsWith "The message must not be greater than 123 bytes" message
+
+
+-- SENDING
+
+
+{-| Send a text message to a specific client connection.
+
+    WebSocketServer.Connection.send connection "Hello!"
+        |> Task.attempt MessageSent
+
+-}
+send : Connection -> String -> Task Error {}
+send connection data =
+    Gren.Kernel.WebSocketServer.send connection data
+
+
+{-| Send binary data to a specific client connection.
+-}
+sendBytes : Connection -> Bytes -> Task Error {}
+sendBytes connection data =
+    Gren.Kernel.WebSocketServer.sendBytes connection data
+
+
+-- CLOSING
+
+
+{-| Close a connection with a status code and reason string.
+
+    WebSocketServer.Connection.close connection 1000 "Normal closure"
+        |> Task.attempt ConnectionClosed
+
+Valid close codes are 1000-1003, 1007-1014, and 3000-4999.
+The reason string must not exceed 123 bytes.
+-}
+close : Connection -> Int -> String -> Task Error {}
+close connection code reason =
+    Gren.Kernel.WebSocketServer.close connection code reason
