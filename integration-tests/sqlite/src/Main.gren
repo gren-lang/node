@@ -57,7 +57,7 @@ tests fsPerm =
                 , awaitError "Define friends" (defineFriendsById 1 2 db) <| \err ->
                     test "Fails due to foreign key constraints" <| \_ ->
                         when err is
-                            Sqlite.ConstraintError message ->
+                            Sqlite.ForeignKeyError message ->
                                 if String.contains "foreign key" (String.toLower message) then
                                     Expect.pass
 
