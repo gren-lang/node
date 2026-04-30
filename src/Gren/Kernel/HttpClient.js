@@ -50,7 +50,9 @@ var _HttpClient_request = function (config) {
           return res.arrayBuffer().then((b) => {
             return callback(
               __Scheduler_fail(
-                __HttpClient_BadStatus(_HttpClient_formatResponse(res, new DataView(b))),
+                __HttpClient_BadStatus(
+                  _HttpClient_formatResponse(res, new DataView(b)),
+                ),
               ),
             );
           });
