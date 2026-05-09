@@ -241,13 +241,13 @@ people = [ robin, justin ]
 
 initializeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
 initializeDb fsPerm =
-    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+    Sqlite.open fsPerm Sqlite.defaultOptions Sqlite.Memory
         |> Task.andThen execDbSchema
 
 
 initializePhysicalDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
 initializePhysicalDb fsPerm =
-    Sqlite.open fsPerm Sqlite.defaultOptions diskDbPath
+    Sqlite.open fsPerm Sqlite.defaultOptions (Sqlite.File diskDbPath)
         |> Task.andThen execDbSchema
 
 
@@ -434,7 +434,7 @@ allFieldTypes =
 
 initializeFieldTypeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
 initializeFieldTypeDb fsPerm =
-    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+    Sqlite.open fsPerm Sqlite.defaultOptions Sqlite.Memory
         |> Task.andThen
             (\db ->
                 Sqlite.executeScript db
@@ -556,7 +556,7 @@ allFieldTypesQ =
 
 initializeTimeDb : FileSystem.Permission -> Task Sqlite.Error Sqlite.Database
 initializeTimeDb fsPerm =
-    Sqlite.openInMemory fsPerm Sqlite.defaultOptions
+    Sqlite.open fsPerm Sqlite.defaultOptions Sqlite.Memory
         |> Task.andThen
             (\db ->
                 Sqlite.executeScript db
