@@ -19,6 +19,11 @@ type Database
     = Database
 
 
+type Location
+    = Memory
+    | File Path
+
+
 {-| When opening the database, you can define a set of restrictions that apply for all
 queries and statements executed.
 
@@ -44,14 +49,14 @@ defaultOptions =
     }
 
 
-open : FileSystem.Permission -> Options -> Path -> Task Error Database
-open _ opts path =
-    Gren.Kernel.Sqlite.open opts path
+open : FileSystem.Permission -> Options -> Location -> Task Error Database
+open _ opts location =
+    when location is
+        File path ->
+            Gren.Kernel.Sqlite.open opts path
 
-
-openInMemory : FileSystem.Permission -> Options -> Task x Database
-openInMemory _ opts =
-    Gren.Kernel.Sqlite.openInMemory opts
+        Memory ->
+            Gren.Kernel.Sqlite.openInMemory opts
 
 
 close : Database -> Task Error {}
