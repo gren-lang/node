@@ -1,0 +1,162 @@
+module WebSocketServer exposing
+    ( Permission
+    , initialize
+
+    -- Server
+    , Server
+    , ServerError(..)
+    , startServer
+    , stopServer
+
+    -- Connections
+    , Connection
+
+    -- Message types
+    , Message(..)
+    )
+
+{-| Create a WebSocket server that accepts connections and exchanges messages.
+
+The server exposes accepted connections as a [Stream](Stream#Readable), and
+each connection exposes its incoming messages as a [Stream](Stream#Readable).
+Consumers read from these streams with [Stream.read](Stream#read) and chain
+another read as a follow-up [Task](Task#Task) to keep listening, the same
+pattern used by [HttpClient.expectStream](HttpClient#expectStream).
+
+To send messages or close a connection, see
+[WebSocketServer.Connection](WebSocketServer.Connection).
+
+## Initialization
+
+@docs Permission, Server, ServerError, initialize, startServer, stopServer
+
+## Connections
+
+@docs Connection
+
+## Message Types
+
+@docs Message
+
+-}
+
+import Bytes exposing (Bytes)
+import Init
+import Internal.Init
+import Stream
+import Task exposing (Task)
+import Gren.Kernel.WebSocketServer
+
+
+
+-- INITIALIZATION
+
+
+{-| The permission to start a WebSocket [`Server`](WebSocketServer#Server).
+
+You get this from [`initialize`](#initialize).
+-}
+type Permission
+    = Permission
+
+
+{-| The WebSocket server.
+-}
+type Server
+    -- Note: Actual implementation in Kernel code
+    = Server
+
+
+{-| Error code and message from node.
+Most likely from a failed attempt to start the server (e.g. `EADDRINUSE`).
+-}
+type ServerError
+    = ServerError { code : String, message : String }
+
+
+{-| Initialize the [`WebSocketServer`](WebSocketServer) module and get
+permission to create a server.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+{-| Task to start a WebSocket server. On success, you get the server handle
+and a [Readable](Stream#Readable) stream of accepted connections.
+
+    type Msg
+        = ServerStarted (Result ServerError { server : Server, connections : Stream.Readable Connection })
+
+
+    WebSocketServer.startServer permission { host = "0.0.0.0", port_ = 8080 }
+        |> Task.attempt ServerStarted
+
+To process connections, read from the stream and chain another read to keep
+accepting:
+
+    acceptNext : Stream.Readable Connection -> Cmd Msg
+    acceptNext connections =
+        Stream.read connections
+            |> Task.attempt ConnectionAccepted
+-}
+startServer
+    : Permission
+    -> { host : String, port_ : Int }
+    ->
+        Task
+            ServerError
+            { server : Server
+            , connections : Stream.Readable Connection
+            }
+startServer _ options =
+    Gren.Kernel.WebSocketServer.startServer options.host options.port_
+
+
+{-| Stop a running WebSocket server. The server stops accepting new
+connections, and the [Readable](Stream#Readable) stream of connections
+returned by [`startServer`](#startServer) closes. Existing connections
+are closed by the server as part of this operation.
+-}
+stopServer : Server -> Task ServerError {}
+stopServer server =
+    Gren.Kernel.WebSocketServer.stopServer server
+
+
+
+-- CONNECTIONS
+
+
+{-| A single WebSocket client connection.
+
+The `id` is a comparable identifier, useful for storing connections in a
+`Dict Int Connection`.
+
+The `incoming` field is a [Readable](Stream#Readable) stream of messages
+arriving on the connection. Each successful read yields one
+[Message](#Message). When the client closes the connection, the stream
+closes and the next read fails with [Stream.Closed](Stream#Error). If the
+connection errors, the stream is cancelled with
+[Stream.Cancelled](Stream#Error).
+
+    readNext : Connection -> Cmd Msg
+    readNext conn =
+        Stream.read conn.incoming
+            |> Task.attempt (MessageReceived conn)
+-}
+type alias Connection =
+    { id : Int
+    , incoming : Stream.Readable Message
+    }
+
+
+
+-- MESSAGE TYPES
+
+
+{-| A message received from a WebSocket client.
+-}
+type Message
+    = TextMessage String
+    | BinaryMessage Bytes

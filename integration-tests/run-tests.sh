@@ -21,3 +21,8 @@ echo -e "Running child-process tests...\n\n"
 pushd child-process
 make test || exit 1
 popd
+
+echo -e "Running websocket tests...\n\n"
+pushd websocket
+make test || exit 1
+popd
