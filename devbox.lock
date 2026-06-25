@@ -103,7 +103,7 @@
     },
     "nodejs@20": {
       "last_modified": "2026-04-23T13:07:47Z",
-      "plugin_version": "0.0.2",
+      "plugin_version": "0.0.4",
       "resolved": "github:NixOS/nixpkgs/01fbdeef22b76df85ea168fbfe1bfd9e63681b30#nodejs_20",
       "source": "devbox-search",
       "version": "20.20.2",

@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import * as assert from "node:assert";
+import { getAppProcess } from "./fixtures.mjs";
 
 const url = "ws://127.0.0.1:8085";
 
@@ -59,6 +60,33 @@ function closeConnection(client) {
   return new Promise((resolve) => {
     client.on("close", () => resolve());
     client.close();
+  });
+}
+
+// Wait for a line on the app's stdout that matches `predicate`.
+function waitForStdoutLine(predicate, timeoutMs = 5000) {
+  const proc = getAppProcess();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      proc.stdout.off("data", onChunk);
+      reject(new Error("Timed out waiting for stdout line"));
+    }, timeoutMs);
+
+    let buffer = "";
+    const onChunk = (data) => {
+      buffer += data.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (predicate(line)) {
+          clearTimeout(timer);
+          proc.stdout.off("data", onChunk);
+          resolve(line);
+          return;
+        }
+      }
+    };
+    proc.stdout.on("data", onChunk);
   });
 }
 
@@ -266,5 +294,26 @@ describe("WebSocket Server", function () {
     assert.equal(echo, "echo:");
 
     await closeConnection(client);
+  });
+
+  it("surfaces a connection error through the message stream", async () => {
+    const client = await connect();
+
+    // Consume the welcome message
+    await waitForMessage(client);
+
+    // Send a malformed frame (FIN bit set + reserved opcode 3) directly over the
+    // underlying socket. The server's ws receiver rejects this as a protocol
+    // error and emits 'error' on the connection, which the kernel surfaces to
+    // readers as Stream.Cancelled <reason>. The app logs the reason to stdout.
+    client._socket.write(Buffer.from([0x83, 0x00]));
+
+    const line = await waitForStdoutLine((l) => l.startsWith("stream error:"));
+    const reason = line.slice("stream error:".length).trim();
+
+    assert.ok(reason.length > 0, `Expected a non-empty error reason, got: ${line}`);
+
+    // Allow the connection to tear down after the server closes it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 });

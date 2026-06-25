@@ -41,17 +41,40 @@ function _WebSocketServer_ensureListenersAttached(server) {
   }
   server.__grenListenersAttached = true;
   server.__grenConnectionHandlers = [];
-  server.__grenMessageHandlers = [];
   server.__grenCloseHandlers = [];
-  server.__grenErrorHandlers = [];
 
   server.on("connection", function (client) {
     var connId = _WebSocketServer_nextConnectionId++;
     var connection = { __$id: connId, __$client: client };
 
-    // Store the Connection object on the client instance so that message/close/error
+    // Store the Connection object on the client instance so that close/error
     // handlers can retrieve it without a separate lookup map.
     client.__grenConnection = connection;
+
+    // Create a ReadableStream that surfaces incoming messages for this
+    // connection. The controller is retained on the client so the per-event
+    // closures below can enqueue messages and close/error the stream when the
+    // connection ends. The stream is passed to the app via the connection
+    // handler; the app reads messages from it using the Stream module.
+    client.__grenStreamClosed = false;
+    var messageStream = new ReadableStream({
+      start: function (controller) {
+        client.__grenStreamController = controller;
+      },
+    });
+
+    // Create two WritableStreams for sending data back to the client: one for
+    // text frames (String) and one for binary frames (Bytes). Each write calls
+    // ws#send with the appropriate JS type, and the send callback drives
+    // backpressure by resolving the write once the data is flushed. The sink
+    // controllers are retained so they can be errored when the connection ends.
+    client.__grenWritableControllers = [];
+    var textWritable = _WebSocketServer_makeWritable(client, function (chunk) {
+      return chunk;
+    });
+    var binaryWritable = _WebSocketServer_makeWritable(client, function (chunk) {
+      return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    });
 
     // Notify the app of the new connection, if any handlers are registered.
     var connHandlers = server.__grenConnectionHandlers;
@@ -60,17 +83,19 @@ function _WebSocketServer_ensureListenersAttached(server) {
         A2(
           __Platform_sendToApp,
           connHandlers[i].router,
-          connHandlers[i].handler(connection),
+          connHandlers[i].handler({
+            __$connection: connection,
+            __$readable: messageStream,
+            __$textWritable: textWritable,
+            __$binaryWritable: binaryWritable,
+          }),
         ),
       );
     }
 
-    // Attach per-client handlers that delegate to the current stored handlers.
-    // Each handler reads the current reference from server on every event fire,
-    // so re-evaluating subscriptions updates behavior for existing connections.
+    // Feed incoming messages into the connection's stream.
     client.on("message", function (data, isBinary) {
-      var handlers = server.__grenMessageHandlers;
-      if (handlers.length === 0) return;
+      if (client.__grenStreamClosed) return;
 
       var msg = isBinary
         ? __WebSocketServer_BinaryMessage(
@@ -78,18 +103,23 @@ function _WebSocketServer_ensureListenersAttached(server) {
           )
         : __WebSocketServer_TextMessage(data.toString());
 
-      for (var i = 0; i < handlers.length; i++) {
-        __Scheduler_rawSpawn(
-          A2(
-            __Platform_sendToApp,
-            handlers[i].router,
-            A2(handlers[i].handler, client.__grenConnection, msg),
-          ),
-        );
-      }
+      client.__grenStreamController.enqueue(msg);
     });
 
     client.on("close", function (code, reason) {
+      // Close the message stream so readers observe end-of-stream.
+      if (!client.__grenStreamClosed) {
+        client.__grenStreamClosed = true;
+        try {
+          client.__grenStreamController.close();
+        } catch (e) {
+          // Controller may already be closed or errored; safe to ignore.
+        }
+      }
+
+      // Fail any further writes on the writable streams.
+      _WebSocketServer_terminateWritables(client, "WebSocket connection closed");
+
       var handlers = server.__grenCloseHandlers;
       for (var i = 0; i < handlers.length; i++) {
         __Scheduler_rawSpawn(
@@ -106,18 +136,58 @@ function _WebSocketServer_ensureListenersAttached(server) {
     });
 
     client.on("error", function (err) {
-      var handlers = server.__grenErrorHandlers;
-      for (var i = 0; i < handlers.length; i++) {
-        __Scheduler_rawSpawn(
-          A2(
-            __Platform_sendToApp,
-            handlers[i].router,
-            A2(handlers[i].handler, client.__grenConnection, err.message),
-          ),
-        );
+      // Error the message stream so active readers stop. There is no separate
+      // error subscription: callers observe this as Stream.Cancelled <message>.
+      if (!client.__grenStreamClosed) {
+        client.__grenStreamClosed = true;
+        try {
+          client.__grenStreamController.error(err.message);
+        } catch (e) {
+          // Controller may already be closed or errored; safe to ignore.
+        }
       }
+
+      // Fail any further writes on the writable streams.
+      _WebSocketServer_terminateWritables(client, err.message);
     });
   });
+}
+
+// Build a WritableStream whose writes forward to ws#send. `toPayload` converts
+// the chunk (a String for text, a Uint8Array for binary) into the value passed
+// to ws#send, which determines the frame type (string -> text, Buffer -> binary).
+// The send callback resolves the write (backpressure) and errors it on failure.
+function _WebSocketServer_makeWritable(client, toPayload) {
+  return new WritableStream({
+    start: function (controller) {
+      client.__grenWritableControllers.push(controller);
+    },
+    write: function (chunk, controller) {
+      return new Promise(function (resolve, reject) {
+        client.send(toPayload(chunk), function (err) {
+          if (err) {
+            controller.error(err.message);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    },
+  });
+}
+
+// Error every writable sink controller for a client. Called when the connection
+// closes or errors so that pending and future writes fail promptly.
+function _WebSocketServer_terminateWritables(client, reason) {
+  var controllers = client.__grenWritableControllers;
+  for (var i = 0; i < controllers.length; i++) {
+    try {
+      controllers[i].error(reason);
+    } catch (e) {
+      // Controller may already be closed or errored; safe to ignore.
+    }
+  }
 }
 
 // Clear all stored handler references for a server. Called once per server
@@ -125,9 +195,7 @@ function _WebSocketServer_ensureListenersAttached(server) {
 var _WebSocketServer_clearHandlers = function (server) {
   _WebSocketServer_ensureListenersAttached(server);
   server.__grenConnectionHandlers = [];
-  server.__grenMessageHandlers = [];
   server.__grenCloseHandlers = [];
-  server.__grenErrorHandlers = [];
 };
 
 var _WebSocketServer_setConnectionHandler = F3(function (server, router, handler) {
@@ -135,19 +203,9 @@ var _WebSocketServer_setConnectionHandler = F3(function (server, router, handler
   server.__grenConnectionHandlers.push({ router: router, handler: handler });
 });
 
-var _WebSocketServer_setMessageHandler = F3(function (server, router, handler) {
-  _WebSocketServer_ensureListenersAttached(server);
-  server.__grenMessageHandlers.push({ router: router, handler: handler });
-});
-
 var _WebSocketServer_setCloseHandler = F3(function (server, router, handler) {
   _WebSocketServer_ensureListenersAttached(server);
   server.__grenCloseHandlers.push({ router: router, handler: handler });
-});
-
-var _WebSocketServer_setErrorHandler = F3(function (server, router, handler) {
-  _WebSocketServer_ensureListenersAttached(server);
-  server.__grenErrorHandlers.push({ router: router, handler: handler });
 });
 
 var _WebSocketServer_getConnectionId = function (connection) {

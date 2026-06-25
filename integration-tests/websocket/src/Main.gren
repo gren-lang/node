@@ -20,20 +20,35 @@ main =
         }
 
 
+type alias ConnState =
+    { connection : WebSocketServer.Connection
+    , textWritable : Stream.Writable String
+    , binaryWritable : Stream.Writable Bytes
+    }
+
+
 type alias Model =
     { stdout : Stream.Writable Bytes
     , stderr : Stream.Writable Bytes
     , server : Maybe WebSocketServer.Server
-    , connections : Dict Int WebSocketServer.Connection
+    , connections : Dict Int ConnState
     }
 
 
 type Msg
     = ServerCreated (Result WebSocketServer.ServerError WebSocketServer.Server)
-    | ClientConnected WebSocketServer.Connection
-    | MessageReceived { connection : WebSocketServer.Connection, message : WebSocketServer.Message }
+    | ClientConnected
+        { connection : WebSocketServer.Connection
+        , readable : Stream.Readable WebSocketServer.Message
+        , textWritable : Stream.Writable String
+        , binaryWritable : Stream.Writable Bytes
+        }
+    | ReadResult
+        { connId : Int
+        , readable : Stream.Readable WebSocketServer.Message
+        , result : Result Stream.Error WebSocketServer.Message
+        }
     | ClientDisconnected { connection : WebSocketServer.Connection, reason : WebSocketServer.CloseReason }
-    | ClientError { connection : WebSocketServer.Connection, error : String }
     | SendResult (Result WsConn.Error {})
 
 
@@ -72,41 +87,58 @@ update msg model =
                             |> Task.execute
                     }
 
-        ClientConnected connection ->
+        ClientConnected { connection, readable, textWritable, binaryWritable } ->
             let
                 connId =
                     WebSocketServer.connectionId connection
             in
             { model =
                 { model
-                    | connections = Dict.set connId connection model.connections
+                    | connections =
+                        Dict.set connId
+                            { connection = connection
+                            , textWritable = textWritable
+                            , binaryWritable = binaryWritable
+                            }
+                            model.connections
                 }
             , command =
-                WsConn.send connection "welcome"
-                    |> Task.attempt SendResult
+                Cmd.batch
+                    [ WsConn.send connection "welcome"
+                        |> Task.attempt SendResult
+                    , readFromStream connId readable
+                    ]
             }
 
-        MessageReceived { connection, message } ->
-            when message is
-                WebSocketServer.TextMessage text ->
-                    if text == "please-close" then
-                        { model = model
-                        , command =
-                            WsConn.close connection 1000 "server-initiated-close"
-                                |> Task.attempt SendResult
-                        }
-                    else
-                        { model = model
-                        , command =
-                            WsConn.send connection ("echo:" ++ text)
-                                |> Task.attempt SendResult
-                        }
+        ReadResult { connId, readable, result } ->
+            when result is
+                Ok message ->
+                    when Dict.get connId model.connections is
+                        Just connState ->
+                            { model = model
+                            , command = echoAndContinue connState connId readable message
+                            }
 
-                WebSocketServer.BinaryMessage bytes ->
+                        Nothing ->
+                            { model = model
+                            , command = Cmd.none
+                            }
+
+                Err Stream.Closed ->
+                    { model = model
+                    , command = Cmd.none
+                    }
+
+                Err (Stream.Cancelled reason) ->
                     { model = model
                     , command =
-                        WsConn.sendBytes connection bytes
-                            |> Task.attempt SendResult
+                        Stream.Log.line model.stdout ("stream error: " ++ reason)
+                            |> Task.execute
+                    }
+
+                Err Stream.Locked ->
+                    { model = model
+                    , command = Cmd.none
                     }
 
         ClientDisconnected { connection } ->
@@ -121,11 +153,6 @@ update msg model =
             , command = Cmd.none
             }
 
-        ClientError _ ->
-            { model = model
-            , command = Cmd.none
-            }
-
         SendResult _ ->
             { model = model
             , command = Cmd.none
@@ -137,11 +164,49 @@ subscriptions model =
     when model.server is
         Just server ->
             Sub.batch
-                [ WebSocketServer.onConnection server ClientConnected
-                , WebSocketServer.onMessage server (\conn msg -> MessageReceived { connection = conn, message = msg })
+                [ WebSocketServer.onConnection server
+                    (\{ connection, readable, textWritable, binaryWritable } ->
+                        ClientConnected
+                            { connection = connection
+                            , readable = readable
+                            , textWritable = textWritable
+                            , binaryWritable = binaryWritable
+                            }
+                    )
                 , WebSocketServer.onClose server (\conn reason -> ClientDisconnected { connection = conn, reason = reason })
-                , WebSocketServer.onError server (\conn err -> ClientError { connection = conn, error = err })
                 ]
 
         Nothing ->
             Sub.none
+
+
+readFromStream : Int -> Stream.Readable WebSocketServer.Message -> Cmd Msg
+readFromStream connId readable =
+    Stream.read readable
+        |> Task.attempt
+            (\result -> ReadResult { connId = connId, readable = readable, result = result })
+
+
+{-| Writes the response for a message, then reads the next message. Writes are
+serialized (one in flight at a time) because the underlying WritableStream only
+accepts one writer at a time: issuing concurrent Stream.write calls would race
+on the writer lock and drop writes with Stream.Locked.
+-}
+echoAndContinue : ConnState -> Int -> Stream.Readable WebSocketServer.Message -> WebSocketServer.Message -> Cmd Msg
+echoAndContinue connState connId readable message =
+    when message is
+        WebSocketServer.TextMessage text ->
+            if text == "please-close" then
+                WsConn.close connState.connection 1000 "server-initiated-close"
+                    |> Task.attempt SendResult
+            else
+                Stream.write ("echo:" ++ text) connState.textWritable
+                    |> Task.andThen (\_ -> Stream.read readable)
+                    |> Task.attempt
+                        (\result -> ReadResult { connId = connId, readable = readable, result = result })
+
+        WebSocketServer.BinaryMessage bytes ->
+            Stream.write bytes connState.binaryWritable
+                |> Task.andThen (\_ -> Stream.read readable)
+                |> Task.attempt
+                    (\result -> ReadResult { connId = connId, readable = readable, result = result })

@@ -29,3 +29,7 @@ export function mochaGlobalSetup() {
 export function mochaGlobalTeardown() {
   proc.kill();
 }
+
+export function getAppProcess() {
+  return proc;
+}
