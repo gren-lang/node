@@ -1,0 +1,212 @@
+module Main exposing (main)
+
+import Node exposing (Environment, Program)
+import Init
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
+import Stream
+import Stream.Log
+import WebSocketServer
+import WebSocketServer.Connection as WsConn
+import Task exposing (Task)
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias ConnState =
+    { connection : WebSocketServer.Connection
+    , textWritable : Stream.Writable String
+    , binaryWritable : Stream.Writable Bytes
+    }
+
+
+type alias Model =
+    { stdout : Stream.Writable Bytes
+    , stderr : Stream.Writable Bytes
+    , server : Maybe WebSocketServer.Server
+    , connections : Dict Int ConnState
+    }
+
+
+type Msg
+    = ServerCreated (Result WebSocketServer.ServerError WebSocketServer.Server)
+    | ClientConnected
+        { connection : WebSocketServer.Connection
+        , readable : Stream.Readable WebSocketServer.Message
+        , textWritable : Stream.Writable String
+        , binaryWritable : Stream.Writable Bytes
+        }
+    | ReadResult
+        { connId : Int
+        , readable : Stream.Readable WebSocketServer.Message
+        , result : Result Stream.Error WebSocketServer.Message
+        }
+    | ClientDisconnected { connection : WebSocketServer.Connection, reason : WebSocketServer.CloseReason }
+    | SendResult (Result WsConn.Error {})
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await WebSocketServer.initialize <| \wsPermission ->
+        Node.startProgram
+            { model =
+                { stdout = env.stdout
+                , stderr = env.stderr
+                , server = Nothing
+                , connections = Dict.empty
+                }
+            , command =
+                WebSocketServer.createServer wsPermission { host = "127.0.0.1", port_ = 8085 }
+                    |> Task.attempt ServerCreated
+            }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ServerCreated result ->
+            when result is
+                Ok server ->
+                    { model = { model | server = Just server }
+                    , command =
+                        Stream.Log.line model.stdout "WebSocket server started on port 8085"
+                            |> Task.execute
+                    }
+
+                Err (WebSocketServer.ServerError { code, message }) ->
+                    { model = model
+                    , command =
+                        Stream.Log.line model.stderr ("Server error: " ++ code ++ " " ++ message)
+                            |> Task.execute
+                    }
+
+        ClientConnected { connection, readable, textWritable, binaryWritable } ->
+            let
+                connId =
+                    WebSocketServer.connectionId connection
+            in
+            { model =
+                { model
+                    | connections =
+                        Dict.set connId
+                            { connection = connection
+                            , textWritable = textWritable
+                            , binaryWritable = binaryWritable
+                            }
+                            model.connections
+                }
+            , command =
+                Cmd.batch
+                    [ WsConn.send connection "welcome"
+                        |> Task.attempt SendResult
+                    , readFromStream connId readable
+                    ]
+            }
+
+        ReadResult { connId, readable, result } ->
+            when result is
+                Ok message ->
+                    when Dict.get connId model.connections is
+                        Just connState ->
+                            { model = model
+                            , command = echoAndContinue connState connId readable message
+                            }
+
+                        Nothing ->
+                            { model = model
+                            , command = Cmd.none
+                            }
+
+                Err Stream.Closed ->
+                    { model = model
+                    , command = Cmd.none
+                    }
+
+                Err (Stream.Cancelled reason) ->
+                    { model = model
+                    , command =
+                        Stream.Log.line model.stdout ("stream error: " ++ reason)
+                            |> Task.execute
+                    }
+
+                Err Stream.Locked ->
+                    { model = model
+                    , command = Cmd.none
+                    }
+
+        ClientDisconnected { connection } ->
+            let
+                connId =
+                    WebSocketServer.connectionId connection
+            in
+            { model =
+                { model
+                    | connections = Dict.remove connId model.connections
+                }
+            , command = Cmd.none
+            }
+
+        SendResult _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    when model.server is
+        Just server ->
+            Sub.batch
+                [ WebSocketServer.onConnection server
+                    (\{ connection, readable, textWritable, binaryWritable } ->
+                        ClientConnected
+                            { connection = connection
+                            , readable = readable
+                            , textWritable = textWritable
+                            , binaryWritable = binaryWritable
+                            }
+                    )
+                , WebSocketServer.onClose server (\conn reason -> ClientDisconnected { connection = conn, reason = reason })
+                ]
+
+        Nothing ->
+            Sub.none
+
+
+readFromStream : Int -> Stream.Readable WebSocketServer.Message -> Cmd Msg
+readFromStream connId readable =
+    Stream.read readable
+        |> Task.attempt
+            (\result -> ReadResult { connId = connId, readable = readable, result = result })
+
+
+{-| Writes the response for a message, then reads the next message. Writes are
+serialized (one in flight at a time) because the underlying WritableStream only
+accepts one writer at a time: issuing concurrent Stream.write calls would race
+on the writer lock and drop writes with Stream.Locked.
+-}
+echoAndContinue : ConnState -> Int -> Stream.Readable WebSocketServer.Message -> WebSocketServer.Message -> Cmd Msg
+echoAndContinue connState connId readable message =
+    when message is
+        WebSocketServer.TextMessage text ->
+            if text == "please-close" then
+                WsConn.close connState.connection 1000 "server-initiated-close"
+                    |> Task.attempt SendResult
+            else
+                Stream.write ("echo:" ++ text) connState.textWritable
+                    |> Task.andThen (\_ -> Stream.read readable)
+                    |> Task.attempt
+                        (\result -> ReadResult { connId = connId, readable = readable, result = result })
+
+        WebSocketServer.BinaryMessage bytes ->
+            Stream.write bytes connState.binaryWritable
+                |> Task.andThen (\_ -> Stream.read readable)
+                |> Task.attempt
+                    (\result -> ReadResult { connId = connId, readable = readable, result = result })
