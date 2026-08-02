@@ -1,10 +1,11 @@
-module Main exposing (main)
+module Server exposing (main)
 
 import Node exposing (Environment, Program)
 import Init
 import Bytes exposing (Bytes)
 import Dict exposing (Dict)
 import Stream
+import Process
 import Stream.Log
 import WebSocketServer
 import WebSocketServer.Connection as WsConn
@@ -25,6 +26,7 @@ type alias Model =
     , stderr : Stream.Writable Bytes
     , server : Maybe WebSocketServer.Server
     , connections : Dict Int WebSocketServer.Connection
+    , delays : Dict Int Int
     }
 
 
@@ -35,6 +37,7 @@ type Msg
         { connId : Int
         , result : Result Stream.Error WebSocketServer.Message
         }
+    | PerformRead Int
     | ClientDisconnected { connection : WebSocketServer.Connection, reason : WebSocketServer.CloseReason }
     | SendResult (Result WsConn.Error {})
 
@@ -48,9 +51,10 @@ init env =
                 , stderr = env.stderr
                 , server = Nothing
                 , connections = Dict.empty
+                , delays = Dict.empty
                 }
             , command =
-                WebSocketServer.createServer wsPermission { host = "127.0.0.1", port_ = 8085 }
+                WebSocketServer.createServer wsPermission { host = "127.0.0.1", port_ = 8085, options = [ WebSocketServer.ReadBufferCapacity 2 ] }
                     |> Task.attempt ServerCreated
             }
 
@@ -97,9 +101,12 @@ update msg model =
                 Ok message ->
                     when Dict.get connId model.connections is
                         Just connection ->
-                            { model = model
-                            , command = echoAndContinue connId connection message
-                            }
+                            let
+                                delay =
+                                    Dict.get connId model.delays
+                                        |> Maybe.withDefault 0
+                            in
+                            handleMessage connId connection message delay model
 
                         Nothing ->
                             { model = model
@@ -123,6 +130,18 @@ update msg model =
                     , command = Cmd.none
                     }
 
+        PerformRead connId ->
+            when Dict.get connId model.connections is
+                Just connection ->
+                    { model = model
+                    , command = readFromStream connId (WsConn.readable connection)
+                    }
+
+                Nothing ->
+                    { model = model
+                    , command = Cmd.none
+                    }
+
         ClientDisconnected { connection } ->
             let
                 connId =
@@ -130,7 +149,8 @@ update msg model =
             in
             { model =
                 { model
-                    | connections = Dict.remove connId model.connections
+                    | connections =
+                        Dict.remove connId model.connections
                 }
             , command = Cmd.none
             }
@@ -162,28 +182,67 @@ readFromStream connId readable =
             (\result -> ReadResult { connId = connId, result = result })
 
 
-{-| Writes the response for a message, then schedules the next read. The echo is
-sent via WebSocketServer.Connection.send and the next read is issued
-concurrently; messages are still processed and echoed one at a time because only
-one Stream.read is in flight per connection at a time.
+{-| Handles an incoming message: either a control command (delay, please-close)
+or an echo. For echoes, the next read is delayed by the connection's configured
+delay so the server processes messages at a controlled rate. This slow reading
+causes client-side backpressure when the client sends faster than the server
+consumes.
 -}
-echoAndContinue : Int -> WebSocketServer.Connection -> WebSocketServer.Message -> Cmd Msg
-echoAndContinue connId connection message =
+handleMessage : Int -> WebSocketServer.Connection -> WebSocketServer.Message -> Int -> Model -> { model : Model, command : Cmd Msg }
+handleMessage connId connection message delay model =
     when message is
         WebSocketServer.TextMessage text ->
-            if text == "please-close" then
-                WsConn.close connection 1000 "server-initiated-close"
-                    |> Task.attempt SendResult
-            else
-                Cmd.batch
-                    [ WsConn.send connection (WebSocketServer.TextMessage ("echo:" ++ text))
+            if String.startsWith "delay:" text then
+                let
+                    newDelay =
+                        text
+                            |> String.dropFirst 6
+                            |> String.toInt
+                            |> Maybe.withDefault 0
+                in
+                { model = { model | delays = Dict.set connId newDelay model.delays }
+                , command =
+                    Cmd.batch
+                        [ WsConn.send connection (WebSocketServer.TextMessage ("delay-set:" ++ String.fromInt newDelay))
+                            |> Task.attempt SendResult
+                        , readFromStream connId (WsConn.readable connection)
+                        ]
+                }
+
+            else if text == "please-close" then
+                { model = model
+                , command =
+                    WsConn.close connection 1000 "server-initiated-close"
                         |> Task.attempt SendResult
-                    , readFromStream connId (WsConn.readable connection)
-                    ]
+                }
+
+            else
+                { model = model
+                , command =
+                    Cmd.batch
+                        [ WsConn.send connection (WebSocketServer.TextMessage ("echo:" ++ text))
+                            |> Task.attempt SendResult
+                        , scheduleNextRead connId delay
+                        ]
+                }
 
         WebSocketServer.BinaryMessage bytes ->
-            Cmd.batch
-                [ WsConn.send connection (WebSocketServer.BinaryMessage bytes)
-                    |> Task.attempt SendResult
-                , readFromStream connId (WsConn.readable connection)
-                ]
+            { model = model
+            , command =
+                Cmd.batch
+                    [ WsConn.send connection (WebSocketServer.BinaryMessage bytes)
+                        |> Task.attempt SendResult
+                    , scheduleNextRead connId delay
+                    ]
+            }
+
+
+scheduleNextRead : Int -> Int -> Cmd Msg
+scheduleNextRead connId delay =
+    if delay > 0 then
+        Process.sleep (toFloat delay)
+            |> Task.attempt (\_ -> PerformRead connId)
+
+    else
+        Task.succeed {}
+            |> Task.attempt (\_ -> PerformRead connId)

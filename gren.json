@@ -17,7 +17,9 @@
         "HttpServer",
         "HttpServer.Response",
         "WebSocketServer",
-        "WebSocketServer.Connection"
+        "WebSocketServer.Connection",
+        "WebSocketClient",
+        "WebSocketClient.Connection"
     ],
     "gren-version": "0.6.0 <= v < 0.7.0",
     "dependencies": {

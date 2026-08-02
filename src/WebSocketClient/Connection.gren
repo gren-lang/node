@@ -1,0 +1,167 @@
+module WebSocketClient.Connection exposing (Error, close, errorCode, errorIsBrokenPipe, errorIsConnectionNotOpen, errorIsConnectionReset, errorIsInvalidCloseCode, errorIsCloseReasonTooLong, errorToString, readable, writable)
+
+{-| Read from, write to, and close WebSocket client connections.
+
+These operations return Tasks that can fail if the connection is no longer
+open or if a network error occurs. This lets your application detect and
+handle failures explicitly.
+
+## Reading
+
+@docs readable
+
+## Writing
+
+@docs writable
+
+## Closing
+
+@docs close
+
+## Errors
+
+@docs Error, errorCode, errorToString, errorIsConnectionNotOpen, errorIsConnectionReset, errorIsBrokenPipe, errorIsInvalidCloseCode, errorIsCloseReasonTooLong
+-}
+
+import Gren.Kernel.WebSocketClient
+import Stream exposing (Readable, Writable)
+import Task exposing (Task)
+import WebSocketClient exposing (Connection, Message)
+
+
+
+-- READING
+
+
+{-| The stream of incoming messages for a connection.
+
+Read messages from it using the [`Stream`](Stream) module, for example
+[`Stream.read`](Stream#read) or
+[`Stream.readUntilClosed`](Stream#readUntilClosed). The stream closes when the
+connection closes, and errors if the connection errors (observed as
+`Stream.Cancelled`).
+
+    WebSocketClient.Connection.readable connection
+        |> Stream.read
+        |> Task.attempt ReadResult
+
+-}
+readable : Connection -> Readable Message
+readable connection =
+    Gren.Kernel.WebSocketClient.getReadable connection
+
+
+
+-- WRITING
+
+
+{-| The stream for sending outgoing messages on a connection.
+
+Write messages to it using the [`Stream`](Stream) module, for example
+[`Stream.write`](Stream#write). A write resolves once the data has been
+flushed to the underlying socket.
+
+    WebSocketClient.Connection.writable connection
+        |> Stream.write (WebSocketClient.TextMessage "Hello!")
+        |> Task.attempt WriteResult
+
+The stream errors (observed as `Stream.Cancelled`) if the connection is no
+longer open when a write is attempted.
+
+-}
+writable : Connection -> Writable Message
+writable connection =
+    Gren.Kernel.WebSocketClient.getWritable connection
+
+
+
+-- CLOSING
+
+
+{-| Close a connection with a status code and reason string.
+
+    WebSocketClient.Connection.close connection 1000 "Normal closure"
+        |> Task.attempt ConnectionClosed
+
+Valid close codes are 1000-1003, 1007-1014, and 3000-4999.
+The reason string must not exceed 123 bytes.
+-}
+close : Connection -> Int -> String -> Task Error {}
+close connection code reason =
+    Gren.Kernel.WebSocketClient.close connection code reason
+
+
+
+-- ERRORS
+
+
+{-| An error from a WebSocket connection operation.
+
+Use the `errorIs*` helper functions to check for specific error conditions,
+or [`errorToString`](#errorToString) for a human-readable description.
+-}
+type Error
+    = Error { code : String, message : String }
+
+
+{-| Get the error code, if one is available.
+
+Network-level errors from the operating system will have a code like
+`"EPIPE"` or `"ECONNRESET"`. Errors originating from the WebSocket library
+itself (such as sending on a closed connection) do not have error codes and
+will return an empty string.
+-}
+errorCode : Error -> String
+errorCode (Error { code }) =
+    code
+
+
+{-| Get a human-readable description of the error.
+-}
+errorToString : Error -> String
+errorToString (Error { message }) =
+    message
+
+
+{-| If `True`, the operation failed because the WebSocket connection is not
+in the open state. This is the most common error and typically occurs when
+a message or close frame races with the connection closing.
+-}
+errorIsConnectionNotOpen : Error -> Bool
+errorIsConnectionNotOpen (Error { message }) =
+    String.startsWith "WebSocket is not open" message
+
+
+{-| If `True`, the connection was reset by the remote peer.
+-}
+errorIsConnectionReset : Error -> Bool
+errorIsConnectionReset (Error { code }) =
+    code == "ECONNRESET"
+
+
+{-| If `True`, the write failed because the connection has been closed.
+
+This is a system-level error that can occur when the underlying TCP socket
+is closed while a write is in progress.
+-}
+errorIsBrokenPipe : Error -> Bool
+errorIsBrokenPipe (Error { code }) =
+    code == "EPIPE" || code == "ERR_STREAM_DESTROYED"
+
+
+{-| If `True`, [`close`](#close) was called with an invalid status code.
+
+Valid WebSocket close codes are: 1000-1003, 1007-1014, and 3000-4999.
+Codes 1004, 1005, and 1006 are reserved and cannot be sent.
+-}
+errorIsInvalidCloseCode : Error -> Bool
+errorIsInvalidCloseCode (Error { message }) =
+    String.startsWith "First argument must be a valid error code" message
+
+
+{-| If `True`, [`close`](#close) was called with a reason string that exceeds
+the WebSocket protocol limit of 123 bytes.
+-}
+errorIsCloseReasonTooLong : Error -> Bool
+errorIsCloseReasonTooLong (Error { message }) =
+    String.startsWith "The message must not be greater than 123 bytes" message

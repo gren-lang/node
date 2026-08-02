@@ -1,0 +1,245 @@
+effect module WebSocketClient where { subscription = ClientSubscription } exposing (CloseReason, ConnectError(..), Connection, Message(..), Option(..), Permission, connect, connectionId, initialize, onClose)
+
+{-| Connect to WebSocket servers and exchange messages.
+
+You write your client using The Gren Architecture by connecting to a server,
+reading incoming messages via a [Readable](Stream#Readable) stream and sending
+outgoing messages via a [Writable](Stream#Writable) stream from
+[WebSocketClient.Connection](WebSocketClient-Connection).
+
+## Initialization
+
+@docs Permission, initialize, Option
+
+## Connecting
+
+@docs ConnectError, Connection, connectionId, connect
+
+## Message Types
+
+@docs Message, CloseReason
+
+## Events
+
+@docs onClose
+-}
+
+import Array exposing (Array)
+import Bytes exposing (Bytes)
+import Gren.Kernel.WebSocketClient
+import Init
+import Internal.Init
+import Task exposing (Task)
+
+
+
+-- INITIALIZATION
+
+
+{-| The permission to create a WebSocket client [Connection](WebSocketClient-Connection).
+
+You get this from [`initialize`](WebSocketClient-Connection#initialize).
+-}
+type Permission
+    = Permission
+
+
+{-| Initialize the [`WebSocketClient`](WebSocketClient) module and get permission to connect.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+{-| Error code and message from a failed connection attempt.
+-}
+type ConnectError
+    = ConnectError { code : String, message : String }
+
+
+{-| Optional configuration for [`connect`](#connect).
+
+Pass an empty list to use defaults for everything:
+
+    WebSocketClient.connect permission
+        { url = "ws://localhost:8080"
+        , options = []
+        }
+
+-}
+type Option
+    = ReadBufferCapacity Int
+
+
+defaultReadBufferCapacity : Int
+defaultReadBufferCapacity =
+    16
+
+
+readBufferCapacity : Array Option -> Int
+readBufferCapacity options =
+    options
+        |> Array.foldl
+            (\opt maybeCapacity ->
+                when maybeCapacity is
+                    Just _ ->
+                        maybeCapacity
+
+                    Nothing ->
+                        when opt is
+                            ReadBufferCapacity n ->
+                                Just n
+            )
+            Nothing
+        |> Maybe.withDefault defaultReadBufferCapacity
+
+
+
+-- CONNECTIONS
+
+
+{-| An opaque handle representing a WebSocket client connection.
+
+Use [`WebSocketClient.Connection.readable`](WebSocketClient-Connection#readable)
+to read incoming messages and
+[`WebSocketClient.Connection.writable`](WebSocketClient-Connection#writable)
+to send outgoing messages.
+-}
+type Connection
+    = -- Note: Actual implementation in Kernel code. Backed by a JS object with __$id, __$client, __$readable, and __$writable fields.
+      Connection
+
+
+{-| Get a comparable identifier for a connection.
+
+Useful for storing connections in a `Dict Int Connection`.
+-}
+connectionId : Connection -> Int
+connectionId conn =
+    Gren.Kernel.WebSocketClient.getConnectionId conn
+
+
+{-| Task to connect to a WebSocket server.
+
+    WebSocketClient.connect permission
+        { url = "ws://localhost:8080"
+        , options = []
+        }
+        |> Task.attempt Connected
+
+Use [`Option`](#Option) values to customize behavior. For example,
+[`ReadBufferCapacity`](#Option) controls how many unread messages are buffered
+before backpressure is applied to the remote peer:
+
+    WebSocketClient.connect permission
+        { url = "ws://localhost:8080"
+        , options = [ WebSocketClient.ReadBufferCapacity 4 ]
+        }
+
+-}
+connect : Permission -> { url : String, options : Array Option } -> Task ConnectError Connection
+connect _ options =
+    Gren.Kernel.WebSocketClient.connect options.url (readBufferCapacity options.options)
+
+
+
+-- MESSAGE TYPES
+
+
+{-| A message sent or received over a WebSocket connection.
+-}
+type Message
+    = TextMessage String
+    | BinaryMessage Bytes
+
+
+{-| The reason a WebSocket connection was closed.
+-}
+type alias CloseReason =
+    { code : Int
+    , reason : String
+    }
+
+
+
+-- SUBSCRIPTIONS
+
+
+{-| Subscribe to connection close events.
+
+Provides the close code and reason. Close can also be observed as
+`Stream.Closed` when reading from
+[`WebSocketClient.Connection.readable`](WebSocketClient-Connection#readable),
+but this subscription gives access to the close details.
+
+    WebSocketClient.onClose connection Closed
+
+-}
+onClose : Connection -> (CloseReason -> msg) -> Sub msg
+onClose connection handler =
+    subscription (OnCloseSub { connection = connection, handler = handler })
+
+
+
+-- EFFECT STUFF
+
+
+type ClientSubscription msg
+    = OnCloseSub { connection : Connection, handler : CloseReason -> msg }
+
+
+subMap : (a -> b) -> ClientSubscription a -> ClientSubscription b
+subMap fn sub =
+    when sub is
+        OnCloseSub { connection, handler } ->
+            OnCloseSub
+                { connection = connection
+                , handler = handler >> fn
+                }
+
+
+type alias State msg =
+    Array (ClientSubscription msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed []
+
+
+onEffects :
+    Platform.Router msg SelfMsg
+    -> Array (ClientSubscription msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router subs state =
+    let
+        _clearOldHandlers =
+            state
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnCloseSub { connection } ->
+                                Gren.Kernel.WebSocketClient.clearHandlers connection
+                    )
+
+        _setNewHandlers =
+            subs
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnCloseSub { connection, handler } ->
+                                Gren.Kernel.WebSocketClient.setCloseHandler connection router handler
+                    )
+    in
+    Task.succeed subs
+
+
+type SelfMsg
+    = Never
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task Never (State msg)
+onSelfMsg _ _ state =
+    Task.succeed state

@@ -1,4 +1,4 @@
-effect module WebSocketServer where { subscription = WebSocketSubscription } exposing (CloseReason, Connection, Message(..), Permission, Server, ServerError(..), connectionId, createServer, initialize, onClose, onConnection)
+effect module WebSocketServer where { subscription = WebSocketSubscription } exposing (CloseReason, Connection, Message(..), Option(..), Permission, Server, ServerError(..), connectionId, createServer, initialize, onClose, onConnection)
 
 {-| Create a WebSocket server that can accept connections and exchange messages.
 
@@ -7,7 +7,7 @@ and message events and responding with commands via [WebSocketServer.Connection]
 
 ## Initialization
 
-@docs Permission, Server, ServerError, initialize, createServer
+@docs Permission, Server, ServerError, initialize, createServer, Option
 
 ## Connections
 
@@ -22,6 +22,7 @@ and message events and responding with commands via [WebSocketServer.Connection]
 @docs Message, CloseReason
 -}
 
+import Array exposing (Array)
 import Bytes exposing (Bytes)
 import Gren.Kernel.WebSocketServer
 import Init
@@ -63,15 +64,67 @@ initialize =
         |> Internal.Init.Task
 
 
-{-| Task to create a WebSocket server.
+{-| Optional configuration for [`createServer`](#createServer).
 
-    WebSocketServer.createServer permission { host = "0.0.0.0", port_ = 8080 }
-        |> Task.attempt ServerCreated
+Pass an empty list to use defaults for everything:
+
+    WebSocketServer.createServer permission
+        { host = "0.0.0.0"
+        , port_ = 8080
+        , options = []
+        }
 
 -}
-createServer : Permission -> { host : String, port_ : Int } -> Task ServerError Server
+type Option
+    = ReadBufferCapacity Int
+
+
+defaultReadBufferCapacity : Int
+defaultReadBufferCapacity =
+    16
+
+
+readBufferCapacity : Array Option -> Int
+readBufferCapacity options =
+    options
+        |> Array.foldl
+            (\opt maybeCapacity ->
+                when maybeCapacity is
+                    Just _ ->
+                        maybeCapacity
+
+                    Nothing ->
+                        when opt is
+                            ReadBufferCapacity n ->
+                                Just n
+            )
+            Nothing
+        |> Maybe.withDefault defaultReadBufferCapacity
+
+
+{-| Task to create a WebSocket server.
+
+    WebSocketServer.createServer permission
+        { host = "0.0.0.0"
+        , port_ = 8080
+        , options = []
+        }
+        |> Task.attempt ServerCreated
+
+Use [`Option`](#Option) values to customize behavior. For example,
+[`ReadBufferCapacity`](#Option) controls how many unread messages are buffered
+per connection before backpressure is applied to the remote peer:
+
+    WebSocketServer.createServer permission
+        { host = "0.0.0.0"
+        , port_ = 8080
+        , options = [ WebSocketServer.ReadBufferCapacity 4 ]
+        }
+
+-}
+createServer : Permission -> { host : String, port_ : Int, options : Array Option } -> Task ServerError Server
 createServer _ options =
-    Gren.Kernel.WebSocketServer.createServer options.host options.port_
+    Gren.Kernel.WebSocketServer.createServer options.host options.port_ (readBufferCapacity options.options)
 
 
 

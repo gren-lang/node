@@ -7,27 +7,30 @@ import Platform exposing (sendToApp)
 
 */
 
-var _WebSocketServer_createServer = F2(function (host, port) {
-  return __Scheduler_binding(function (callback) {
-    var WebSocket = require("ws");
-    var server = new WebSocket.Server({ host: host, port: port });
+var _WebSocketServer_createServer = F3(
+  function (host, port, readBufferCapacity) {
+    return __Scheduler_binding(function (callback) {
+      var WebSocket = require("ws");
+      var server = new WebSocket.Server({ host: host, port: port });
+      server.__grenReadBufferCapacity = readBufferCapacity;
 
-    server.on("error", function (e) {
-      callback(
-        __Scheduler_fail(
-          __WebSocketServer_ServerError({
-            __$code: e.code || "UNKNOWN",
-            __$message: e.message,
-          }),
-        ),
-      );
-    });
+      server.on("error", function (e) {
+        callback(
+          __Scheduler_fail(
+            __WebSocketServer_ServerError({
+              __$code: e.code || "UNKNOWN",
+              __$message: e.message,
+            }),
+          ),
+        );
+      });
 
-    server.on("listening", function () {
-      callback(__Scheduler_succeed(server));
+      server.on("listening", function () {
+        callback(__Scheduler_succeed(server));
+      });
     });
-  });
-});
+  },
+);
 
 var _WebSocketServer_nextConnectionId = 0;
 
@@ -51,12 +54,26 @@ function _WebSocketServer_ensureListenersAttached(server) {
     // closures below can enqueue messages and close/error the stream when the
     // connection ends. The stream is exposed to the app via
     // WebSocketServer.Connection.readable, and read using the Stream module.
+    //
+    // Backpressure: the stream uses a CountQueuingStrategy with a configurable
+    // highWaterMark (readBufferCapacity). When the queue fills up, the socket
+    // is paused so the remote peer stops sending. The pull callback resumes
+    // the socket when the consumer drains the queue below the capacity.
+    var bufferCapacity = server.__grenReadBufferCapacity;
     client.__grenStreamClosed = false;
-    var messageStream = new ReadableStream({
-      start: function (controller) {
-        client.__grenStreamController = controller;
+    var messageStream = new ReadableStream(
+      {
+        start: function (controller) {
+          client.__grenStreamController = controller;
+        },
+        pull: function () {
+          if (client._socket) {
+            client._socket.resume();
+          }
+        },
       },
-    });
+      new CountQueuingStrategy({ highWaterMark: bufferCapacity }),
+    );
 
     var connection = {
       __$id: connId,
@@ -91,6 +108,15 @@ function _WebSocketServer_ensureListenersAttached(server) {
         : __WebSocketServer_TextMessage(data.toString());
 
       client.__grenStreamController.enqueue(msg);
+
+      // If the readable buffer is full, pause the socket so the remote
+      // peer stops sending. The pull callback above resumes it when the
+      // consumer drains the queue.
+      if (client.__grenStreamController.desiredSize <= 0) {
+        if (client._socket) {
+          client._socket.pause();
+        }
+      }
     });
 
     client.on("close", function (code, reason) {

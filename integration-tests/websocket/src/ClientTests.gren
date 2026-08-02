@@ -1,0 +1,452 @@
+module ClientTests exposing (main)
+
+import Array exposing (Array)
+import Bytes exposing (Bytes)
+import Init
+import Node
+import Node exposing (Environment, Program)
+import Stream
+import Stream.Log as Log
+import Task exposing (Task)
+import Time
+import WebSocketClient
+import WebSocketClient.Connection as WsConn
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+
+-- MODEL
+
+
+type alias Model =
+    { env : Environment
+    , exitCode : Int
+    }
+
+
+type Msg
+    = TestsCompleted (Array TestResult)
+    | OutputDone Int
+
+
+
+-- INIT
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await WebSocketClient.initialize <|
+        \permission ->
+            Node.startProgram
+                { model = { env = env, exitCode = 0 }
+                , command =
+                    runAllTests permission
+                        |> Task.perform TestsCompleted
+                }
+
+
+
+-- UPDATE
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        TestsCompleted results ->
+            let
+                summary =
+                    formatResults results
+
+                passCount =
+                    Array.foldl
+                        (\r acc ->
+                            if r.passed then
+                                acc + 1
+
+                            else
+                                acc
+                        )
+                        0
+                        results
+
+                exitCode =
+                    if passCount == Array.length results then
+                        0
+
+                    else
+                        1
+            in
+            { model = { model | exitCode = exitCode }
+            , command =
+                Log.line model.env.stdout summary
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+
+-- TEST RUNNER
+
+
+type alias TestResult =
+    { name : String
+    , passed : Bool
+    , detail : String
+    }
+
+
+runAllTests : WebSocketClient.Permission -> Task Never (Array TestResult)
+runAllTests permission =
+    [ test "connects and receives welcome" (testWelcome permission)
+    , test "echoes a text message" (testEchoText permission)
+    , test "echoes an empty text message" (testEchoEmpty permission)
+    , test "echoes unicode text" (testEchoUnicode permission)
+    , test "echoes multiple messages in order" (testMultipleMessages permission)
+    , test "echoes a binary message" (testEchoBinary permission)
+    , test "detects server-initiated close" (testServerClose permission)
+    , test "writes complete quickly with no server delay" (testFastWrites permission)
+    , test "writes are delayed by server backpressure" (testBackpressure permission)
+    ]
+        |> Task.sequence
+
+
+test : String -> Task WsError Bool -> Task Never TestResult
+test name task_ =
+    task_
+        |> Task.map
+            (\passed ->
+                { name = name
+                , passed = passed
+                , detail =
+                    if passed then
+                        ""
+
+                    else
+                        "Assertion failed"
+                }
+            )
+        |> Task.onError
+            (\err ->
+                Task.succeed
+                    { name = name
+                    , passed = False
+                    , detail = "Error: " ++ errorToString err
+                    }
+            )
+
+
+
+-- TESTS
+
+
+testWelcome : WebSocketClient.Permission -> Task WsError Bool
+testWelcome permission =
+    connectAndReceiveWelcome permission
+        |> Task.map (\conn -> True)
+
+
+testEchoText : WebSocketClient.Permission -> Task WsError Bool
+testEchoText permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen (\conn -> sendAndReadEcho conn "hello")
+        |> Task.map (\echo -> echo == "echo:hello")
+
+
+testEchoEmpty : WebSocketClient.Permission -> Task WsError Bool
+testEchoEmpty permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen (\conn -> sendAndReadEcho conn "")
+        |> Task.map (\echo -> echo == "echo:")
+
+
+testEchoUnicode : WebSocketClient.Permission -> Task WsError Bool
+testEchoUnicode permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen (\conn -> sendAndReadEcho conn "snow \u{2744} flake")
+        |> Task.map (\echo -> echo == "echo:snow \u{2744} flake")
+
+
+testMultipleMessages : WebSocketClient.Permission -> Task WsError Bool
+testMultipleMessages permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen
+            (\conn ->
+                sendText conn "first"
+                    |> Task.andThen (\_ -> sendText conn "second")
+                    |> Task.andThen (\_ -> sendText conn "third")
+                    |> Task.andThen (\_ -> collectAndCheckEchoes conn)
+            )
+
+
+collectAndCheckEchoes : WebSocketClient.Connection -> Task WsError Bool
+collectAndCheckEchoes conn =
+    readText conn
+        |> Task.andThen (\e1 ->
+            readText conn
+                |> Task.andThen (\e2 ->
+                    readText conn
+                        |> Task.map (\e3 ->
+                            e1 == "echo:first" && e2 == "echo:second" && e3 == "echo:third"
+                        )
+                )
+        )
+
+
+testEchoBinary : WebSocketClient.Permission -> Task WsError Bool
+testEchoBinary permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen
+            (\conn ->
+                WsConn.writable conn
+                    |> Stream.write (WebSocketClient.BinaryMessage (Bytes.fromString "binary-data"))
+                    |> Task.mapError StreamErr
+                    |> Task.andThen (\_ ->
+                        Stream.read (WsConn.readable conn)
+                            |> Task.mapError StreamErr
+                    )
+            )
+        |> Task.map
+            (\msg ->
+                when msg is
+                    WebSocketClient.BinaryMessage bytes ->
+                        Bytes.toString bytes == Just "binary-data"
+
+                    _ ->
+                        False
+            )
+
+
+testServerClose : WebSocketClient.Permission -> Task WsError Bool
+testServerClose permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen
+            (\conn ->
+                sendText conn "please-close"
+                    |> Task.andThen
+                        (\_ ->
+                            Stream.read (WsConn.readable conn)
+                                |> Task.mapError StreamErr
+                                |> Task.map (\_ -> False)
+                                |> Task.onError
+                                    (\wsErr ->
+                                        when wsErr is
+                                            StreamErr Stream.Closed ->
+                                                Task.succeed True
+
+                                            _ ->
+                                                Task.fail wsErr
+                                    )
+                        )
+            )
+
+
+testFastWrites : WebSocketClient.Permission -> Task WsError Bool
+testFastWrites permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen (\conn -> setDelay conn 0)
+        |> Task.andThen (\conn -> timeAction (writeLargeMessages conn 10 102400))
+        |> Task.map (\elapsed -> elapsed < 5000)
+
+
+testBackpressure : WebSocketClient.Permission -> Task WsError Bool
+testBackpressure permission =
+    connectAndReceiveWelcome permission
+        |> Task.andThen (\conn -> setDelay conn 200)
+        |> Task.andThen (\conn -> timeAction (writeLargeMessages conn 20 102400))
+        |> Task.andThen
+            (\delayedElapsed ->
+                connectAndReceiveWelcome permission
+                    |> Task.andThen (\conn -> setDelay conn 0)
+                    |> Task.andThen (\conn -> timeAction (writeLargeMessages conn 20 102400))
+                    |> Task.map (\fastElapsed ->
+                        delayedElapsed > fastElapsed + 1000
+                    )
+            )
+
+
+
+-- ERROR TYPES
+
+
+type WsError
+    = ConnectErr WebSocketClient.ConnectError
+    | StreamErr Stream.Error
+
+
+errorToString : WsError -> String
+errorToString err =
+    when err is
+        ConnectErr (WebSocketClient.ConnectError { code, message }) ->
+            "ConnectError " ++ code ++ ": " ++ message
+
+        StreamErr streamErr ->
+            when streamErr is
+                Stream.Closed ->
+                    "Stream.Closed"
+
+                Stream.Cancelled reason ->
+                    "Stream.Cancelled: " ++ reason
+
+                Stream.Locked ->
+                    "Stream.Locked"
+
+
+
+-- HELPERS
+
+
+connectAndReceiveWelcome : WebSocketClient.Permission -> Task WsError WebSocketClient.Connection
+connectAndReceiveWelcome permission =
+    WebSocketClient.connect permission { url = url, options = [] }
+        |> Task.mapError ConnectErr
+        |> Task.andThen (\conn ->
+            Stream.read (WsConn.readable conn)
+                |> Task.mapError StreamErr
+                |> Task.map (\_ -> conn)
+        )
+
+
+sendText : WebSocketClient.Connection -> String -> Task WsError {}
+sendText conn text =
+    WsConn.writable conn
+        |> Stream.write (WebSocketClient.TextMessage text)
+        |> Task.mapError StreamErr
+        |> Task.map (\_ -> {})
+
+
+readText : WebSocketClient.Connection -> Task WsError String
+readText conn =
+    Stream.read (WsConn.readable conn)
+        |> Task.mapError StreamErr
+        |> Task.map
+            (\msg ->
+                when msg is
+                    WebSocketClient.TextMessage text ->
+                        text
+
+                    _ ->
+                        ""
+            )
+
+
+sendAndReadEcho : WebSocketClient.Connection -> String -> Task WsError String
+sendAndReadEcho conn text =
+    sendText conn text
+        |> Task.andThen (\_ -> readText conn)
+
+
+setDelay : WebSocketClient.Connection -> Int -> Task WsError WebSocketClient.Connection
+setDelay conn ms =
+    sendText conn ("delay:" ++ String.fromInt ms)
+        |> Task.andThen (\_ -> readText conn)
+        |> Task.map (\_ -> conn)
+
+
+writeLargeMessages : WebSocketClient.Connection -> Int -> Int -> Task WsError {}
+writeLargeMessages conn count size =
+    let
+        msg =
+            WebSocketClient.TextMessage (String.repeat size "x")
+    in
+    writeLoop conn msg count
+
+
+writeLoop : WebSocketClient.Connection -> WebSocketClient.Message -> Int -> Task WsError {}
+writeLoop conn msg remaining =
+    if remaining <= 0 then
+        Task.succeed {}
+
+    else
+        WsConn.writable conn
+            |> Stream.write msg
+            |> Task.mapError StreamErr
+            |> Task.andThen (\_ -> writeLoop conn msg (remaining - 1))
+
+
+timeAction : Task WsError a -> Task WsError Int
+timeAction action =
+    Time.now
+        |> Task.andThen (\start ->
+            action
+                |> Task.andThen (\_ ->
+                    Time.now
+                        |> Task.map (\end_ ->
+                            Time.posixToMillis end_ - Time.posixToMillis start
+                        )
+                )
+        )
+
+
+
+-- OUTPUT
+
+
+formatResults : Array TestResult -> String
+formatResults results =
+    let
+        total =
+            Array.length results
+
+        formatLine r =
+            (if r.passed then
+                "PASS"
+
+             else
+                "FAIL"
+            )
+                ++ "  "
+                ++ r.name
+                ++ (if r.detail == "" then
+                        ""
+
+                    else
+                        " - " ++ r.detail
+                   )
+
+        lines =
+            Array.foldl
+                (\r acc ->
+                    if acc == "" then
+                        formatLine r
+
+                    else
+                        acc ++ "\n" ++ formatLine r
+                )
+                ""
+                results
+
+        passCount =
+            Array.foldl
+                (\r acc ->
+                    if r.passed then
+                        acc + 1
+
+                    else
+                        acc
+                )
+                0
+                results
+    in
+    "\n" ++ lines ++ "\n\n" ++ String.fromInt passCount ++ "/" ++ String.fromInt total ++ " passed"
+
+
+
+-- CONSTANTS
+
+
+url : String
+url =
+    "ws://127.0.0.1:8085"
