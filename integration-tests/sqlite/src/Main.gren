@@ -301,15 +301,15 @@ personEncoder p =
 
 personDecoder : Decoder Person
 personDecoder =
-    Decode.string "name" <| \name ->
-    Decode.string "role" <| \role ->
+    Decode.field "name" Decode.string <| \name ->
+    Decode.field "role" Decode.string <| \role ->
         Decode.succeed { name = name, role = role }
 
 
 badPersonDecoder : Decoder Person
 badPersonDecoder =
-    Decode.string "namee" <| \name ->
-    Decode.string "role_" <| \role ->
+    Decode.field "namee" Decode.string <| \name ->
+    Decode.field "role_" Decode.string <| \role ->
         Decode.succeed { name = name, role = role }
 
 
@@ -380,8 +380,8 @@ friendshipQ =
         """
     , parameters = []
     , rowDecoder =
-        Decode.string "person_a" <| \personA ->
-        Decode.string "person_b" <| \personB ->
+        Decode.field "person_a" Decode.string <| \personA ->
+        Decode.field "person_b" Decode.string <| \personB ->
             Decode.succeed { personA = personA, personB = personB }
     }
 
@@ -424,8 +424,8 @@ badDecoder db =
         { query = "SELECT * FROM people WHERE name = :name"
         , parameters = [ Encode.string "name" "Robin" ]
         , rowDecoder =
-            Decode.int "name" <| \name ->
-            Decode.string "role" <| \role ->
+            Decode.field "name" Decode.int <| \name ->
+            Decode.field "role" Decode.string <| \role ->
                 Decode.succeed { name = name, role = role }
         }
 
@@ -502,16 +502,16 @@ allFieldTypesEncoder row =
 
 allFieldTypesDecoder : Decoder AllFieldTypes
 allFieldTypesDecoder =
-    Decode.string "string_field" <| \stringField ->
-    Decode.int "int_field" <| \intField ->
-    Decode.float "float_field" <| \floatField ->
-    Decode.bool "bool_true" <| \boolTrue ->
-    Decode.bool "bool_false" <| \boolFalse ->
-    Decode.json (Json.Decode.array Json.Decode.string) "json_field" <| \jsonField ->
-    Decode.time "time_field" <| \timeField ->
-    Decode.time "time_with_millis_field" <| \timeWithMillisField ->
-    Decode.maybe Decode.string "maybe_just_string" <| \maybeJustString ->
-    Decode.maybe Decode.string "maybe_nothing_string" <| \maybeNothingString ->
+    Decode.field "string_field" Decode.string <| \stringField ->
+    Decode.field "int_field" Decode.int <| \intField ->
+    Decode.field "float_field" Decode.float <| \floatField ->
+    Decode.field "bool_true" Decode.bool <| \boolTrue ->
+    Decode.field "bool_false" Decode.bool <| \boolFalse ->
+    Decode.field "json_field" (Decode.json (Json.Decode.array Json.Decode.string)) <| \jsonField ->
+    Decode.field "time_field" Decode.time <| \timeField ->
+    Decode.field "time_with_millis_field" Decode.time <| \timeWithMillisField ->
+    Decode.field "maybe_just_string" (Decode.maybe Decode.string) <| \maybeJustString ->
+    Decode.field "maybe_nothing_string" (Decode.maybe Decode.string) <| \maybeNothingString ->
         Decode.succeed
             { stringField = stringField
             , intField = intField
@@ -612,6 +612,6 @@ allTimesQ =
     { query = "SELECT t FROM times ORDER BY rowid"
     , parameters = []
     , rowDecoder =
-        Decode.time "t" <| \t ->
+        Decode.field "t" Decode.time <| \t ->
             Decode.succeed t
     }
