@@ -9,11 +9,13 @@ module Sqlite.Decode exposing
     , json
     , time
     , maybe
-    , field
 
     -- Composing
     , succeed
     , fail
+
+    -- Helpers
+    , toJson
     )
 
 {-| Decode SQL results into Gren values.
@@ -120,8 +122,8 @@ Use `json()` in your SELECT to ensure you get text regardless of how the JSON wa
         { query = "SELECT json(tags) as tags FROM items WHERE id = 1"
         , parameters = []
         , rowDecoder =
-            Decode.field "tags" (Decode.json (Json.Decode.array Json.Decode.string)) <| \tags ->
-                Sqlite.Decode.succeed { tags = tags }
+            Row.column "tags" (Decode.json (Json.Decode.array Json.Decode.string)) <| \tags ->
+                Row.succeed { tags = tags }
         }
 
 See <https://www.sqlite.org/json1.html>
@@ -160,10 +162,6 @@ time =
 {-| Decode a nullable field in the database.
 
 The first parameter is the field decoder function for the type if the value is not null.
-For example, to decode a nullable TEXT field:
-
-    Decode.field (Decode.maybe Decode.string) "nickname" <| \maybeNickname ->
-        Sqlite.Decode.succeed maybeNickname
 -}
 maybe : Decoder a -> Decoder (Maybe a)
 maybe decoder =
@@ -207,19 +205,6 @@ This is used internally to communicate with sqlite in the kernel.
 toJson : Decoder a -> Json.Decode.Decoder a
 toJson =
     unwrap
-
-
-fieldHelper : Json.Decode.Decoder a -> (a -> Decoder b) -> Decoder b
-fieldHelper jsonDecoder cont =
-    Decoder <|
-        Json.Decode.andThen
-            (\val -> unwrap (cont val))
-            jsonDecoder
-
-
-field : String -> Decoder a -> (a -> Decoder b) -> Decoder b
-field fieldName decoder cont =
-    fieldHelper (Json.Decode.field fieldName (unwrap decoder)) cont
 
 
 unwrap : Decoder a -> Json.Decode.Decoder a

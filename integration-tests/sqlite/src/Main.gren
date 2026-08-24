@@ -6,6 +6,7 @@ import Test.Runner.Effectful as Effectful exposing (test, await, awaitError, con
 import Sqlite
 import Sqlite.Encode as Encode
 import Sqlite.Decode as Decode exposing (Decoder)
+import Sqlite.Decode.Row as Row
 import Task exposing (Task)
 import FileSystem
 import FileSystem.Path as Path exposing (Path)
@@ -299,18 +300,18 @@ personEncoder p =
     ]
 
 
-personDecoder : Decoder Person
+personDecoder : Row.Decoder Person
 personDecoder =
-    Decode.field "name" Decode.string <| \name ->
-    Decode.field "role" Decode.string <| \role ->
-        Decode.succeed { name = name, role = role }
+    Row.field "name" Decode.string <| \name ->
+    Row.field "role" Decode.string <| \role ->
+        Row.succeed { name = name, role = role }
 
 
-badPersonDecoder : Decoder Person
+badPersonDecoder : Row.Decoder Person
 badPersonDecoder =
-    Decode.field "namee" Decode.string <| \name ->
-    Decode.field "role_" Decode.string <| \role ->
-        Decode.succeed { name = name, role = role }
+    Row.field "namee" Decode.string <| \name ->
+    Row.field "role_" Decode.string <| \role ->
+        Row.succeed { name = name, role = role }
 
 
 insertPerson : Person -> Sqlite.Database -> Task Sqlite.Error Sqlite.ExecutionSummary
@@ -380,9 +381,9 @@ friendshipQ =
         """
     , parameters = []
     , rowDecoder =
-        Decode.field "person_a" Decode.string <| \personA ->
-        Decode.field "person_b" Decode.string <| \personB ->
-            Decode.succeed { personA = personA, personB = personB }
+        Row.field "person_a" Decode.string <| \personA ->
+        Row.field "person_b" Decode.string <| \personB ->
+            Row.succeed { personA = personA, personB = personB }
     }
 
 
@@ -414,7 +415,7 @@ failDecoder db =
     Sqlite.getOne db
         { query = "SELECT * FROM people WHERE name = :name"
         , parameters = [ Encode.string "name" "Robin" ]
-        , rowDecoder = Decode.fail "Oopsy!"
+        , rowDecoder = Row.fail "Oopsy!"
         }
 
 
@@ -424,9 +425,9 @@ badDecoder db =
         { query = "SELECT * FROM people WHERE name = :name"
         , parameters = [ Encode.string "name" "Robin" ]
         , rowDecoder =
-            Decode.field "name" Decode.int <| \name ->
-            Decode.field "role" Decode.string <| \role ->
-                Decode.succeed { name = name, role = role }
+            Row.field "name" Decode.int <| \name ->
+            Row.field "role" Decode.string <| \role ->
+                Row.succeed { name = name, role = role }
         }
 
 
@@ -500,19 +501,19 @@ allFieldTypesEncoder row =
     ]
 
 
-allFieldTypesDecoder : Decoder AllFieldTypes
+allFieldTypesDecoder : Row.Decoder AllFieldTypes
 allFieldTypesDecoder =
-    Decode.field "string_field" Decode.string <| \stringField ->
-    Decode.field "int_field" Decode.int <| \intField ->
-    Decode.field "float_field" Decode.float <| \floatField ->
-    Decode.field "bool_true" Decode.bool <| \boolTrue ->
-    Decode.field "bool_false" Decode.bool <| \boolFalse ->
-    Decode.field "json_field" (Decode.json (Json.Decode.array Json.Decode.string)) <| \jsonField ->
-    Decode.field "time_field" Decode.time <| \timeField ->
-    Decode.field "time_with_millis_field" Decode.time <| \timeWithMillisField ->
-    Decode.field "maybe_just_string" (Decode.maybe Decode.string) <| \maybeJustString ->
-    Decode.field "maybe_nothing_string" (Decode.maybe Decode.string) <| \maybeNothingString ->
-        Decode.succeed
+    Row.field "string_field" Decode.string <| \stringField ->
+    Row.field "int_field" Decode.int <| \intField ->
+    Row.field "float_field" Decode.float <| \floatField ->
+    Row.field "bool_true" Decode.bool <| \boolTrue ->
+    Row.field "bool_false" Decode.bool <| \boolFalse ->
+    Row.field "json_field" (Decode.json (Json.Decode.array Json.Decode.string)) <| \jsonField ->
+    Row.field "time_field" Decode.time <| \timeField ->
+    Row.field "time_with_millis_field" Decode.time <| \timeWithMillisField ->
+    Row.field "maybe_just_string" (Decode.maybe Decode.string) <| \maybeJustString ->
+    Row.field "maybe_nothing_string" (Decode.maybe Decode.string) <| \maybeNothingString ->
+        Row.succeed
             { stringField = stringField
             , intField = intField
             , floatField = floatField
@@ -612,6 +613,6 @@ allTimesQ =
     { query = "SELECT t FROM times ORDER BY rowid"
     , parameters = []
     , rowDecoder =
-        Decode.field "t" Decode.time <| \t ->
-            Decode.succeed t
+        Row.field "t" Decode.time <| \t ->
+            Row.succeed t
     }

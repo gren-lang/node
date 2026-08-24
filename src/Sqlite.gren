@@ -6,6 +6,7 @@ import FileSystem
 import FileSystem.Path exposing (Path)
 import Json.Decode as Decode
 import Sqlite.Decode
+import Sqlite.Decode.Row
 import Sqlite.Encode
 import Task exposing (Task)
 import Gren.Kernel.Sqlite
@@ -71,7 +72,7 @@ close =
 type alias Query value =
     { query : String
     , parameters : Array Sqlite.Encode.Value
-    , rowDecoder : Sqlite.Decode.Decoder value
+    , rowDecoder : Sqlite.Decode.Row.Decoder value
     }
 
 

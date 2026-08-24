@@ -1,0 +1,37 @@
+module Sqlite.Decode.Row exposing
+    ( Decoder
+    , field
+    , succeed
+    , fail
+    )
+
+
+import Json.Decode
+import Sqlite.Decode
+
+
+type Decoder a
+    = Decoder (Json.Decode.Decoder a)
+
+
+succeed : a -> Decoder a
+succeed val =
+    Decoder (Json.Decode.succeed val)
+
+
+fail : String -> Decoder a
+fail reason =
+    Decoder (Json.Decode.fail reason)
+
+
+field : String -> Sqlite.Decode.Decoder a -> (a -> Decoder b) -> Decoder b
+field name decoder cont =
+    Decoder <|
+        Json.Decode.andThen
+            (\val -> unwrap (cont val))
+            (Json.Decode.field name (Sqlite.Decode.toJson decoder))
+
+
+unwrap : Decoder a -> Json.Decode.Decoder a
+unwrap (Decoder d) =
+    d
