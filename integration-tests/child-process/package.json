@@ -6,5 +6,8 @@
     "clet": "^1.0.1",
     "mocha": "^10.2.0",
     "mockttp": "^3.10.0"
+  },
+  "overrides": {
+    "basic-ftp": "5.3.1"
   }
 }
