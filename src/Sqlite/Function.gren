@@ -1,6 +1,12 @@
-module Sqlite.Function exposing ( .. )
+module Sqlite.Function exposing ( Function, arg, return, register )
 
-{-|-}
+{-| placeholder
+
+@docs Function
+
+@docs arg, return, register
+
+-}
 
 import Json.Decode
 import Json.Encode
@@ -10,10 +16,12 @@ import Sqlite.Encode as Encode
 import Sqlite.Decode as Decode
 
 
+{-|-}
 type Function =
     Function (Array Json.Encode.Value -> Result {} Encode.Value)
 
 
+{-|-}
 arg : Decode.Decoder a -> (a -> Function) -> Function
 arg decoder func =
     Function <| \args ->
@@ -32,6 +40,7 @@ arg decoder func =
                 Err {}
 
 
+{-|-}
 return : Encode.Value -> Function
 return value =
     Function <| \args ->
@@ -43,6 +52,7 @@ return value =
                 Err {}
 
 
+{-|-}
 register : String -> Sqlite.Database -> Function -> Task a {}
 register name db (Function func) =
     Gren.Kernel.Sqlite.function name func db

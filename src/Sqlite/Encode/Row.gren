@@ -1,7 +1,11 @@
 module Sqlite.Encode.Row exposing ( Value, column )
 
 
-{-|-}
+{-| placeholder
+
+@docs Value, column
+
+-}
 
 import Sqlite.Encode
 import Json.Encode

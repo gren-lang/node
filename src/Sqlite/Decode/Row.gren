@@ -1,6 +1,9 @@
 module Sqlite.Decode.Row exposing ( Decoder, column, succeed, fail )
 
-{-|-}
+{-| placeholder
+
+@docs Decoder, column, succeed, fail 
+-}
 
 import Json.Decode
 import Sqlite.Decode

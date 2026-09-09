@@ -1,5 +1,30 @@
-module Sqlite exposing (..)
+module Sqlite exposing ( Database, Location, Options, defaultOptions, open, close, Backup, backup, withBackupPageRate, runBackup, Query, getOne, getMaybeOne, getAll, foldl, Statement, ExecutionSummary, execute, executeAll, executeForEach, executeScript, inTransaction, Error(..), errorToString )
 
+{-| Use SQLite natively in Gren.
+
+@docs Database
+
+@docs defaultOptions, open, close, getOne, getMaybeOne, getAll, foldl, execute, executeAll, executeForEach, executeScript, inTransaction, errorToString 
+
+@docs Location
+
+@docs Error
+
+@docs ExecutionSummary
+
+@docs Options
+
+@docs Query
+
+@docs Statement
+
+## Backup
+
+Backup the database to a separate file.
+
+@docs Backup, backup, withBackupPageRate, runBackup
+
+-}
 
 import Array.Builder
 import FileSystem
@@ -17,11 +42,15 @@ import Gren.Kernel.Sqlite
 -- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
 
 
+{-| An opened SQLite database. This value is returned when opening a SQLite 
+database and is required for operations on that database.
+-}
 type Database
     -- NOTE: implemented in kernel code
     = Database
 
 
+{-|-}
 type Location
     = Memory
     | File Path
@@ -43,6 +72,7 @@ type alias Options =
     }
 
 
+{-|-}
 defaultOptions : Options
 defaultOptions =
     { readOnly = False
@@ -52,6 +82,7 @@ defaultOptions =
     }
 
 
+{-|-}
 open : FileSystem.Permission -> Options -> Location -> Task Error Database
 open _ opts location =
     when location is
@@ -62,6 +93,7 @@ open _ opts location =
             Gren.Kernel.Sqlite.openInMemory opts
 
 
+{-|-}
 close : Database -> Task Error {}
 close =
     Gren.Kernel.Sqlite.close
@@ -71,6 +103,7 @@ close =
 -- Backup
 
 
+{-|-}
 type Backup
     = Backup
         { destination : Path
@@ -79,7 +112,7 @@ type Backup
         }
 
 
-
+{-|-}
 backup : FileSystem.Permission -> Path -> Database -> Backup
 backup _ path db =
     Backup
@@ -89,11 +122,13 @@ backup _ path db =
         }
 
 
+{-|-}
 withBackupPageRate : Int -> Backup -> Backup
 withBackupPageRate pages (Backup record) =
     Backup { record | pages = pages }
 
 
+{-|-}
 runBackup : Backup -> Task Error {}
 runBackup (Backup { destination, pages, db }) =
     Gren.Kernel.Sqlite.backup destination pages db
@@ -103,6 +138,7 @@ runBackup (Backup { destination, pages, db }) =
 -- Query
 
 
+{-|-}
 type alias Query value =
     { query : String
     , parameters : Array Sqlite.Encode.Row.Value
@@ -110,6 +146,7 @@ type alias Query value =
     }
 
 
+{-|-}
 getOne : Database -> Query value -> Task Error value
 getOne db query =
     Gren.Kernel.Sqlite.getMaybeOne query db
@@ -124,17 +161,20 @@ getOne db query =
             )
 
 
+{-|-}
 getMaybeOne : Database -> Query value -> Task Error (Maybe value)
 getMaybeOne db query =
     Gren.Kernel.Sqlite.getMaybeOne query db
         
 
+{-|-}
 getAll : Database -> Query value -> Task Error (Array value)
 getAll db query =
     foldl Array.Builder.pushLast (Array.Builder.empty 0) db query
         |> Task.map Array.Builder.toArray
 
 
+{-|-}
 foldl : (a -> b -> b) -> b -> Database -> Query a -> Task Error b
 foldl func acc db query =
     Gren.Kernel.Sqlite.foldl query db func acc
@@ -143,6 +183,7 @@ foldl func acc db query =
 -- EXECUTIONS
 
 
+{-|-}
 type alias Statement =
     { statement : String
     , parameters : Array Sqlite.Encode.Row.Value
@@ -160,6 +201,7 @@ type alias ExecutionSummary =
     }
 
 
+{-|-}
 execute : Database -> Statement -> Task Error ExecutionSummary
 execute db { statement, parameters } =
     executeForEach
@@ -170,6 +212,7 @@ execute db { statement, parameters } =
         [{}]
 
 
+{-|-}
 executeAll : Database -> Array Statement -> Task Error (Array ExecutionSummary)
 executeAll db statements =
     statements
@@ -177,6 +220,7 @@ executeAll db statements =
         |> Task.sequence
 
 
+{-|-}
 executeForEach :
     Database
     -> { statement : String
@@ -188,6 +232,7 @@ executeForEach db stmt vals =
     Gren.Kernel.Sqlite.executeMany stmt vals db
 
 
+{-|-}
 executeScript : Database -> String -> Task Error Database
 executeScript db script =
     Gren.Kernel.Sqlite.executeScript script db
@@ -196,6 +241,7 @@ executeScript db script =
 -- TRANSACTIONS
 
 
+{-|-}
 inTransaction : Database -> Task Error a -> Task Error a
 inTransaction db f =
     executeScript db "BEGIN TRANSACTION"
@@ -219,6 +265,7 @@ inTransaction db f =
 
 
 -- TODO: How detailed should we be with errors?
+{-|-}
 type Error
     = GenericError String
     | NoResultsError
@@ -228,6 +275,7 @@ type Error
     | DecodingError Decode.Error
 
 
+{-|-}
 errorToString : Error -> String
 errorToString error =
     when error is

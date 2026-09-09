@@ -28,7 +28,7 @@ You will typically use these in the `parameters` field. For example:
         }
         db
 
-@docs Value, string, int, float, bool, json, time, timeWithMillis, null, maybe, toJson
+@docs Value, string, int, float, bool, json, time, timeWithMillis, null, maybe, unwrap
 
 -}
 
@@ -177,6 +177,8 @@ toJson values =
         -- |> Json.Encode.object
 
 
+{-| Test!
+-}
 unwrap : Value -> Json.Encode.Value
 unwrap (Value v) =
     v

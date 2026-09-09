@@ -48,7 +48,7 @@ For example:
 
 ## Helpers
 
-@docs toJson
+@docs unwrap
 
 -}
 
@@ -206,6 +206,8 @@ toJson : Decoder a -> Json.Decode.Decoder a
 toJson =
     unwrap
 
+
+{-| Test! -}
 unwrap : Decoder a -> Json.Decode.Decoder a
 unwrap (Decoder d) =
     d

@@ -1,6 +1,16 @@
-module Sqlite.Aggregate exposing ( .. )
+module Sqlite.Aggregate exposing ( Function, Direction, Aggregate, aggregate, start, arg, return, register )
 
-{-|-}
+{-| placeholder
+
+@docs Function
+
+@docs Direction
+
+@docs Aggregate
+
+@docs aggregate, start, arg, return, register
+
+-}
 
 import Sqlite
 import Sqlite.Decode as Decode
@@ -10,6 +20,7 @@ import Json.Decode
 import Task exposing ( Task )
 
 
+{-|-}
 type Function state =
     Function (Direction -> state -> Array Json.Encode.Value -> Result String state)
 
@@ -29,6 +40,7 @@ type Aggregate state
         }
 
 
+{-|-}
 aggregate : { init : state, function: Function state, result : state -> Encode.Value } -> Aggregate state
 aggregate { init, function, result } =
     Aggregate
