@@ -13,6 +13,8 @@ module Sqlite.Decode exposing
     -- Composing
     , succeed
     , fail
+
+    , unwrap
     )
 
 {-| Decode SQL results into Gren values.
@@ -61,28 +63,25 @@ type Decoder a
     = Decoder (Json.Decode.Decoder a)
 
 
--- FIELD DECODERS
-
-
 {-| Decode a string field.
 -}
-string : String -> (String -> Decoder a) -> Decoder a
-string fieldName cont =
-    fieldHelper fieldName Json.Decode.string cont
+string :Decoder String
+string =
+    Json.Decode.string |> Decoder
 
 
 {-| Decode an integer field.
 -}
-int : String -> (Int -> Decoder a) -> Decoder a
-int fieldName cont =
-    fieldHelper fieldName Json.Decode.int cont
+int : Decoder Int
+int =
+    Json.Decode.int |> Decoder
 
 
 {-| Decode a float field.
 -}
-float : String -> (Float -> Decoder a) -> Decoder a
-float fieldName cont =
-    fieldHelper fieldName Json.Decode.float cont
+float : Decoder Float
+float =
+    Json.Decode.float |> Decoder
 
 
 {-| Decode a boolean field.
@@ -90,27 +89,24 @@ float fieldName cont =
 Booleans in sqlite are stored as integers with 1 and 0 as True and False.
 See <https://www.sqlite.org/datatype3.html#boolean_datatype>
 -}
-bool : String -> (Bool -> Decoder a) -> Decoder a
-bool fieldName cont =
-    let
-        boolDecoder =
-            Json.Decode.int
-                |> Json.Decode.andThen
-                    (\i ->
-                        when i is
-                            0 ->
-                                Json.Decode.succeed False
+bool : Decoder Bool
+bool =
+    Json.Decode.int
+        |> Json.Decode.andThen
+            (\i ->
+                when i is
+                    0 ->
+                        Json.Decode.succeed False
 
-                            1 ->
-                                Json.Decode.succeed True
+                    1 ->
+                        Json.Decode.succeed True
 
-                            n ->
-                                Json.Decode.fail <|
-                                    "Expected 0 or 1 in boolean field, got " ++
-                                    String.fromInt n
-                    )
-    in
-    fieldHelper fieldName boolDecoder cont
+                    n ->
+                        Json.Decode.fail <|
+                            "Expected 0 or 1 in boolean field, got " ++
+                            String.fromInt n
+            )
+        |> Decoder
 
 
 {-| Decode a JSON field.
@@ -128,22 +124,19 @@ Use `json()` in your SELECT to ensure you get text regardless of how the JSON wa
 
 See <https://www.sqlite.org/json1.html>
 -}
-json : Json.Decode.Decoder a -> String -> (a -> Decoder b) -> Decoder b
-json jsonDecoder fieldName cont =
-    let
-        decoder =
-            Json.Decode.string
-                |> Json.Decode.andThen
-                    (\str ->
-                        when Json.Decode.decodeString jsonDecoder str is
-                            Ok val ->
-                                Json.Decode.succeed val
+json : Json.Decode.Decoder a -> Decoder a
+json jsonDecoder =
+    Json.Decode.string
+        |> Json.Decode.andThen
+            (\str ->
+                when Json.Decode.decodeString jsonDecoder str is
+                    Ok val ->
+                        Json.Decode.succeed val
 
-                            Err err ->
-                                Json.Decode.fail (Json.Decode.errorToString err)
-                    )
-    in
-    fieldHelper fieldName decoder cont
+                    Err err ->
+                        Json.Decode.fail (Json.Decode.errorToString err)
+            )
+        |> Decoder
 
 
 {-| Decode a Time.Posix value.
@@ -154,14 +147,12 @@ how both [Sqlite.Encode.time](Sqlite.Encode#time) and
 which aligns with SQLite's `unixepoch` function.
 See <https://sqlite.org/lang_datefunc.html>
 -}
-time : String -> (Time.Posix -> Decoder a) -> Decoder a
-time fieldName cont =
-    fieldHelper fieldName
-        (Json.Decode.map
+time : Decoder Time.Posix
+time =
+    Decoder <|
+        Json.Decode.map
             (\seconds -> Time.millisToPosix (Math.round (seconds * 1000.0)))
             Json.Decode.float
-        )
-        cont
 
 
 {-| Decode a nullable field in the database.
@@ -169,17 +160,15 @@ time fieldName cont =
 The first parameter is the field decoder function for the type if the value is not null.
 For example, to decode a nullable TEXT field:
 
-    Sqlite.Decode.maybe Decode.string "nickname" <| \maybeNickname ->
+    Decode.field (Decode.maybe Decode.string) "nickname" <| \maybeNickname ->
         Sqlite.Decode.succeed maybeNickname
 -}
-maybe : (String -> (a -> Decoder b) -> Decoder b) -> String -> (Maybe a -> Decoder b) -> Decoder b
-maybe decoderFn fieldName cont =
+maybe : Decoder a -> Decoder (Maybe a)
+maybe decoder =
     Decoder <|
         Json.Decode.oneOf
-            [ unwrap (decoderFn fieldName (\val -> cont (Just val)))
-            , Json.Decode.andThen
-                (\_ -> unwrap (cont Nothing))
-                (Json.Decode.field fieldName (Json.Decode.null {}))
+            [ unwrap decoder |> Json.Decode.map Just
+            , Json.Decode.succeed Nothing
             ]
 
 
@@ -216,15 +205,6 @@ This is used internally to communicate with sqlite in the kernel.
 toJson : Decoder a -> Json.Decode.Decoder a
 toJson =
     unwrap
-
-
-fieldHelper : String -> Json.Decode.Decoder a -> (a -> Decoder b) -> Decoder b
-fieldHelper fieldName jsonDecoder cont =
-    Decoder <|
-        Json.Decode.andThen
-            (\val -> unwrap (cont val))
-            (Json.Decode.field fieldName jsonDecoder)
-
 
 unwrap : Decoder a -> Json.Decode.Decoder a
 unwrap (Decoder d) =

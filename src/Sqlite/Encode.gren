@@ -11,6 +11,8 @@ module Sqlite.Encode exposing
     , timeWithMillis
     , maybe
     , null
+
+    , unwrap
     )
 
 {-| Encode SQL parameters.
@@ -34,13 +36,10 @@ import Json.Encode
 import Time
 
 
-{-| An encoded parameter value.
+{-| An encoded SQLite value.
 -}
 type Value
-    = Value
-        { key : String
-        , value : Json.Encode.Value
-        }
+    = Value Json.Encode.Value
 
 
 {-| Encode a boolean value.
@@ -48,36 +47,28 @@ type Value
 This will be stored in the db as 1 for true and 0 for false.
 See <https://www.sqlite.org/datatype3.html#boolean_datatype>
 -}
-bool : String -> Bool -> Value
-bool field b =
+bool : Bool -> Value
+bool b =
     Value
-        { key = field
-        , value =
-            if b then
-                Json.Encode.int 1
-            else
-                Json.Encode.int 0
-        }
+        (if b then
+            Json.Encode.int 1
+        else
+            Json.Encode.int 0
+        )
 
 
 {-| Encode a float.
 -}
-float : String -> Float -> Value
-float field f =
-    Value
-        { key = field
-        , value = Json.Encode.float f
-        }
+float : Float -> Value
+float f =
+    Value (Json.Encode.float f)
 
 
 {-| Encode an integer.
 -}
-int : String -> Int -> Value
-int field i =
-    Value
-        { key = field
-        , value = Json.Encode.int i
-        }
+int : Int -> Value
+int i =
+    Value (Json.Encode.int i)
 
 
 {-| Encode a JSON value.
@@ -108,12 +99,9 @@ regardless of how it was stored:
 
 See <https://www.sqlite.org/json1.html>
 -}
-json : String -> Json.Encode.Value -> Value
-json field val =
-    Value
-        { key = field
-        , value = Json.Encode.string (Json.Encode.encode 0 val)
-        }
+json : Json.Encode.Value -> Value
+json val =
+    Value (Json.Encode.string (Json.Encode.encode 0 val))
 
 
 {-| Encode a Time.Posix value.
@@ -124,12 +112,9 @@ See <https://sqlite.org/lang_datefunc.html>
 
 If you need subsecond precision, use [timeWithMillis](#timeWithMillis).
 -}
-time : String -> Time.Posix -> Value
-time field t =
-    Value
-        { key = field
-        , value = Json.Encode.int (Time.posixToMillis t // 1000)
-        }
+time : Time.Posix -> Value
+time t =
+    Value (Json.Encode.int (Time.posixToMillis t // 1000))
 
 
 {-| Encode a Time.Posix value with subsecond precision.
@@ -142,12 +127,9 @@ See <https://sqlite.org/lang_datefunc.html>
 If you don't need subsecond precision, use [time](#time), which will save
 storage for large data sets.
 -}
-timeWithMillis : String -> Time.Posix -> Value
-timeWithMillis field t =
-    Value
-        { key = field
-        , value = Json.Encode.float (toFloat (Time.posixToMillis t) / 1000.0)
-        }
+timeWithMillis : Time.Posix -> Value
+timeWithMillis t =
+    Value (Json.Encode.float (toFloat (Time.posixToMillis t) / 1000.0))
 
 
 {-| Encode a nullable value.
@@ -157,34 +139,28 @@ For example, to encode a nullable TEXT field:
 
     Sqlite.Encode.maybe Sqlite.Encode.string "nickname" maybeName
 -}
-maybe : (String -> a -> Value) -> String -> Maybe a -> Value
-maybe encoder name maybeVal =
+maybe : (a -> Value) -> Maybe a -> Value
+maybe encoder maybeVal =
     when maybeVal is
         Just val ->
-            encoder name val
+            encoder val
 
         Nothing ->
-            null name
+            null
 
 
 {-| Encode null.
 -}
-null : String -> Value
-null field =
-    Value
-        { key = field
-        , value = Json.Encode.null
-        }
+null : Value
+null =
+    Value Json.Encode.null
 
 
 {-| Encode a String value.
 -}
-string : String -> String -> Value
-string field s =
-    Value
-        { key = field
-        , value = Json.Encode.string s
-        }
+string : String -> Value
+string s =
+    Value (Json.Encode.string s)
 
 
 -- HELPERS
@@ -192,15 +168,15 @@ string field s =
 
 {-| Convert an array of encoded values to a Json object.
 
-This is used internally to communicate with sqlite in the kernel.
+This is used internally to communicate with SQlite in the kernel.
 -}
-toJson : Array Value -> Json.Encode.Value
+toJson : Array Value -> Array Json.Encode.Value
 toJson values =
     values
         |> Array.map unwrap
-        |> Json.Encode.object
+        -- |> Json.Encode.object
 
 
-unwrap : Value -> { key : String, value : Json.Encode.Value }
+unwrap : Value -> Json.Encode.Value
 unwrap (Value v) =
     v

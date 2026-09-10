@@ -1,0 +1,48 @@
+module Sqlite.Function exposing ( .. )
+
+{-|-}
+
+import Json.Decode
+import Json.Encode
+import Sqlite
+import Task exposing (Task)
+import Sqlite.Encode as Encode
+import Sqlite.Decode as Decode
+
+
+type Function =
+    Function (Array Json.Encode.Value -> Result {} Encode.Value)
+
+
+arg : Decode.Decoder a -> (a -> Function) -> Function
+arg decoder func =
+    Function <| \args ->
+        when Array.popFirst args is
+            Just { first = first, rest = rest } ->
+                when Json.Decode.decodeValue (Decode.unwrap decoder) first is
+                    Ok val ->
+                        when func val is
+                            Function innerFunc ->
+                                innerFunc rest
+                    
+                    Err err ->
+                        Err {}
+
+            Nothing ->
+                Err {}
+
+
+return : Encode.Value -> Function
+return value =
+    Function <| \args ->
+        when args is
+            [] ->
+                Ok value
+
+            many ->
+                Err {}
+
+
+register : String -> Sqlite.Database -> Function -> Task a {}
+register name db (Function func) =
+    Gren.Kernel.Sqlite.function name func db

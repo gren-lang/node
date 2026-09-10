@@ -1,0 +1,88 @@
+module Sqlite.Aggregate exposing ( .. )
+
+{-|-}
+
+import Sqlite
+import Sqlite.Decode as Decode
+import Sqlite.Encode as Encode
+import Json.Encode
+import Json.Decode
+import Task exposing ( Task )
+
+
+type Function state =
+    Function (Direction -> state -> Array Json.Encode.Value -> Result String state)
+
+
+{-|-}
+type Direction
+    = Entering
+    | Exiting
+
+
+{-|-}
+type Aggregate state
+    = Aggregate
+        { init : state
+        , function : Function state
+        , result : state -> Encode.Value
+        }
+
+
+aggregate : { init : state, function: Function state, result : state -> Encode.Value } -> Aggregate state
+aggregate { init, function, result } =
+    Aggregate
+        { init = init
+        , function = function
+        , result = result
+        }
+
+
+{-|-}
+start : (state -> Function state) -> Function state
+start func =
+    Function <| \direction state args ->
+        when func state is
+            Function innerFunc ->
+                innerFunc direction state args
+
+
+{-|-}
+arg : Decode.Decoder a -> (a -> Function state) -> Function state
+arg decoder func =
+    Function <| \direction state args ->
+        when Array.popFirst args is
+            Just { first = first, rest = rest } ->
+                when Json.Decode.decodeValue (Decode.unwrap decoder) first is
+                    Ok val ->
+                        when func val is
+                            Function innerFunc ->
+                                innerFunc direction state rest
+                    
+                    Err _err ->
+                        Err "decoding error"
+
+            Nothing ->
+                Err "not enough arguments passed"
+
+
+{-|-}
+return : (Direction -> state) -> Function state
+return func =
+    Function <| \direction _state args ->
+        when args is
+            [] ->
+                Ok (func direction)
+
+            many ->
+                Err "too many arguments passed"
+
+
+{-|-}
+register : String -> Sqlite.Database -> Aggregate state -> Task x {}
+register name db (Aggregate { init, function, result }) =
+    let
+        (Function unwrappedFunc) =
+            function
+    in
+    Gren.Kernel.Sqlite.aggregate name init unwrappedFunc result db

@@ -1,0 +1,53 @@
+module Sqlite.Decode.Row exposing ( Decoder, column, succeed, fail )
+
+{-|-}
+
+import Json.Decode
+import Sqlite.Decode
+
+
+{-|-}
+type Decoder a
+    = Decoder (Json.Decode.Decoder a)
+
+
+{-|
+
+Sqlite.Decode.Row.column "name" Sqlite.Decode.string <| \name ->
+Sqlite.Decode.Row.column "something" Sqlite.Decode.string <| \something ->
+Sqlite.Decode.Row.succeed 
+    { name = name
+    , something = something 
+    }
+-}
+column : String -> Sqlite.Decode.Decoder a -> (a -> Decoder b) -> Decoder b
+column columnName decoder cont =
+    Json.Decode.field columnName (Sqlite.Decode.unwrap decoder)
+        |> Json.Decode.andThen (\val ->
+            let
+                (Decoder decoder_) =
+                    cont val
+            in
+            decoder_
+        )
+        |> Decoder
+
+
+{-| Create a decoder that always succeeds with the given value.
+
+Often used as the final step when chaining field decoders:
+
+    Sqlite.Decode.string "name" <| \name ->
+    Sqlite.Decode.int "age" <| \age ->
+        Sqlite.Decode.succeed { name = name, age = age }
+-}
+succeed : a -> Decoder a
+succeed val =
+    Decoder (Json.Decode.succeed val)
+
+
+{-| Force a decoder to fail with the given message.
+-}
+fail : String -> Decoder a
+fail reason =
+    Decoder (Json.Decode.fail reason)

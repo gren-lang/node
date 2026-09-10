@@ -1,0 +1,49 @@
+module Sqlite.Encode.Row exposing ( Value, column )
+
+
+{-|-}
+
+import Sqlite.Encode
+import Json.Encode
+
+
+{-|-}
+type Value
+    = Value
+        { column : String
+        , value : Sqlite.Encode.Value
+        }
+
+
+{-|
+
+Sqlite.Encode.Row.column "name" <| Encode.string "John"
+
+-}
+column : String -> Sqlite.Encode.Value -> Value
+column name value =
+    Value
+        { column = name
+        , value = value
+        }
+
+
+-- HELPERS
+
+
+unwrap : Value -> { key : String, value : Json.Encode.Value }
+unwrap (Value v) =
+    { key = v.column
+    , value = Sqlite.Encode.unwrap v.value 
+    }
+
+
+{-| Convert an array of encoded values to a Json object.
+
+This is used internally to communicate with SQlite in the kernel.
+-}
+toJson : Array Value -> Json.Encode.Value
+toJson values =
+    values
+        |> Array.map unwrap
+        |> Json.Encode.object
