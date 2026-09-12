@@ -54,7 +54,7 @@ tests fsPerm =
                 , awaitError "syntax error" (Sqlite.executeScript db "SELECT *") <| \err ->
                     test "Is right type" <| \_ ->
                         when err is
-                            Sqlite.GenericError _ ->
+                            Sqlite.Error _ ->
                                 Expect.pass
 
                             _ ->
@@ -62,18 +62,14 @@ tests fsPerm =
                 , awaitError "Define friends" (defineFriendsById 1 2 db) <| \err ->
                     test "Fails due to foreign key constraints" <| \_ ->
                         when err is
-                            Sqlite.ForeignKeyError message ->
-                                if String.contains "foreign key" (String.toLower message) then
-                                    Expect.pass
-
-                                else
-                                    Expect.fail "Correct error type, but message doesn't mention foreign key"
+                            Sqlite.ConstraintError Sqlite.ForeignKeyConstraintError ->
+                                Expect.pass
 
                             _ ->
                                 Expect.fail "Failed for unknown reason"
                 , awaitError "Too many templates" (execBadTemplate 3 db) <| \err ->
                     test "Is invalid" <| \_ ->
-                        Expect.equal (Sqlite.GenericError "Unknown named parameter 'id1'") err
+                        Expect.equal (Sqlite.UnknownError "Unknown named parameter 'id1'") err
                 , await "Closing the database" (Sqlite.close db) <| \_ ->
                     test "Works" <| \_ ->
                         Expect.pass
@@ -203,11 +199,11 @@ tests fsPerm =
                             , awaitError "Define same friends again" (defineFriends robin.name justin.name db) <| \err ->
                                 test "Fails due to unique constraint" <| \_ ->
                                     when err is
-                                        Sqlite.UniqueConstraintError _ ->
+                                        Sqlite.ConstraintError Sqlite.UniqueConstraintError ->
                                             Expect.pass
 
                                         _ ->
-                                            Expect.fail ("Expected UniqueConstraintError, but got: " ++ Sqlite.errorToString err)
+                                            Expect.fail ("Expected UniqueConstraintError")
                             ]
                      ]
         , await "Open db for executeAll tests" createTestDb <| \db ->
