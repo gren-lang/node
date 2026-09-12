@@ -226,7 +226,7 @@ type Error
     | CantOpenError CantOpenError
     | ConstraintError ConstraintError
     | CorruptError CorruptError
-    | Error GenericError
+    | Error String
     | IoError IoError
     | LockedError LockedError
     | MismatchError
@@ -308,14 +308,6 @@ type CorruptError
 
 
 {-|-}
-type GenericError
-    = GenericError String
-    | MissingCollSeqGenericError
-    | RetryGenericError
-    | SnapshotGenericError
-
-
-{-|-}
 type IoError
     = GenericIoError String
     | AccessIoError
@@ -379,351 +371,359 @@ type ReadOnlyError
 
 
 {-|-}
-errorCodeToError : Int -> String -> Error
-errorCodeToError errorCode message =
-    when errorCode is
-        -- Abort errors
+errorCodeToError : String -> Int -> String -> Error
+errorCodeToError errorType errorCode message =
+    when errorType is
+        "ERR_INVALID_STATE" ->
+            Error message
 
-        4 ->
-            AbortError (GenericAbortError message)
+        "ERR_SQLITE_ERROR" ->
+            when errorCode is
+                -- Abort errors
 
-        516 ->
-            AbortError RollbackAbortError
+                4 ->
+                    AbortError (GenericAbortError message)
 
-        -- Auth errors
+                516 ->
+                    AbortError RollbackAbortError
 
-        23 ->
-            AuthError (GenericAuthError message)
+                -- Auth errors
 
-        279 ->
-            AuthError UserAuthError
+                23 ->
+                    AuthError (GenericAuthError message)
 
-        -- Busy errors
+                279 ->
+                    AuthError UserAuthError
 
-        5 ->
-            BusyError (GenericBusyError message)
+                -- Busy errors
 
-        261 ->
-            BusyError RecoveryBusyError
+                5 ->
+                    BusyError (GenericBusyError message)
 
-        517 ->
-            BusyError SnapshotBusyError
+                261 ->
+                    BusyError RecoveryBusyError
 
-        773 ->
-            BusyError TimeoutBusyError
+                517 ->
+                    BusyError SnapshotBusyError
 
-        -- Can't open errors
+                773 ->
+                    BusyError TimeoutBusyError
 
-        14 ->
-            CantOpenError (GenericCantOpenError message)
+                -- Can't open errors
 
-        1038 ->
-            CantOpenError ConvPathCantOpenError
+                14 ->
+                    CantOpenError (GenericCantOpenError message)
 
-        1294 ->
-            CantOpenError DirtyWalCantOpenError
+                1038 ->
+                    CantOpenError ConvPathCantOpenError
 
-        782 ->
-            CantOpenError FullPathCantOpenError
+                1294 ->
+                    CantOpenError DirtyWalCantOpenError
 
-        526 ->
-            CantOpenError IsDirCantOpenError
+                782 ->
+                    CantOpenError FullPathCantOpenError
 
-        270 ->
-            CantOpenError NoTempDirCantOpenError
+                526 ->
+                    CantOpenError IsDirCantOpenError
 
-        1550 ->
-            CantOpenError SymLinkCantOpenError
+                270 ->
+                    CantOpenError NoTempDirCantOpenError
 
-        -- Constraint errors
+                1550 ->
+                    CantOpenError SymLinkCantOpenError
 
-        19 ->
-            ConstraintError (GenericConstraintError message)
+                -- Constraint errors
 
-        275 ->
-            ConstraintError CheckConstraintError
+                19 ->
+                    ConstraintError (GenericConstraintError message)
+
+                275 ->
+                    ConstraintError CheckConstraintError
+                
+                531 ->
+                    ConstraintError CommitHookConstraintError
+                
+                3091 ->
+                    ConstraintError DataTypeConstraintError
+
+                787 ->
+                    ConstraintError ForeignKeyConstraintError
+
+                1043 ->
+                    ConstraintError FunctionConstraintError
+
+                1299 ->
+                    ConstraintError NotNullConstraintError
+
+                2835 ->
+                    ConstraintError PrimaryKeyConstraintError
+
+                1555 ->
+                    ConstraintError PrimaryKeyConstraintError
+                
+                2579 ->
+                    ConstraintError RowIdConstraintError
+
+                1811 ->
+                    ConstraintError TriggerConstraintError
+
+                2067 ->
+                    ConstraintError UniqueConstraintError
+                
+                2323 ->
+                    ConstraintError VTabConstraintError
+
+                -- Corrupt errors
+
+                11 ->
+                    CorruptError (GenericCorruptError message)
+                
+                779 ->
+                    CorruptError IndexCorruptError
+                
+                523 ->
+                    CorruptError SequenceCorruptError
+
+                267 ->
+                    CorruptError VTabCorruptError
+
+                -- Error
+
+                1 ->
+                    Error message
+
+                257 ->
+                    Error message
+
+                513 ->
+                    Error message
+                
+                769 ->
+                    Error message
+
+                -- Full error
+
+                13 ->
+                    FullError
+
+                -- Internal error
+
+                2 ->
+                    InternalError
+
+                -- Interrupt Error
+
+                9 ->
+                    InterruptError
+
+                -- IO errors
+
+                10 ->
+                    IoError (GenericIoError message)
+
+                3338 ->
+                    IoError AccessIoError
+                
+                7178 ->
+                    IoError AuthIoError
+
+                7434 ->
+                    IoError BeginAtomicIoError
+                
+                2826 ->
+                    IoError BlockedIoError
+
+                3594 ->
+                    IoError CheckReservedLockIoError
+
+                4106 ->
+                    IoError CloseIoError
+
+                7690 ->
+                    IoError CommitAtomicIoError
+
+                6666 ->
+                    IoError ConvPathIoError
+
+                8458 ->
+                    IoError CorruptFsIoError
+
+                8202 ->
+                    IoError DataIoError
+
+                2570 ->
+                    IoError DeleteIoError
+
+                5898 ->
+                    IoError DeleteNoEntIoError
+
+                4362 ->
+                    IoError CloseIoError
+
+                1290 ->
+                    IoError DirFSyncIoError
+
+                1802 ->
+                    IoError FStatIoError
+
+                1034 ->
+                    IoError FSyncIoError
+
+                6410 ->
+                    IoError GetTempPathIoError
+
+                3850 ->
+                    IoError LockIoError
+
+                6154 ->
+                    IoError MMapIoError
+
+                3082 ->
+                    IoError NoMemIoError
+                
+                2314 ->
+                    IoError RdLockIoError
+
+                266 ->
+                    IoError ReadIoError
+
+                7946 ->
+                    IoError RollbackAtomicIoError
+
+                5642 ->
+                    IoError SeekIoError
+
+                5130 ->
+                    IoError ShmLockIoError
+
+                5386 ->
+                    IoError ShmMapIoError
+
+                4618 ->
+                    IoError ShmOpenIoError
+
+                4874 ->
+                    IoError ShmSizeIoError
+
+                522 ->
+                    IoError ShortReadIoError
+
+                1546 ->
+                    IoError TruncateIoError
+
+                2058 ->
+                    IoError UnlockIoError
+
+                6922 ->
+                    IoError VNodeIoError
+                
+                778 ->
+                    IoError WriteIoError
+
+                -- Locked errors
+
+                6 ->
+                    LockedError (GenericLockedError message)
+
+                262 ->
+                    LockedError SharedCacheLockedError
+                
+                518 ->
+                    LockedError VTabLockedError
+
+                -- Mismatch error
+
+                20 ->
+                    MismatchError
+
+                -- Misuse error
+
+                21 ->
+                    MisuseError
+
+                -- No LFS error
+
+                22 ->
+                    NoLfsError
+
+                -- No memory error
+
+                7 ->
+                    NoMemError
+
+                -- Not a DB error
+
+                26 ->
+                    NotADbError
+
+                -- Not found error
+
+                12 ->
+                    NotFoundError
+
+                -- Notice errors
+
+                27 ->
+                    NoticeError (GenericNoticeError message)
+
+                539 ->
+                    NoticeError RecoverRollbackNoticeError
+                
+                283 ->
+                    NoticeError RecoverWalNoticeError
+
+                -- Perm error
+
+                3 ->
+                    PermError
+
+                -- Protocol error
+                
+                15 ->
+                    ProtocolError
+
+                -- Range error
+
+                25 ->
+                    RangeError
+
+                -- Read only errors
+
+                8 ->
+                    ReadOnlyError (GenericReadOnlyError message)
+
+                1288 ->
+                    ReadOnlyError CantInitReadOnlyError
+
+                520 ->
+                    ReadOnlyError CantLockReadOnlyError
+                
+                1032 ->
+                    ReadOnlyError DbMovedReadOnlyError
+
+                1544 ->
+                    ReadOnlyError DirectoryReadOnlyError
+
+                264 ->
+                    ReadOnlyError RecoveryReadOnlyError
+
+                776 ->
+                    ReadOnlyError RollbackReadOnlyError
+
+                -- Schema error
+
+                17 ->
+                    SchemaError
+
+                -- Too big error
+
+                18 ->
+                    TooBigError
+
+                -- All other errors (unknown)
+
+                _ ->
+                    UnknownError message
         
-        531 ->
-            ConstraintError CommitHookConstraintError
-        
-        3091 ->
-            ConstraintError DataTypeConstraintError
-
-        787 ->
-            ConstraintError ForeignKeyConstraintError
-
-        1043 ->
-            ConstraintError FunctionConstraintError
-
-        1299 ->
-            ConstraintError NotNullConstraintError
-
-        2835 ->
-            ConstraintError PrimaryKeyConstraintError
-
-        1555 ->
-            ConstraintError PrimaryKeyConstraintError
-        
-        2579 ->
-            ConstraintError RowIdConstraintError
-
-        1811 ->
-            ConstraintError TriggerConstraintError
-
-        2067 ->
-            ConstraintError UniqueConstraintError
-        
-        2323 ->
-            ConstraintError VTabConstraintError
-
-        -- Corrupt errors
-
-        11 ->
-            CorruptError (GenericCorruptError message)
-        
-        779 ->
-            CorruptError IndexCorruptError
-        
-        523 ->
-            CorruptError SequenceCorruptError
-
-        267 ->
-            CorruptError VTabCorruptError
-
-        -- Error
-
-        1 ->
-            Error (GenericError message)
-
-        257 ->
-            Error MissingCollSeqGenericError
-
-        513 ->
-            Error RetryGenericError
-        
-        769 ->
-            Error SnapshotGenericError
-
-        -- Full error
-
-        13 ->
-            FullError
-
-        -- Internal error
-
-        2 ->
-            InternalError
-
-        -- Interrupt Error
-
-        9 ->
-            InterruptError
-
-        -- IO errors
-
-        10 ->
-            IoError (GenericIoError message)
-
-        3338 ->
-            IoError AccessIoError
-        
-        7178 ->
-            IoError AuthIoError
-
-        7434 ->
-            IoError BeginAtomicIoError
-        
-        2826 ->
-            IoError BlockedIoError
-
-        3594 ->
-            IoError CheckReservedLockIoError
-
-        4106 ->
-            IoError CloseIoError
-
-        7690 ->
-            IoError CommitAtomicIoError
-
-        6666 ->
-            IoError ConvPathIoError
-
-        8458 ->
-            IoError CorruptFsIoError
-
-        8202 ->
-            IoError DataIoError
-
-        2570 ->
-            IoError DeleteIoError
-
-        5898 ->
-            IoError DeleteNoEntIoError
-
-        4362 ->
-            IoError CloseIoError
-
-        1290 ->
-            IoError DirFSyncIoError
-
-        1802 ->
-            IoError FStatIoError
-
-        1034 ->
-            IoError FSyncIoError
-
-        6410 ->
-            IoError GetTempPathIoError
-
-        3850 ->
-            IoError LockIoError
-
-        6154 ->
-            IoError MMapIoError
-
-        3082 ->
-            IoError NoMemIoError
-        
-        2314 ->
-            IoError RdLockIoError
-
-        266 ->
-            IoError ReadIoError
-
-        7946 ->
-            IoError RollbackAtomicIoError
-
-        5642 ->
-            IoError SeekIoError
-
-        5130 ->
-            IoError ShmLockIoError
-
-        5386 ->
-            IoError ShmMapIoError
-
-        4618 ->
-            IoError ShmOpenIoError
-
-        4874 ->
-            IoError ShmSizeIoError
-
-        522 ->
-            IoError ShortReadIoError
-
-        1546 ->
-            IoError TruncateIoError
-
-        2058 ->
-            IoError UnlockIoError
-
-        6922 ->
-            IoError VNodeIoError
-        
-        778 ->
-            IoError WriteIoError
-
-        -- Locked errors
-
-        6 ->
-            LockedError (GenericLockedError message)
-
-        262 ->
-            LockedError SharedCacheLockedError
-        
-        518 ->
-            LockedError VTabLockedError
-
-        -- Mismatch error
-
-        20 ->
-            MismatchError
-
-        -- Misuse error
-
-        21 ->
-            MisuseError
-
-        -- No LFS error
-
-        22 ->
-            NoLfsError
-
-        -- No memory error
-
-        7 ->
-            NoMemError
-
-        -- Not a DB error
-
-        26 ->
-            NotADbError
-
-        -- Not found error
-
-        12 ->
-            NotFoundError
-
-        -- Notice errors
-
-        27 ->
-            NoticeError (GenericNoticeError message)
-
-        539 ->
-            NoticeError RecoverRollbackNoticeError
-        
-        283 ->
-            NoticeError RecoverWalNoticeError
-
-        -- Perm error
-
-        3 ->
-            PermError
-
-        -- Protocol error
-        
-        15 ->
-            ProtocolError
-
-        -- Range error
-
-        25 ->
-            RangeError
-
-        -- Read only errors
-
-        8 ->
-            ReadOnlyError (GenericReadOnlyError message)
-
-        1288 ->
-            ReadOnlyError CantInitReadOnlyError
-
-        520 ->
-            ReadOnlyError CantLockReadOnlyError
-        
-        1032 ->
-            ReadOnlyError DbMovedReadOnlyError
-
-        1544 ->
-            ReadOnlyError DirectoryReadOnlyError
-
-        264 ->
-            ReadOnlyError RecoveryReadOnlyError
-
-        776 ->
-            ReadOnlyError RollbackReadOnlyError
-
-        -- Schema error
-
-        17 ->
-            SchemaError
-
-        -- Too big error
-
-        18 ->
-            TooBigError
-
-        -- All other errors (unknown)
-
         _ ->
             UnknownError message

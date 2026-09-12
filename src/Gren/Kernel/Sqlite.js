@@ -255,5 +255,5 @@ var _Sqlite_executeScript = F2(function (script, db) {
 });
 
 var _Sqlite_constructError = function (e) {
-  return __Scheduler_fail(A2(__Sqlite_errorCodeToError, e.errcode, e.message));
+  return __Scheduler_fail(A3(__Sqlite_errorCodeToError, e.code, e.errcode, e.message));
 };

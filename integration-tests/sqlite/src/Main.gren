@@ -69,7 +69,7 @@ tests fsPerm =
                                 Expect.fail "Failed for unknown reason"
                 , awaitError "Too many templates" (execBadTemplate 3 db) <| \err ->
                     test "Is invalid" <| \_ ->
-                        Expect.equal (Sqlite.UnknownError "Unknown named parameter 'id1'") err
+                        Expect.equal (Sqlite.Error "Unknown named parameter 'id1'") err
                 , await "Closing the database" (Sqlite.close db) <| \_ ->
                     test "Works" <| \_ ->
                         Expect.pass
