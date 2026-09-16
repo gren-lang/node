@@ -248,7 +248,6 @@ type Error
     | SchemaError
     | MultipleResultsError Int
     | DecodingError Decode.Error
-    | UnknownError String
 
 
 {-|-}
@@ -723,7 +722,7 @@ errorCodeToError errorType errorCode message =
                 -- All other errors (unknown)
 
                 _ ->
-                    UnknownError message
+                    Error message
         
         _ ->
-            UnknownError message
+            Error message
