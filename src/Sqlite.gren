@@ -726,3 +726,303 @@ errorCodeToError errorType errorCode message =
         
         _ ->
             Error message
+
+
+{-| Transform a given `Error` into a descriptive `String`.
+
+Each error string for known SQLite errors contain the error code found at https://sqlite.org/rescode.html.
+More details on the errors can be found by their code on that page.
+-}
+errorToString : Error -> String
+errorToString passedError =
+    when passedError is
+        AbortError (GenericAbortError string) ->
+            "(4) SQLite abort error: " ++ string
+
+        AbortError RollbackAbortError ->
+            "(516) SQLite abort error: Transaction rolled back"
+
+        AuthError (GenericAuthError string) ->
+            "(23) SQLite auth error: " ++ string
+
+        AuthError UserAuthError ->
+            "(279) SQlite auth error: User lacks the proper authorization"
+
+        BusyError (GenericBusyError string) ->
+            "(5) SQLite busy error: " ++ string
+
+        BusyError RecoveryBusyError ->
+            "(261) SQLite busy error: Recovering WAL"
+
+        BusyError SnapshotBusyError ->
+            "(517) SQLite busy error: Snapshot"
+
+        BusyError TimeoutBusyError ->
+            "(773) SQLite busy error: Timeout "
+
+        CantOpenError (GenericCantOpenError string) ->
+            "(14) SQLite can't open error: " ++ string
+
+        CantOpenError ConvPathCantOpenError ->
+            "(1038) SQLite can't open error: Error with Cygwin VFS"
+
+        CantOpenError DirtyWalCantOpenError ->
+            "(1294) SQLite can't open error: Error code not in use by SQLite at this time. Please report if you run into this!"
+
+        CantOpenError FullPathCantOpenError ->
+            "(782) SQLite can't open error: Unable to convert the filename into a full pathname"
+
+        CantOpenError IsDirCantOpenError ->
+            "(526) SQLite can't open error: File is actually a directory"
+
+        CantOpenError NoTempDirCantOpenError ->
+            "(270) SQLite can't open error: Error code no longer in use. Please report if you run into this!"
+
+        CantOpenError SymLinkCantOpenError ->
+            "(1550) SQLite can't open error: SQLITE_OPEN_NOFOLLOW flag is used and the database file is a symbolic link"
+
+        ConstraintError (GenericConstraintError string) ->
+            "(19) SQLite constraint error: " ++ string
+        
+        ConstraintError CheckConstraintError ->
+            "(275) SQLite constraint error: CHECK constraint failed"
+
+        ConstraintError CommitHookConstraintError ->
+            "(531) SQLite constraint error: Commit hook callback returned non-zero"
+
+        ConstraintError DataTypeConstraintError ->
+            "(3091) SQLite constraint error: Incorrect value type inserted into column in STRICT table"
+            
+        ConstraintError ForeignKeyConstraintError ->
+            "(787) SQLite constraint error: Foreign key constraint failed"
+            
+        ConstraintError FunctionConstraintError ->
+            "(1043) SQLite constraint error: Error returned by extension function"
+            
+        ConstraintError NotNullConstraintError ->
+            "(1299) SQLite constraint error: NOT NULL constraint failed"
+            
+        ConstraintError PinnedConstraintError ->
+            "(2835) SQLite constraint error: UPDATE trigger attempted to delete the row that was being updated in the middle of the update"
+            
+        ConstraintError PrimaryKeyConstraintError ->
+            "(1555) SQLite constraint error: PRIMARY KEY constraint failed"
+            
+        ConstraintError RowIdConstraintError ->
+            "(2579) SQLite constraint error: rowid is not unique"
+            
+        ConstraintError TriggerConstraintError ->
+            "(1811) SQLite constraint error: RAISE function within a trigger fired, causing the SQL statement to abort"
+            
+        ConstraintError UniqueConstraintError ->
+            "(2067) SQLite constraint error: UNIQUE constraint failed"
+            
+        ConstraintError VTabConstraintError ->
+            "(2323) SQLite constraint error: Error with application-defined virtual table"
+
+        CorruptError (GenericCorruptError string) ->
+            "(11) SQLite corrupt error: " ++ string
+        
+        CorruptError IndexCorruptError ->
+            "(779) SQLite corrupt error: Entry missing from index"
+
+        CorruptError SequenceCorruptError ->
+            "(523) SQLite corrupt error: sqlite_sequence table schema corrupt"
+
+        CorruptError VTabCorruptError ->
+            "(267) SQLite corrupt error: Virtual table corrupt"
+
+        Error string ->
+            "Unknown or generic SQLite erorr: " ++ string
+
+        IoError (GenericIoError string) ->
+            "(10) SQLite IO error: " ++ string
+
+        IoError AccessIoError ->
+            "(3338) SQLite IO error: I/O error within the xAccess method on the sqlite3_vfs object"
+
+        IoError AuthIoError ->
+            "(7178) SQLite IO error: SQLite extension error"
+
+        IoError BeginAtomicIoError ->
+            "(7434) SQLite IO error: Begin atomic write error"
+
+        IoError BlockedIoError ->
+            "(2826) SQLite IO error: Error code no longer used. Please report if you run into this!"
+
+        IoError CheckReservedLockIoError ->
+            "(3594) SQLite IO error: xCheckReservedLock method"
+
+        IoError CloseIoError ->
+            "(4106) SQLite IO error: xClose method"
+
+        IoError CommitAtomicIoError ->
+            "(7690) SQLite IO error: Commit atomic write error"
+
+        IoError ConvPathIoError ->
+            "(6666) SQLite IO error: cygwin_conv_path() system call failed"
+
+        IoError CorruptFsIoError ->
+            "(8458) SQLite IO error: Corrupt filesystem"
+
+        IoError DataIoError ->
+            "(8202) SQLite IO error: Database page checksum incorrect"
+
+        IoError DeleteIoError ->
+            "(2570) SQLite IO error: xDelete method"
+
+        IoError DeleteNoEntIoError ->
+            "(5898) SQLite IO error: File does not exist"
+
+        IoError DirectoryCloseIoError ->
+            "(4362) SQLite IO error: Error code no longer used. Please report if you run into this!"
+
+        IoError DirFSyncIoError ->
+            "(1290) SQLite IO error: VFS layer while trying to invoke fsync() on directory"
+
+        IoError FStatIoError ->
+            "(1802) SQLite IO error: VFS layer while trying to invoke fstat()"
+
+        IoError FSyncIoError ->
+            "(1034) SQLite IO error: VFS layer while trying to invoke fsync()"
+
+        IoError GetTempPathIoError ->
+            "(6410) SQLite IO error: Cannot determine place to put temporary files"
+
+        IoError LockIoError ->
+            "(3850) SQLite IO error: Advisory file locking logic"
+
+        IoError MMapIoError ->
+            "(6154) SQLite IO error: xFetch or xUnfetch methods on the sqlite3_io_methods object"
+
+        IoError NoMemIoError ->
+            "(3082) SQLite IO error: Insufficient memory"
+
+        IoError RdLockIoError ->
+            "(2314) SQLite IO error: Locking file"
+
+        IoError ReadIoError ->
+            "(266) SQLite IO error: Reading file from disk"
+
+        IoError RollbackAtomicIoError ->
+            "(7946) SQLite IO error: Rollback atomic write error"
+
+        IoError SeekIoError ->
+            "(5642) SQLite IO error: Problem while trying to seek a file descriptor to the beginning point of the file where the read or write is to occur"
+
+        IoError ShmLockIoError ->
+            "(5130) SQLite IO error: Error code no longer used. Please report if you run into this!"
+
+        IoError ShmMapIoError ->
+            "(5386) SQLite IO error: xShmMap method on the sqlite3_io_methods object"
+
+        IoError ShmOpenIoError ->
+            "(4618) SQLite IO error: xShmMap method on the sqlite3_io_methods object while trying to open a new shared memory segment"
+
+        IoError ShmSizeIoError ->
+            "(4874) SQLite IO error: Filesystem may be out of space"
+
+        IoError ShortReadIoError ->
+            "(522) SQLite IO error: Bytes gotten does not equal bytes requested"
+
+        IoError TruncateIoError ->
+            "(1546) SQLite IO error: Error trying to changes the size of a file"
+
+        IoError UnlockIoError ->
+            "(2058) SQLite IO error: xUnlock method on the sqlite3_io_methods object"
+
+        IoError VNodeIoError ->
+            "(6922) SQLite IO error: Error returned by extension"
+
+        IoError WriteIoError ->
+            "(778) SQLite IO error: Writing file to disk"
+
+        LockedError (GenericLockedError string) ->
+            "(6) SQLite locked error: " ++ string
+
+        LockedError SharedCacheLockedError ->
+            "(262) SQLite locked error: Access blocked due to another database connecting using the same record"
+
+        LockedError VTabLockedError ->
+            "(518) SQLite locked error: Virtual table extension locked by another operation"
+
+        MismatchError ->
+            "(20) SQLite datatype mismatch error"
+
+        MisuseError ->
+            "(21) SQLite misuse error"
+
+        NoLfsError ->
+            "(22) SQLite no LFS error: File too large"
+
+        NoMemError ->
+            "(7) SQLite no memory error: Unable to allocated necessary memory for operation"
+
+        NotADbError ->
+            "(26) SQLite not a db error: The given file does not seem to be a SQLite database file"
+
+        NotFoundError ->
+            "(12) SQLite not found error"
+
+        NoticeError (GenericNoticeError string) ->
+            "(27) SQLite notice: " ++ string
+
+        NoticeError RecoverRollbackNoticeError ->
+            "(539) SQLite notice: Hot journal rolled back"
+
+        NoticeError RecoverWalNoticeError ->
+            "(283) SQLite notice: WAL mode database file recovered"
+
+        PermError ->
+            "(3) SQLite perm error: Requested access mode for a newly created database could not be provided"
+
+        ProtocolError ->
+            "(15) SQLite protocol error: Problem with file locking protocol"
+
+        RangeError ->
+            "(25) SQLite range error"
+
+        ReadOnlyError (GenericReadOnlyError string) ->
+            "(8) SQLite read error: " ++ string
+
+        ReadOnlyError CantInitReadOnlyError ->
+            "(1288) SQLite read error: Shared memory issue"
+
+        ReadOnlyError CantLockReadOnlyError ->
+            "(520) SQLite read error: Unable to obtain read lock for WAL"
+
+        ReadOnlyError DbMovedReadOnlyError ->
+            "(1032) SQLite read error: Database file moved since it was opened"
+
+        ReadOnlyError DirectoryReadOnlyError ->
+            "(1544) SQLite read error: Unable to create journal file in same directory as database"
+
+        ReadOnlyError RecoveryReadOnlyError ->
+            "(264) SQLite read error: Database needs recovery but only has read, not write, access"
+
+        ReadOnlyError RollbackReadOnlyError ->
+            "(776) SQLite read error: Cannot rollback hot journal due to database being read only"
+
+        FullError ->
+            "(13) SQLite full error: Disk is full and cannot write anymore data to the database"
+
+        InternalError ->
+            "(2) SQLite internal error: Malfunction with SQLite internals"
+
+        InterruptError ->
+            "(9) SQLite interrupt error: Operation interrupted"
+
+        TooBigError ->
+            "(18) SQLite too big error: String or blob larger than 1,000,000,000 bytes"
+
+        NoResultsError ->
+            "No results returned for the given query"
+
+        SchemaError ->
+            "(17) SQLite schema error: Database scheme changed"
+
+        MultipleResultsError int ->
+            "Obtained multiple results when one was expected. Result count: " ++ (String.fromInt int)
+
+        DecodingError error ->
+            "SQLite JSON decoding error: " ++ error
