@@ -1,6 +1,6 @@
 /*
 
-import Sqlite exposing (errorCodeToError, GenericError, ForeignKeyError, UniqueConstraintError, DecodingError, MultipleResultsError)
+import Sqlite exposing (errorCodeToError, DecodingError, MultipleResultsError)
 import Gren.Kernel.FilePath exposing (toString)
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail)
 import Gren.Kernel.Json exposing (wrap, unwrap)
