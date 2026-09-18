@@ -1,34 +1,34 @@
 {
-    "type": "package",
-    "platform": "node",
-    "name": "gren-lang/node",
-    "summary": "Run Gren on Node.js",
-    "license": "BSD-3-Clause",
-    "version": "6.1.3",
-    "exposed-modules": [
-        "Node",
-        "Init",
-        "Terminal",
-        "ChildProcess",
-        "FileSystem",
-        "FileSystem.FileHandle",
-        "FileSystem.Path",
-        "HttpClient",
-        "HttpServer",
-        "HttpServer.Response",
-        "WebSocketServer",
-        "WebSocketServer.Connection",
-        "Sqlite",
-        "Sqlite.Decode",
-        "Sqlite.Decode.Row",
-        "Sqlite.Encode",
-        "Sqlite.Encode.Row",
-        "Sqlite.Function",
-        "Sqlite.Aggregate"
-    ],
-    "gren-version": "0.6.0 <= v < 0.7.0",
-    "dependencies": {
-        "gren-lang/core": "7.0.0 <= v < 8.0.0",
-        "gren-lang/url": "6.0.0 <= v < 7.0.0"
-    }
+  "type": "package",
+  "platform": "node",
+  "name": "gren-lang/node",
+  "summary": "Run Gren on Node.js",
+  "license": "BSD-3-Clause",
+  "version": "6.1.3",
+  "exposed-modules": [
+    "Node",
+    "Init",
+    "Terminal",
+    "ChildProcess",
+    "FileSystem",
+    "FileSystem.FileHandle",
+    "FileSystem.Path",
+    "HttpClient",
+    "HttpServer",
+    "HttpServer.Response",
+    "WebSocketServer",
+    "WebSocketServer.Connection",
+    "Sqlite",
+    "Sqlite.Decode",
+    "Sqlite.Decode.Row",
+    "Sqlite.Encode",
+    "Sqlite.Encode.Row",
+    "Sqlite.Function",
+    "Sqlite.Aggregate"
+  ],
+  "gren-version": "0.6.0 <= v < 0.7.0",
+  "dependencies": {
+    "gren-lang/core": "7.0.0 <= v < 8.0.0",
+    "gren-lang/url": "6.0.0 <= v < 7.0.0"
+  }
 }
