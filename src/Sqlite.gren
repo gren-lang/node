@@ -1071,4 +1071,4 @@ errorToString passedError =
             "Obtained multiple results when one was expected. Result count: " ++ (String.fromInt int)
 
         DecodingError error ->
-            "SQLite JSON decoding error: " ++ error
+            "SQLite JSON decoding error: " ++ Decode.errorToString error
