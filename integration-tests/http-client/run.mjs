@@ -9,7 +9,12 @@ function fork(name) {
 }
 
 function run(name) {
-  return new Promise((resolve) => fork(name).on("exit", resolve));
+  return new Promise((resolve, reject) => {
+    fork(name).on("exit", (code) => {
+      if (code === 0) resolve(code);
+      else reject(new Error(`${name} exited with code ${code}`));
+    });
+  });
 }
 
 // start the tests server
@@ -22,5 +27,4 @@ await setTimeout(100);
 await run("tests-app");
 await run("stream-tests-app");
 
-// shut down server
 server.kill();

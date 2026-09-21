@@ -15,6 +15,6 @@ test_dirs=(
 for dir in "${test_dirs[@]}"; do
   echo -e "Running $dir tests...\n\n"
   pushd "$dir"
-  just test || exit 1
+  just test
   popd
 done
