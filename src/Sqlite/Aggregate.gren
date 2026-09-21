@@ -1,12 +1,63 @@
-module Sqlite.Aggregate exposing ( Function, Direction, Aggregate, aggregate, start, arg, return, register )
+module Sqlite.Aggregate exposing (Direction(..), Function, Aggregate, aggregate, start, arg, return, register )
 
-{-| placeholder
+{-| Create and add custom aggregate functions to a SQLite database.
+
+    Sqlite.Aggregate.register "fruit_portions" db <|
+        Sqlite.Aggregate.aggregate
+            { init = 0
+            , function = 
+                Sqlite.Aggregate.start <| \state ->
+                Sqlite.Aggregate.arg Decode.string <| \split ->
+                Sqlite.Aggregate.arg Decode.int <| \count -> 
+                Sqlite.Aggregate.return <| \direction -> (
+                    let
+                        portions =
+                            when split is
+                                "half" -> 2
+                                "third" -> 3
+                                "quarter" -> 4
+                                _ -> 1
+                    in
+                    when direction is
+                        Sqlite.Aggregate.Entering ->
+                            state + (portions * count)
+
+                        Sqlite.Aggregate.Exiting ->
+                            state - (portions * count)
+                )
+            , result = \state -> Encode.int state
+            }
+
+SQLite aggregate functions are much like `foldl` in Gren - You take some state and some amount of data
+(in this case, rows returned from some SQL) and run a function over that state and each row, updating
+the state until there's no more data and the final state can be returned.
+
+As an example, the custom aggregate function above could be used with the following SQL:
+
+    SELECT 
+        fruit_portions('half', banana) AS banana_portion_count,
+        fruit_portions('quarter', apple) AS apple_portion_count,
+        fruit_portions('full', pear) AS pear_portion_count
+    FROM baskets;
+
+In this case, you'd get the appropriate amount of portions for each type of fruit returned without
+any additional work or code in Gren or SQL. The custom aggregate function handles it for you!
+
+Like [custom functions](Sqlite.Function), custom aggregate functions can have any number of expected 
+arguments by chaining together multiple `arg` functions for each expected argument. All arguments are 
+expected to be provided when using the function in SQL.
+
+Custom aggregate functions in this module work as normal aggregate functions and as window 
+functions. It does this by providing the [`Direction`](#Direction) type, which allows both 
+aggregate and window functions to work properly. If you want to write a custom aggregate function 
+that will not be used as a window function, `Direction` can be ignored or is expected to always 
+be `Entering`.
 
 @docs Function
 
-@docs Direction
-
 @docs Aggregate
+
+@docs Direction
 
 @docs aggregate, start, arg, return, register
 
@@ -20,18 +71,21 @@ import Json.Decode
 import Task exposing ( Task )
 
 
-{-|-}
+{-| A custom SQLite aggregate function.
+-}
 type Function state =
     Function (Direction -> state -> Array Json.Encode.Value -> Result String state)
 
 
-{-|-}
+{-| A type representing if a value is entering or exiting the aggregate window.
+-}
 type Direction
     = Entering
     | Exiting
 
 
-{-|-}
+{-| An custom SQLite aggregate.
+-}
 type Aggregate state
     = Aggregate
         { init : state
@@ -40,7 +94,17 @@ type Aggregate state
         }
 
 
-{-|-}
+{-| Define an aggregate function.
+
+- `init` is the initial state the aggregate function will start with.
+- `function` is the actual function that runs on SQLite data . You can construct this function
+with the [`start`](#start), [`arg`](#arg), and [`return`](#return) functions in this module.
+- `result` transforms the final state value into a [`Sqlite.Encode.Value`](Sqlite.Encode#Value)
+so SQLite can properly understand and use the result.
+
+When the aggregate function is constructed, it can be registered with the SQLite database using
+the [`register`](#register) function.
+-}
 aggregate : { init : state, function: Function state, result : state -> Encode.Value } -> Aggregate state
 aggregate { init, function, result } =
     Aggregate
@@ -50,7 +114,9 @@ aggregate { init, function, result } =
         }
 
 
-{-|-}
+{-| Start the process of creating a new aggregate function. This is required in order to get
+access to the aggregate state.
+-}
 start : (state -> Function state) -> Function state
 start func =
     Function <| \direction state args ->
@@ -59,7 +125,9 @@ start func =
                 innerFunc direction state args
 
 
-{-|-}
+{-| An argument in a custom SQLite function. The argument must be decoded into a Gren
+value by using a [`Sqlite.Decode.Decoder`](Sqlite.Decode#Decoder).
+-}
 arg : Decode.Decoder a -> (a -> Function state) -> Function state
 arg decoder func =
     Function <| \direction state args ->
@@ -78,7 +146,9 @@ arg decoder func =
                 Err "not enough arguments passed"
 
 
-{-|-}
+{-| The final step in an aggregate function, giving you the [`Direction`](#Direction)
+of the data and allowing you to return a final state value.
+-}
 return : (Direction -> state) -> Function state
 return func =
     Function <| \direction _state args ->
@@ -90,7 +160,12 @@ return func =
                 Err "too many arguments passed"
 
 
-{-|-}
+{-| Register an aggregate function with the given SQLite `Database`, allowing it to be used
+in SQL queries.
+
+Aggregate functions must be registered with a database each time it's opened and used. It's 
+recommended you register all necessary functions right after [opening](Sqlite#open) the database.
+-}
 register : String -> Sqlite.Database -> Aggregate state -> Task x {}
 register name db (Aggregate { init, function, result }) =
     let

@@ -1,28 +1,88 @@
-module Sqlite exposing ( Database, Location, Options, defaultOptions, open, close, Backup, backup, withBackupPageRate, runBackup, Query, getOne, getMaybeOne, getAll, foldl, Statement, ExecutionSummary, execute, executeAll, executeForEach, executeScript, inTransaction, Error(..), errorToString )
+module Sqlite exposing ( 
+    Database, 
+    Location(..), 
+    Options, 
+    defaultOptions, open, close,
+    Query, 
+    getOne, getMaybeOne, getAll, foldl,
+    Statement, 
+    ExecutionSummary,
+    execute, executeAll, executeForEach, executeScript,
+    Backup, 
+    backup, withBackupPageRate, runBackup,
+    Error(..),
+    AbortError(..),
+    AuthError(..),
+    BusyError(..),
+    CantOpenError(..),
+    ConstraintError(..),
+    CorruptError(..),
+    IoError(..),
+    LockedError(..),
+    NoticeError(..),
+    ReadOnlyError(..),
+    errorToString,
+    inTransaction )
 
 {-| Use SQLite natively in Gren.
 
 @docs Database
 
-@docs defaultOptions, open, close, getOne, getMaybeOne, getAll, foldl, execute, executeAll, executeForEach, executeScript, inTransaction, errorToString 
-
 @docs Location
-
-@docs Error
-
-@docs ExecutionSummary
 
 @docs Options
 
+@docs defaultOptions, open, close 
+
+## Query
+
 @docs Query
+
+@docs getOne, getMaybeOne, getAll, foldl
+
+## Statement
 
 @docs Statement
 
+@docs ExecutionSummary
+
+@docs execute, executeAll, executeForEach, executeScript
+
 ## Backup
 
-Backup the database to a separate file.
+@docs Backup
 
-@docs Backup, backup, withBackupPageRate, runBackup
+@docs backup, withBackupPageRate, runBackup
+
+## Errors
+
+@docs Error
+
+@docs AbortError
+
+@docs AuthError
+
+@docs BusyError
+
+@docs CantOpenError
+
+@docs ConstraintError
+
+@docs CorruptError
+
+@docs IoError
+
+@docs LockedError
+
+@docs NoticeError
+
+@docs ReadOnlyError
+
+@docs errorToString
+
+## Utilities
+
+@docs inTransaction
 
 -}
 
@@ -42,15 +102,20 @@ import Gren.Kernel.Sqlite
 -- From: https://nodejs.org/docs/latest-v22.x/api/sqlite.html
 
 
-{-| An opened SQLite database. This value is returned when opening a SQLite 
-database and is required for operations on that database.
+{-| An opened SQLite database. This value is required to complete operations on that 
+database.
 -}
 type Database
     -- NOTE: implemented in kernel code
     = Database
 
 
-{-|-}
+{-| Where a database is located when [opened](#open).
+
+- `Memory` opens the database in memory. When your program stops, any data 
+written is lost.
+- `File` opens the database in a given `Path` in the file system.
+-}
 type Location
     = Memory
     | File Path
@@ -59,10 +124,17 @@ type Location
 {-| When opening the database, you can define a set of restrictions that apply for all
 queries and statements executed.
 
-    * `readOnly` - If true, the database is opened in read-only mode. All attempted modifications will fail.
-    * `allowExtension` - If true, the loadExtension SQL function and the loadExtension() method are enabled.
-    * `enableForeignKeyConstraints` - If true, foreign key constraints are enabled. This is recommended but can be disabled for compatibility with legacy database schemas. The enforcement of foreign key constraints can be enabled and disabled after opening the database using PRAGMA foreign_keys.
-    * `timeout` - The busy timeout in milliseconds. This is the maximum amount of time that SQLite will wait for a database lock to be released before returning an error. 0 or negative number means no timeout.
+- `readOnly`, when `True`, opens the database in read-only mode. All attempted 
+modifications will fail.
+- `allowExtension`, when `True`, enables the loadExtension SQL function and the 
+loadExtension() method.
+- `enableForeignKeyConstraints`, when `True`, foreign key constraints are enabled. This 
+is recommended but can be disabled for compatibility with legacy database schemas. The 
+enforcement of foreign key constraints can be enabled and disabled after opening the 
+database using `PRAGMA foreign_keys`.
+- `timeout` is the busy timeout in milliseconds. This is the maximum amount of time that
+SQLite will wait for a database lock to be released before returning an error. 0 or 
+negative number means no timeout.
 -}
 type alias Options =
     { readOnly : Bool
@@ -72,7 +144,14 @@ type alias Options =
     }
 
 
-{-|-}
+{-| A sensible set of default [`Options`](#Options) for a SQLite database.
+
+    { readOnly = False
+    , enableForeignKeyConstraints = True
+    , allowExtension = False
+    , timeout = 5000
+    }
+-}
 defaultOptions : Options
 defaultOptions =
     { readOnly = False
@@ -82,7 +161,13 @@ defaultOptions =
     }
 
 
-{-|-}
+{-| Open a database at the given [`Location`](#Location) if it already exists. If a 
+database does not exist at the given location, this function creates a database at 
+that location.
+
+This is the only way to obtain the [`Database`](#Database) type that is required for
+nearly all functionality in the `Sqlite` family of modules. 
+-}
 open : FileSystem.Permission -> Options -> Location -> Task Error Database
 open _ opts location =
     when location is
@@ -93,7 +178,8 @@ open _ opts location =
             Gren.Kernel.Sqlite.openInMemory opts
 
 
-{-|-}
+{-| Close the given [`Database`](#Database).
+-}
 close : Database -> Task Error {}
 close =
     Gren.Kernel.Sqlite.close
@@ -103,7 +189,9 @@ close =
 -- Backup
 
 
-{-|-}
+{-| A backup configuration for a database. This value can be created by running the 
+[`backup`](#backup) function.
+-}
 type Backup
     = Backup
         { destination : Path
@@ -112,7 +200,8 @@ type Backup
         }
 
 
-{-|-}
+{-| Produce a backup configuration for the given [`Database`](#Database).
+-}
 backup : FileSystem.Permission -> Path -> Database -> Backup
 backup _ path db =
     Backup
@@ -122,13 +211,18 @@ backup _ path db =
         }
 
 
-{-|-}
+{-| Configure the number of pages that are saved in each batch of the backup process. By 
+default, the backup page rate is 100.
+-}
 withBackupPageRate : Int -> Backup -> Backup
 withBackupPageRate pages (Backup record) =
     Backup { record | pages = pages }
 
 
-{-|-}
+{-| Run a database [`Backup`](#Backup) after it's been configured. The database can still 
+be used safely during the backup process. However, if there are any mutations performed
+on the database outside of your Gren program, the backup process will restart.
+-}
 runBackup : Backup -> Task Error {}
 runBackup (Backup { destination, pages, db }) =
     Gren.Kernel.Sqlite.backup destination pages db
@@ -138,7 +232,23 @@ runBackup (Backup { destination, pages, db }) =
 -- Query
 
 
-{-|-}
+{-| A SQL query to get some data from a database. An example of how this can
+be used is below:
+
+    { query = "SELECT name, email, age FROM users WHERE id = :user_id
+    , parameters = 
+        [ Sqlite.Encode.Row.column "user_id" <| Encode.string "123"
+        ]
+    , rowDecoder =
+        Sqlite.Decode.Row.column "name" Decode.string <| \name ->
+        Sqlite.Decode.Row.column "email" Decode.string <| \email ->
+            Sqlite.Decode.Row.succeed { name = name, email = email }
+    }
+
+For more information on encoding parameters, visit [`Sqlite.Encode.Row`](Sqlite.Encode.Row) 
+module documentation. For more information on decoding the returned rows, visit 
+[`Sqlite.Decode.Row`](Sqlite.Decode.Row) module documentation.
+-}
 type alias Query value =
     { query : String
     , parameters : Array Sqlite.Encode.Row.Value
@@ -146,7 +256,9 @@ type alias Query value =
     }
 
 
-{-|-}
+{-| Get a single value returned by a [`Query`](#Query). This will fail if 
+either no results or more than one result is returned.
+-}
 getOne : Database -> Query value -> Task Error value
 getOne db query =
     Gren.Kernel.Sqlite.getMaybeOne query db
@@ -161,20 +273,24 @@ getOne db query =
             )
 
 
-{-|-}
+{-| Get either `Nothing` (no result) or a single value returned by a [`Query`](#Query).
+-}
 getMaybeOne : Database -> Query value -> Task Error (Maybe value)
 getMaybeOne db query =
     Gren.Kernel.Sqlite.getMaybeOne query db
-        
 
-{-|-}
+
+{-| Get all values returned by a [`Query`](#Query).
+-}
 getAll : Database -> Query value -> Task Error (Array value)
 getAll db query =
     foldl Array.Builder.pushLast (Array.Builder.empty 0) db query
         |> Task.map Array.Builder.toArray
 
 
-{-|-}
+{-| Accumulate a new value by iterating over all results from a given 
+[`Query`](#Query), one row at a time.
+-}
 foldl : (a -> b -> b) -> b -> Database -> Query a -> Task Error b
 foldl func acc db query =
     Gren.Kernel.Sqlite.foldl query db func acc
@@ -183,7 +299,19 @@ foldl func acc db query =
 -- EXECUTIONS
 
 
-{-|-}
+{-| SQL that does not return any data from the database. An example of how this can
+be used is below:
+
+    { statement = "INSERT INTO people (name, role) VALUES (:name, :role)"
+    , parameters =
+        [ Sqlite.Encode.Row.column "name" <| Encode.string p.name
+        , Sqlite.Encode.Row.column "role" <| Encode.string p.role
+        ]
+    }
+
+For more information on encoding parameters, visit [`Sqlite.Encode.Row`](Sqlite.Encode.Row) 
+module documentation.
+-}
 type alias Statement =
     { statement : String
     , parameters : Array Sqlite.Encode.Row.Value
@@ -192,8 +320,9 @@ type alias Statement =
 
 {-| A summary of how an execution changed the database.
 
-    * `changes` - how many rows were inserted/updated/removed
-    * `lastInsertRowId` - the ID of the last row inserted. Might be negative if no row was inserted
+- `changes` is how many rows were inserted, updated, or removed.
+- `lastInsertRowId` is the ID of the last row inserted. This could be be negative if no row 
+was inserted.
 -}
 type alias ExecutionSummary =
     { changes : Int
@@ -201,7 +330,8 @@ type alias ExecutionSummary =
     }
 
 
-{-|-}
+{-| Execute some given SQL.
+-}
 execute : Database -> Statement -> Task Error ExecutionSummary
 execute db { statement, parameters } =
     executeForEach
@@ -212,7 +342,8 @@ execute db { statement, parameters } =
         [{}]
 
 
-{-|-}
+{-| Execute many [statements](#Statement) sequentially.
+-}
 executeAll : Database -> Array Statement -> Task Error (Array ExecutionSummary)
 executeAll db statements =
     statements
@@ -220,7 +351,18 @@ executeAll db statements =
         |> Task.sequence
 
 
-{-|-}
+{-| Execute a single [`Statement`](#Statement) for many sets of encoded parameters. This is
+very useful for inserting lots of rows into the database.
+
+    Sqlite.executeForEach db
+        { statement = "INSERT INTO people (name) VALUES (:name)"
+        , parameters = encoder
+        }
+        [ { name = "Joey" }
+        , { name = "Robin" }
+        , { name = "Justin" }
+        ]
+-}
 executeForEach :
     Database
     -> { statement : String
@@ -232,7 +374,10 @@ executeForEach db stmt vals =
     Gren.Kernel.Sqlite.executeMany stmt vals db
 
 
-{-|-}
+{-| Execute some arbitrary SQL. This is most helpful when you need to run more than one
+SQL statement, as [`execute`](#execute), [`executeForAll`](#executeForAll), and 
+[`executeForEach`](#executeForEach) only allow a single SQL statement.
+-}
 executeScript : Database -> String -> Task Error Database
 executeScript db script =
     Gren.Kernel.Sqlite.executeScript script db
@@ -241,7 +386,16 @@ executeScript db script =
 -- TRANSACTIONS
 
 
-{-|-}
+{-| Run a `Task` (like [statements](#Statement) or [queries](#Query)) in a
+transaction. This is equivalant to running some SQL like this:
+
+    BEGIN TRANSACTION
+    -- The given `Task` runs here
+    COMMIT
+
+If the given `Task` has an error, `COMMIT` will instead be `ROLLBACK`, reverting
+any changes within the transaction.
+-}
 inTransaction : Database -> Task Error a -> Task Error a
 inTransaction db f =
     executeScript db "BEGIN TRANSACTION"
@@ -264,7 +418,18 @@ inTransaction db f =
 -- ERRORS
 
 
-{-|-}
+{-| All possible errors that can happen when running functions in this module. Most of these
+come from the [SQLite error documentation](https://sqlite.org/rescode.html).
+
+While any of these errors can happen when interacting with a SQLite database, some more 
+commmon types of errors are below:
+
+- `ConstraintError` and its associated errors. These set of errors deal with any failed
+constraints, like primary keys, foreign keys, or column types.
+- `NoResultsError` and `MultipleResultsError` are isolated to the [`getOne`](#getOne)
+function.
+- `DecodingError` when decoding data returned from a [`Query`](#Query).
+-}
 type Error
     = AbortError AbortError
     | AuthError AuthError
@@ -776,8 +941,9 @@ errorCodeToError errorType errorCode message =
 
 {-| Transform a given `Error` into a descriptive `String`.
 
-Each error string for known SQLite errors contain the error code found at https://sqlite.org/rescode.html.
-More details on the errors can be found by their code on that page.
+Each error string for known SQLite errors contain the error code found at 
+[https://sqlite.org/rescode.html](https://sqlite.org/rescode.html).More details on the 
+errors can be found by their code on that page.
 -}
 errorToString : Error -> String
 errorToString passedError =

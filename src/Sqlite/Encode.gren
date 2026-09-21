@@ -22,11 +22,14 @@ You will typically use these in the `parameters` field. For example:
     Sqlite.execute
         { statement = "INSERT INTO hero (name, level) VALUES (:name, :level)"
         , parameters =
-            [ Encode.string "name" "Peach"
-            , Encode.int "level" 99
+            [ Sqlite.Row.Encode "name" <| Encode.string "name"
+            , Sqlite.Row.Encode "level" <| Encode.int 99
             ]
         }
         db
+
+They are also used to encode values in custom SQLite [functions](Sqlite.Function) and
+[aggregates](Sqlite.Aggregate).
 
 @docs Value, string, int, float, bool, json, time, timeWithMillis, null, maybe, unwrap
 
@@ -45,7 +48,7 @@ type Value
 {-| Encode a boolean value.
 
 This will be stored in the db as 1 for true and 0 for false.
-See <https://www.sqlite.org/datatype3.html#boolean_datatype>
+See <https://www.sqlite.org/datatype3.html#boolean_datatype> for more information.
 -}
 bool : Bool -> Value
 bool b =
@@ -97,7 +100,7 @@ regardless of how it was stored:
 
     "SELECT json(data) as data FROM items"
 
-See <https://www.sqlite.org/json1.html>
+See <https://www.sqlite.org/json1.html> for more information.
 -}
 json : Json.Encode.Value -> Value
 json val =
@@ -108,7 +111,7 @@ json val =
 
 The value will be encoded as an int representing the number of seconds since
 unix epoch, which aligns with SQLite's `unixepoch()` function.
-See <https://sqlite.org/lang_datefunc.html>
+See <https://sqlite.org/lang_datefunc.html> for more information.
 
 If you need subsecond precision, use [timeWithMillis](#timeWithMillis).
 -}
@@ -122,7 +125,7 @@ time t =
 The value will be encoded as a float representing the number of seconds since
 unix epoch, with subsecond precision to the millisecond, which aligns with
 SQLite's `unixepoch` function using the `"subsec"` modifier.
-See <https://sqlite.org/lang_datefunc.html>
+See <https://sqlite.org/lang_datefunc.html> for more information.
 
 If you don't need subsecond precision, use [time](#time), which will save
 storage for large data sets.
@@ -137,7 +140,7 @@ timeWithMillis t =
 The first parameter is the encoder for the type if the value is not null.
 For example, to encode a nullable TEXT field:
 
-    Sqlite.Encode.maybe Sqlite.Encode.string "nickname" maybeName
+    Sqlite.Encode.Row "nickname" (Sqlite.Encode.maybe Sqlite.Encode.string maybeName)
 -}
 maybe : (a -> Value) -> Maybe a -> Value
 maybe encoder maybeVal =
@@ -174,10 +177,10 @@ toJson : Array Value -> Array Json.Encode.Value
 toJson values =
     values
         |> Array.map unwrap
-        -- |> Json.Encode.object
 
 
-{-| Test!
+{-| Transform a `Decoder` into a `Json.Decode.Decoder`. This is used by internal modules
+and is not needed for normal use.
 -}
 unwrap : Value -> Json.Encode.Value
 unwrap (Value v) =

@@ -10,43 +10,26 @@ module Sqlite.Decode exposing
     , time
     , maybe
 
-    -- Composing
-    , succeed
-    , fail
-
     , unwrap
     )
 
-{-| Decode SQL results into Gren values.
+{-| Decode SQL values into Gren values.
 
-Decoders can be chained to decode all fields in the result set,
-with the string parameter matching the name of the field in the query.
+You will typically see these while decoding results from queries:
 
-For example:
-
-    Sqlite.getOne
-        { query = "SELECT id, name FROM users WHERE id = :id"
-        , parameters = [ Sqlite.Encode.int "id" 1 ]
-        , rowDecoder =
-            Sqlite.Decode.int "id" <| \id ->
-            Sqlite.Decode.string "name" <| \name ->
-                Sqlite.Decode.succeed
-                    { id = id
-                    , name = name
-                    }
+    Sqlite.getAll
+        { statement = "SELECT name, level FROM hero"
+        , parameters = []
+        , rowDecoder = 
+            Sqlite.Decode.Row "name" Sqlite.Decode.string <| \name ->
+            Sqlite.Decode.Row "level" Sqlite.Decode.int <| \level ->
+                Sqlite.Decode.Row.suceed { name = name, level = level }
         }
+        db
 
 @docs Decoder
 
-## Field Decoders
-
 @docs string, int, float, bool, json, time, maybe
-
-## Composing Decoders
-
-@docs succeed, fail
-
-## Helpers
 
 @docs unwrap
 
@@ -57,7 +40,7 @@ import Math
 import Time
 
 
-{-| A decoder for a database row.
+{-| A decoder for a SQLite value.
 -}
 type Decoder a
     = Decoder (Json.Decode.Decoder a)
@@ -86,8 +69,8 @@ float =
 
 {-| Decode a boolean field.
 
-Booleans in sqlite are stored as integers with 1 and 0 as True and False.
-See <https://www.sqlite.org/datatype3.html#boolean_datatype>
+Booleans in SQLite are stored as integers with 1 and 0 as True and False.
+See <https://www.sqlite.org/datatype3.html#boolean_datatype> for more information.
 -}
 bool : Decoder Bool
 bool =
@@ -118,11 +101,11 @@ Use `json()` in your SELECT to ensure you get text regardless of how the JSON wa
         { query = "SELECT json(tags) as tags FROM items WHERE id = 1"
         , parameters = []
         , rowDecoder =
-            Sqlite.Decode.json (Json.Decode.array Json.Decode.string) "tags" <| \tags ->
-                Sqlite.Decode.succeed { tags = tags }
+            Sqlite.Decode.Row.column "tags" Sqlite.Decode.json (Json.Decode.array Json.Decode.string) <| \tags ->
+                Sqlite.Decode.Row.succeed { tags = tags }
         }
 
-See <https://www.sqlite.org/json1.html>
+See <https://www.sqlite.org/json1.html> for more information.
 -}
 json : Json.Decode.Decoder a -> Decoder a
 json jsonDecoder =
@@ -141,11 +124,11 @@ json jsonDecoder =
 
 {-| Decode a Time.Posix value.
 
-Expects the db field to hold the number of seconds since unix epoch, which is
+Expects the database field to hold the number of seconds since unix epoch, which is
 how both [Sqlite.Encode.time](Sqlite.Encode#time) and
 [Sqlite.Encode.timeWithMillis](Sqlite.Encode#timeWithMillis) store it, and
 which aligns with SQLite's `unixepoch` function.
-See <https://sqlite.org/lang_datefunc.html>
+See <https://sqlite.org/lang_datefunc.html> for more information.
 -}
 time : Decoder Time.Posix
 time =
@@ -160,8 +143,8 @@ time =
 The first parameter is the field decoder function for the type if the value is not null.
 For example, to decode a nullable TEXT field:
 
-    Decode.field (Decode.maybe Decode.string) "nickname" <| \maybeNickname ->
-        Sqlite.Decode.succeed maybeNickname
+    Sqlite.Decode.Row.column "nickname" (Decode.maybe Decode.string) <| \maybeNickname ->
+        Sqlite.Decode.Row.succeed maybeNickname
 -}
 maybe : Decoder a -> Decoder (Maybe a)
 maybe decoder =
@@ -170,29 +153,6 @@ maybe decoder =
             [ unwrap decoder |> Json.Decode.map Just
             , Json.Decode.succeed Nothing
             ]
-
-
--- COMPOSING
-
-
-{-| Create a decoder that always succeeds with the given value.
-
-Often used as the final step when chaining field decoders:
-
-    Sqlite.Decode.string "name" <| \name ->
-    Sqlite.Decode.int "age" <| \age ->
-        Sqlite.Decode.succeed { name = name, age = age }
--}
-succeed : a -> Decoder a
-succeed val =
-    Decoder (Json.Decode.succeed val)
-
-
-{-| Force a decoder to fail with the given message.
--}
-fail : String -> Decoder a
-fail reason =
-    Decoder (Json.Decode.fail reason)
 
 
 -- HELPERS
@@ -207,7 +167,9 @@ toJson =
     unwrap
 
 
-{-| Test! -}
+{-| Transform a `Decoder` into a `Json.Decode.Decoder`. This is used by internal modules
+and is not needed for normal use.
+-}
 unwrap : Decoder a -> Json.Decode.Decoder a
 unwrap (Decoder d) =
     d
