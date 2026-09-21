@@ -1,4 +1,5 @@
 .envrc
+.devbox/
 .gren
 .DS_Store
 artifacts.dat
