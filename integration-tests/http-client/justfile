@@ -1,4 +1,4 @@
-test:
+test: build
 	node run.mjs
 
 build:
