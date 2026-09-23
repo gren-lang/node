@@ -1,6 +1,34 @@
-module Sqlite.Function exposing ( .. )
+module Sqlite.Function exposing ( Function, arg, return, register )
 
-{-|-}
+{-| Create and add custom functions to a SQLite database.
+
+    Sqlite.Function.register "add_one" db <| 
+        Sqlite.Function.arg Decode.int <| \num ->
+        Sqlite.Function.return (Encode.int (num + 1))
+
+Function arguments must be decoded with [`Sqlite.Decode`](Sqlite.Decode) and the 
+return value of the function must be an encoded with [`Sqlite.Encode`](Sqlite.Encode).
+
+The above function can then be using in SQL.
+
+    SELECT answer FROM answers WHERE answer_number = add_one(1)
+
+For this example, `answer_number` in the SQL above you be equivalant to writing
+`answer_number = 2` and will be evaluated by SQLite as such.
+
+Functions can have any number of arguments by stringing together multiple `arg`
+functions for each expected argument. All arguments are expected to be provided
+when using the function in SQL.
+
+Due to limitations in the underlying Node SQLite implementation, custom functions
+do not error. Instead, any failures change the return value of the function to 
+`null`.
+
+@docs Function
+
+@docs arg, return, register
+
+-}
 
 import Json.Decode
 import Json.Encode
@@ -10,10 +38,16 @@ import Sqlite.Encode as Encode
 import Sqlite.Decode as Decode
 
 
+{-| A custom SQLite function. This function can be used in a database by giving it as 
+an argument to the [`register`](#register) function.
+-}
 type Function =
     Function (Array Json.Encode.Value -> Result {} Encode.Value)
 
 
+{-| An argument in a custom SQLite function. The argument must be decoded into a Gren
+value by using a [`Sqlite.Decode.Decoder`](Sqlite.Decode#Decoder).
+-}
 arg : Decode.Decoder a -> (a -> Function) -> Function
 arg decoder func =
     Function <| \args ->
@@ -32,6 +66,9 @@ arg decoder func =
                 Err {}
 
 
+{-| The encoded SQLite value that's returned by a custom SQLite function. This return value
+is what will be handed to SQLite and must be encoded as [`Sqlite.Encode.Value`](Sqlite.Encode#Value).
+-}
 return : Encode.Value -> Function
 return value =
     Function <| \args ->
@@ -43,6 +80,12 @@ return value =
                 Err {}
 
 
+{-| Register a given `Function` with the given SQLite `Database`, allowing it to be used
+in SQL queries.
+
+Functions must be registered with a database each time it's opened and used. It's recommended
+you register all necessary functions right after [opening](Sqlite#open) the database.
+-}
 register : String -> Sqlite.Database -> Function -> Task a {}
 register name db (Function func) =
     Gren.Kernel.Sqlite.function name func db
