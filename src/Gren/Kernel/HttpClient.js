@@ -329,7 +329,7 @@ var _HttpClient_extractRequestBody = function (config) {
 };
 
 var _HttpClient_prepBytes = function (bytes) {
-  return new Uint8Array(bytes.buffer);
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 };
 
 var _HttpClient_CustomAbortError = new Error();
