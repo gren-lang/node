@@ -9,7 +9,6 @@ test_dirs=(
   "file-system"
   "child-process"
   "sqlite"
-  "websocket"
 )
 
 for dir in "${test_dirs[@]}"; do

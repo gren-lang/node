@@ -20,9 +20,7 @@
         "HTTP": [
             "HttpClient",
             "HttpServer",
-            "HttpServer.Response",
-            "WebSocketServer",
-            "WebSocketServer.Connection"
+            "HttpServer.Response"
         ],
         "SQLite": [
             "Sqlite",
