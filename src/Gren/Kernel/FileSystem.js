@@ -488,11 +488,12 @@ var _FileSystem_unlink = function (src) {
 
 var _FileSystem_mkdtemp = function (prefix) {
   return __Scheduler_binding(function (callback) {
-    fs.mkdtemp(path.join(os.tmpdir(), prefix), function (err, dir) {
+    const tmpPath = path.join(os.tmpdir(), prefix);
+    fs.mkdtemp(tmpPath, function (err, dir) {
       if (err) {
         callback(
           __Scheduler_fail(
-            _FileSystem_constructError(__FilePath_fromString(dir), err),
+            _FileSystem_constructError(__FilePath_fromString(tmpPath), err),
           ),
         );
       } else {

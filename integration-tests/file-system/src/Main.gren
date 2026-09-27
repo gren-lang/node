@@ -177,6 +177,15 @@ init env =
             Just "ReadFileStreamBetween" ->
                 { model = {}, command = testReadFileStream env fsPerm (FileSystem.Between { start = 1, end = 3 }) |> toCmd }
 
+            Just "MakeTempDirectoryError" ->
+                { model = {}
+                , command =
+                    FileSystem.makeTempDirectory fsPerm "no-such-directory/x"
+                    |> Task.map (\path -> "made " ++ Path.toPosixString path)
+                    |> Task.onError (\e -> Task.succeed ("failed: " ++ FileSystem.errorCode e))
+                    |> toCmd
+                }
+
             _ ->
                 { model = {}
                 , command =

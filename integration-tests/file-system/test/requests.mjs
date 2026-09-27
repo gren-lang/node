@@ -186,4 +186,11 @@ describe("FileSystem", () => {
       cleanup(file.readStream);
     }
   });
+
+  it("makeTempDirectory doesn't crash program", async () => {
+    const { code, stdout, stderr } = await run("MakeTempDirectoryError");
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
+    assert.equal(code, 0, `app exited with unexpected error: ${code}`);
+  })
 });
