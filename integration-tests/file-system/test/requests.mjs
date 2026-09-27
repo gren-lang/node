@@ -96,6 +96,17 @@ describe("FileSystem", () => {
     }
   });
 
+  it("writeFromOffset works", async () => {
+    fs.writeFileSync(file.wfsReplaceFrom, "AAAA");
+    const { code, stderr } = await run("WriteFileHandleFromOffset");
+    try {
+      assert.equal(code, 0, `app exited ${code}\n${stderr}`);
+      assert.equal(fs.readFileSync(file.wfsReplaceFrom, "utf8"), "AAZZ");
+    } finally {
+      cleanup(file.wfsReplaceFrom);
+    }
+  })
+
   it("truncateFile shrinks the file to the given length", async () => {
     fs.writeFileSync(file.truncate, "12345678");
     const { code, stderr } = await run("TruncateFile");

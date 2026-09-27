@@ -132,14 +132,14 @@ var _FileSystem_readHelper = function (
   );
 };
 
-var _FileSystem_writeFromOffset = F3(function (fh, options, bytes) {
+var _FileSystem_writeFromOffset = F3(function (fh, offset, bytes) {
   return __Scheduler_binding(function (callback) {
     _FileSystem_writeHelper(
       fh,
       bytes,
       0,
       bytes.byteLength,
-      options.__$offset,
+      offset,
       callback,
     );
   });

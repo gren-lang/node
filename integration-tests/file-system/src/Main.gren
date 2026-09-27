@@ -3,6 +3,7 @@ module Main exposing (main)
 import Bytes exposing (Bytes)
 import FileSystem
 import FileSystem.Path as Path
+import FileSystem.FileHandle as FileHandle
 import Init
 import Node
 import Stream
@@ -81,6 +82,23 @@ init env =
                 , command =
                     getTempFilePath fsPerm "gren-fs-wfs-replacefrom.txt"
                         |> Task.andThen (writeFileStreamTest fsPerm (FileSystem.ReplaceFrom 3) "XY")
+                        |> toCmd
+                }
+
+            Just "WriteFileHandleFromOffset" ->
+                { model = {}
+                , command =
+                    getTempFilePath fsPerm "gren-fs-wfs-replacefrom.txt"
+                        |> Task.andThen
+                            (FileHandle.openForWrite fsPerm FileHandle.ExpectExisting
+                                >> Task.mapError FileSystem.errorToString
+                            )
+                        |> Task.andThen
+                            (\fh ->
+                                FileHandle.writeFromOffset fh 2 (Bytes.fromString "ZZ")
+                                    |> Task.andThen (\_ -> FileHandle.close fh)
+                                    |> Task.mapError FileSystem.errorToString
+                            )
                         |> toCmd
                 }
 
