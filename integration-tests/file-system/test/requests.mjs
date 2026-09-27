@@ -105,7 +105,7 @@ describe("FileSystem", () => {
     } finally {
       cleanup(file.wfsReplaceFrom);
     }
-  })
+  });
 
   it("truncateFile shrinks the file to the given length", async () => {
     fs.writeFileSync(file.truncate, "12345678");
@@ -203,5 +203,5 @@ describe("FileSystem", () => {
     assert.equal(stdout, "");
     assert.equal(stderr, "");
     assert.equal(code, 0, `app exited with unexpected error: ${code}`);
-  })
+  });
 });

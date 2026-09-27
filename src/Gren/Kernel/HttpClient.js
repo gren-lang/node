@@ -354,7 +354,12 @@ var _HttpClient_formatResponse = function (res, data) {
   let headerDict = __Dict_empty;
 
   for (const [key, value] of res.headers.entries()) {
-    headerDict = A3(__Dict_set, key.toLowerCase(), value.split(',').map(v => v.trimStart()), headerDict);
+    headerDict = A3(
+      __Dict_set,
+      key.toLowerCase(),
+      value.split(",").map((v) => v.trimStart()),
+      headerDict,
+    );
   }
 
   return {
