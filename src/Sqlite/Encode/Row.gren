@@ -1,13 +1,21 @@
 module Sqlite.Encode.Row exposing ( Value, column )
 
 
-{-|-}
+{-| Encode SQL values by their column name.
+
+These encoders are used to encode parameters when running a SQLite [query](Sqlite#Query) 
+or [statement](Sqlite#Statement).
+
+@docs Value, column
+
+-}
 
 import Sqlite.Encode
 import Json.Encode
 
 
-{-|-}
+{-| An encoded row.
+-}
 type Value
     = Value
         { column : String
@@ -15,10 +23,7 @@ type Value
         }
 
 
-{-|
-
-Sqlite.Encode.Row.column "name" <| Encode.string "John"
-
+{-| Encode a given [`Sqlite.Encode.Value`](Sqlite.Encode#Value) for the given column name.
 -}
 column : String -> Sqlite.Encode.Value -> Value
 column name value =
