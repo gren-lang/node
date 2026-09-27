@@ -16,8 +16,6 @@
     "HttpClient",
     "HttpServer",
     "HttpServer.Response",
-    "WebSocketServer",
-    "WebSocketServer.Connection",
     "Sqlite",
     "Sqlite.Decode",
     "Sqlite.Decode.Row",
