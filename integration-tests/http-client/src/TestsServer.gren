@@ -41,7 +41,16 @@ handler req res =
                 |> Task.executeCmd
 
         { method = GET, path = "/headers" } ->
-            res
+            let
+                resWithHeaders =
+                    Dict.foldl
+                        (\k v res_ ->
+                            Response.setHeader k v res_
+                        )
+                        res
+                        req.headers
+            in
+            resWithHeaders
                 |> Response.setBody
                     (req.headers
                         |> Encode.dict identity Encode.string

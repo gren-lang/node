@@ -24,7 +24,9 @@ const server = fork("server-app");
 await setTimeout(100);
 
 // run tests
-await run("tests-app");
-await run("stream-tests-app");
-
-server.kill();
+try {
+  await run("tests-app");
+  await run("stream-tests-app");
+} finally {
+  server.kill();
+}
