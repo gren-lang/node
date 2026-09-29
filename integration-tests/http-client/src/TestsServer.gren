@@ -41,21 +41,22 @@ handler req res =
                 |> Task.executeCmd
 
         { method = GET, path = "/headers" } ->
-            let
-                resWithHeaders =
-                    Dict.foldl
-                        (\k v res_ ->
-                            Response.setHeader k v res_
-                        )
-                        res
-                        req.headers
-            in
-            resWithHeaders
+            res
                 |> Response.setBody
                     (req.headers
                         |> Encode.dict identity Encode.string
                         |> Encode.encode 2
                     )
+                |> Response.send
+
+        { method = GET, path = "/multi-headers" } ->
+            res
+                |> Response.appendHeader "set-cookie" "lang=javascript"
+                |> Response.appendHeader "set-cookie" "type=text"
+                |> Response.appendHeader "dups" "dup1"
+                |> Response.appendHeader "dups" "dup2"
+                |> Response.appendHeader "unduped" "dup"
+                |> Response.setBody "Duplicated headers!"
                 |> Response.send
 
         _ ->

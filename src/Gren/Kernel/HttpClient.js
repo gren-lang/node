@@ -351,15 +351,21 @@ var _HttpClient_formatResponseLegacy = function (res, data) {
 };
 
 var _HttpClient_formatResponse = function (res, data) {
+  const headerObj = {};
+  for (const [key_, value] of res.headers) {
+    const key = key_.toLowerCase();
+
+    if (key in headerObj) {
+      headerObj[key].push(value);
+    } else {
+      headerObj[key] = [value];
+    }
+  }
+
   let headerDict = __Dict_empty;
 
-  for (const [key, value] of res.headers.entries()) {
-    headerDict = A3(
-      __Dict_set,
-      key.toLowerCase(),
-      value.split(",").map((v) => v.trimStart()),
-      headerDict,
-    );
+  for (const [key, value] of Object.entries(headerObj)) {
+    headerDict = A3(__Dict_set, key, value, headerDict);
   }
 
   return {

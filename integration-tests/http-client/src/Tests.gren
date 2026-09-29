@@ -249,20 +249,22 @@ suite permission =
                     )
             )
         , await "with custom duplicated headers"
-            (HttpClient.get "/headers"
-                |> HttpClient.withDuplicatedHeader "first" "dup"
-                |> HttpClient.withDuplicatedHeader "first" "dup2"
-                |> HttpClient.withDuplicatedHeader "second" "unduped"
+            (HttpClient.get "/multi-headers"
                 |> HttpClient.expectAnything
                 |> send
             )
             (\res ->
                 test "sends headers"
                     (\_ ->
+                        let
+                            getArray key =
+                                Dict.get key >> Maybe.withDefault []
+                        in
                         res.headers
                             |> Expect.all
-                                [ Dict.get "first" >> Maybe.withDefault [] >> Expect.equal ["dup", "dup2" ]
-                                , Dict.get "second" >> Maybe.withDefault [] >> Expect.equal ["unduped"]
+                                [ getArray "set-cookie" >> Expect.equal [ "lang=javascript", "type=text" ]
+                                , getArray "dups" >> Expect.equal [ "dup1, dup2" ]
+                                , getArray "unduped" >> Expect.equal [ "dup" ]
                                 ]
                     )
             )

@@ -5,6 +5,7 @@ effect module HttpServer.Response where { command = ResponseCmd } exposing
     , setBodyAsBytes
     , setBodyAsString
     , setHeader
+    , appendHeader
     , setStatus
     )
 
@@ -23,7 +24,7 @@ assuming you [subscribed](HttpServer.onRequest) with a `GotRequest` msg:
                 |> Response.send
         }
 
-@docs Response, send, setBody, setBodyAsBytes, setBodyAsString, setHeader, setStatus
+@docs Response, send, setBody, setBodyAsBytes, setBodyAsString, setHeader, appendHeader, setStatus
 
 -}
 
@@ -38,7 +39,7 @@ type Response =
     Response
         { key : ResponseKey
         , status : Int
-        , headers : Dict String String
+        , headers : Dict String (Array String)
         , body : Body
         }
 
@@ -79,7 +80,22 @@ setHeader : String -> String -> Response -> Response
 setHeader key value (Response response) =
     Response
         { response 
-            | headers = Dict.set key value response.headers
+            | headers = Dict.set key [value] response.headers
+        }
+
+
+{-| Appends a value to an existing header value. If the header
+key/value pair doesn't exist, it will be created
+-}
+appendHeader : String -> String -> Response -> Response
+appendHeader key value (Response response) =
+    Response
+        { response 
+            | headers =
+                Dict.update
+                    key
+                    (Maybe.map (Array.pushLast value) >> Maybe.withDefault [value] >> Just)
+                    response.headers
         }
 
 
