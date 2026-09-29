@@ -108,20 +108,7 @@ var _ChildProcess_run = function (options) {
 
 var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
   return __Scheduler_binding(function (callback) {
-    var subproc;
-    try {
-      subproc = _ChildProcess_getSubProc(options);
-    } catch (e) {
-      callback(
-        __Scheduler_succeed(
-          __Scheduler_rawSpawn(
-            sendExitToApp(typeof e.errno === "undefined" ? -1 : e.errno),
-          ),
-        ),
-      );
-
-      return;
-    }
+    var subproc = _ChildProcess_getSubProc(options);
 
     var proc = __Scheduler_rawSpawn(
       sendInitToApp({
@@ -143,6 +130,16 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
       }),
     );
 
+    subproc.on("error", function (e) {
+      callback(
+        __Scheduler_succeed(
+          __Scheduler_rawSpawn(
+            sendExitToApp(typeof e.errno === "undefined" ? -1 : e.errno),
+          ),
+        ),
+      );
+    });
+
     subproc.on("exit", function (code) {
       __Scheduler_rawSpawn(sendExitToApp(code));
     });
@@ -157,9 +154,7 @@ function _ChildProcess_getSubProc(options) {
   var workingDir = options.__$workingDirectory;
   var env = options.__$environmentVariables;
   var shell = options.__$shell;
-  var cmd = [options.__$program].concat(options.__$arguments).join(" ");
-
-  var subproc = childProcess.spawn(cmd, {
+  var spawnOpts = {
     cwd: _ChildProcess_handleCwd(workingDir),
     env: _ChildProcess_handleEnv(env),
     timeout: options.__$runDuration,
@@ -172,7 +167,21 @@ function _ChildProcess_getSubProc(options) {
           : "ignore",
     detached:
       options.__$connection.__$kind === 3 && process.platform === "win32",
-  });
+  };
+
+  var subproc;
+  if (spawnOpts.shell) {
+    subproc = childProcess.spawn(
+      [options.__$program].concat(options.__$arguments).join(" "),
+      spawnOpts,
+    );
+  } else {
+    subproc = childProcess.spawn(
+      options.__$program,
+      options.__$arguments,
+      spawnOpts,
+    );
+  }
 
   if (options.__$connection.__$kind === 3) {
     subproc.unref();
