@@ -9,8 +9,8 @@ import Gren.Kernel.FilePath exposing (fromString)
 
 */
 
-var stream = require("node:stream");
-var process = require("node:process");
+var _Node_stream = require("node:stream");
+var _Node_process = require("node:process");
 
 var _Node_log = F2(function (text, args) {
   // This function is used for simple applications where the main function returns String
@@ -20,28 +20,28 @@ var _Node_log = F2(function (text, args) {
 });
 
 var _Node_init = __Scheduler_binding(function (callback) {
-  if (process.stdin.unref) {
+  if (_Node_process.stdin.unref) {
     // Don't block program shutdown if this is the only
     // stream being listened to
-    process.stdin.unref();
+    _Node_process.stdin.unref();
   }
 
-  const stdinStream = stream.Readable.toWeb(process.stdin);
-  const stdinProxy = !process.stdin.ref
+  const stdinStream = _Node_stream.Readable.toWeb(_Node_process.stdin);
+  const stdinProxy = !_Node_process.stdin.ref
     ? stdinStream
     : _Node_makeProxyOfStdin(stdinStream);
 
   callback(
     __Scheduler_succeed({
       __$applicationPath: __FilePath_fromString(
-        typeof module !== "undefined" ? module.filename : process.execPath,
+        typeof module !== "undefined" ? module.filename : _Node_process.execPath,
       ),
-      __$arch: process.arch,
-      __$args: process.argv,
-      __$platform: process.platform,
-      __$stderr: stream.Writable.toWeb(process.stderr),
+      __$arch: _Node_process.arch,
+      __$args: _Node_process.argv,
+      __$platform: _Node_process.platform,
+      __$stderr: _Node_stream.Writable.toWeb(_Node_process.stderr),
       __$stdin: stdinProxy,
-      __$stdout: stream.Writable.toWeb(process.stdout),
+      __$stdout: _Node_stream.Writable.toWeb(_Node_process.stdout),
     }),
   );
 });
@@ -52,14 +52,14 @@ function _Node_makeProxyOfStdin(stdinStream) {
       if (prop === "getReader") {
         // Make sure to keep program alive if we're waiting for
         // user input
-        process.stdin.ref();
+        _Node_process.stdin.ref();
 
         const reader = Reflect.get(target, prop, receiver);
         return _Node_makeProxyOfReader(reader);
       }
 
       if (prop === "pipeThrough") {
-        process.stdin.ref();
+        _Node_process.stdin.ref();
       }
 
       return Reflect.get(target, prop, receiver);
@@ -71,7 +71,7 @@ function _Node_makeProxyOfReader(reader) {
   return new Proxy(reader, {
     get(target, prop, receiver) {
       if (prop === "releaseLock") {
-        process.stdin.unref();
+        _Node_process.stdin.unref();
       }
 
       return Reflect.get(target, prop, receiver);
@@ -80,15 +80,15 @@ function _Node_makeProxyOfReader(reader) {
 }
 
 var _Node_getPlatform = __Scheduler_binding(function (callback) {
-  callback(__Scheduler_succeed(process.platform));
+  callback(__Scheduler_succeed(_Node_process.platform));
 });
 
 var _Node_getCpuArchitecture = __Scheduler_binding(function (callback) {
-  callback(__Scheduler_succeed(process.arch));
+  callback(__Scheduler_succeed(_Node_process.arch));
 });
 
 var _Node_getEnvironmentVariables = __Scheduler_binding(function (callback) {
-  callback(__Scheduler_succeed(_Node_objToDict(process.env)));
+  callback(__Scheduler_succeed(_Node_objToDict(_Node_process.env)));
 });
 
 var _Node_exitWithCode = function (code) {
@@ -96,14 +96,14 @@ var _Node_exitWithCode = function (code) {
     __Task_perform,
     __Basics_never,
     __Scheduler_binding(function (callback) {
-      process.exit(code);
+      _Node_process.exit(code);
     }),
   );
 };
 
 var _Node_setExitCode = function (code) {
   return __Scheduler_binding(function (callback) {
-    process.exitCode = code;
+    _Node_process.exitCode = code;
     callback(__Scheduler_succeed({}));
   });
 };
@@ -116,10 +116,10 @@ var _Node_attachEmptyEventLoopListener = function (selfMsg) {
       __Scheduler_rawSpawn(selfMsg);
     };
 
-    process.on("beforeExit", listener);
+    _Node_process.on("beforeExit", listener);
 
     return function () {
-      process.off("beforeExit", listener);
+      _Node_process.off("beforeExit", listener);
     };
   });
 };
@@ -130,10 +130,10 @@ var _Node_attachSignalInterruptListener = function (selfMsg) {
       __Scheduler_rawSpawn(selfMsg);
     };
 
-    process.on("SIGINT", listener);
+    _Node_process.on("SIGINT", listener);
 
     return function () {
-      process.off("SIGINT", listener);
+      _Node_process.off("SIGINT", listener);
     };
   });
 };
@@ -144,10 +144,10 @@ var _Node_attachSignalTerminateListener = function (selfMsg) {
       __Scheduler_rawSpawn(selfMsg);
     };
 
-    process.on("SIGTERM", listener);
+    _Node_process.on("SIGTERM", listener);
 
     return function () {
-      process.off("SIGTERM", listener);
+      _Node_process.off("SIGTERM", listener);
     };
   });
 };

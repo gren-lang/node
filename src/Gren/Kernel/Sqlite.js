@@ -14,7 +14,7 @@ import Maybe exposing (Just, Nothing)
 
 */
 
-var sqlite = require("node:sqlite");
+var _Sqlite_module = require("node:sqlite");
 
 var _Sqlite_openInMemory = function (opts) {
   return _Sqlite_openImpl(opts, ":memory:");
@@ -29,7 +29,7 @@ var _Sqlite_openImpl = function (opts, path) {
     try {
       callback(
         __Scheduler_succeed(
-          new sqlite.DatabaseSync(path, {
+          new _Sqlite_module.DatabaseSync(path, {
             readOnly: opts.__$readOnly,
             enableForeignKeyConstraints: opts.__$enableForeignKeySConstraints,
             allowExtension: opts.__$allowExtension,
@@ -126,7 +126,7 @@ var _Sqlite_aggregate = F5(function (name, init, func, result, db) {
 var _Sqlite_backup = F3(function (destination, pages, db) {
   return __Scheduler_binding(function (callback) {
     try {
-      sqlite
+      _Sqlite_module
         .backup(db, _FilePath_toString(destination), {
           source: "main",
           target: "main",

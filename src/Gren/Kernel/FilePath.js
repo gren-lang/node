@@ -2,19 +2,19 @@
 
 */
 
-var path = require("node:path");
-var process = require("node:process");
+var _FilePath_path = require("node:path");
+var _FilePath_process = require("node:process");
 
 var _FilePath_fromPosix = function (str) {
-  return _FilePath_parse(path.posix, str);
+  return _FilePath_parse(_FilePath_path.posix, str);
 };
 
 var _FilePath_fromWin32 = function (str) {
-  return _FilePath_parse(path.win32, str);
+  return _FilePath_parse(_FilePath_path.win32, str);
 };
 
 var _FilePath_fromString = function (str) {
-  return _FilePath_parse(path, str);
+  return _FilePath_parse(_FilePath_path, str);
 };
 
 var _FilePath_parse = function (pathMod, str) {
@@ -26,8 +26,8 @@ var _FilePath_parse = function (pathMod, str) {
     ? result.dir.substring(root.length)
     : result.dir;
 
-  if (str.startsWith(`.${path.sep}`)) {
-    dirStr = `.${path.sep}` + dirStr;
+  if (str.startsWith(`.${_FilePath_path.sep}`)) {
+    dirStr = `.${_FilePath_path.sep}` + dirStr;
   }
 
   const filename =
@@ -53,7 +53,7 @@ var _FilePath_toPosix = function (filePath) {
     filePath = { ...filePath, __$root: "/" };
   }
 
-  return _FilePath_format(path.posix, filePath);
+  return _FilePath_format(_FilePath_path.posix, filePath);
 };
 
 var _FilePath_toWin32 = function (filePath) {
@@ -61,11 +61,11 @@ var _FilePath_toWin32 = function (filePath) {
     return ".";
   }
 
-  return _FilePath_format(path.win32, filePath);
+  return _FilePath_format(_FilePath_path.win32, filePath);
 };
 
 var _FilePath_toString = function (filePath) {
-  if (process.platform.toLowerCase() === "win32") {
+  if (_FilePath_process.platform.toLowerCase() === "win32") {
     return _FilePath_toWin32(filePath);
   }
 

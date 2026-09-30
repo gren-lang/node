@@ -8,8 +8,8 @@ import Maybe exposing (Just, Nothing)
 
 */
 
-var process = require("node:process");
-var stream = require("node:stream");
+var _ChildProcess_process = require("node:process");
+var _ChildProcess_stream = require("node:stream");
 
 var _ChildProcess_module = function () {
   return require("node:child_process");
@@ -123,9 +123,9 @@ var _ChildProcess_spawn = F3(function (sendInitToApp, sendExitToApp, options) {
           options.__$connection.__$kind !== 1
             ? {}
             : {
-                __$input: stream.Writable.toWeb(subproc.stdin),
-                __$output: stream.Readable.toWeb(subproc.stdout),
-                __$error: stream.Readable.toWeb(subproc.stderr),
+                __$input: _ChildProcess_stream.Writable.toWeb(subproc.stdin),
+                __$output: _ChildProcess_stream.Readable.toWeb(subproc.stdout),
+                __$error: _ChildProcess_stream.Readable.toWeb(subproc.stderr),
               },
       }),
     );
@@ -166,7 +166,7 @@ function _ChildProcess_getSubProc(options) {
           ? "pipe"
           : "ignore",
     detached:
-      options.__$connection.__$kind === 3 && process.platform === "win32",
+      options.__$connection.__$kind === 3 && _ChildProcess_process.platform === "win32",
   };
 
   var subproc;
@@ -191,14 +191,14 @@ function _ChildProcess_getSubProc(options) {
 }
 
 function _ChildProcess_handleCwd(cwd) {
-  return cwd.__$inherit ? process.cwd() : cwd.__$override;
+  return cwd.__$inherit ? _ChildProcess_process.cwd() : cwd.__$override;
 }
 
 function _ChildProcess_handleEnv(env) {
   return env.__$option === 0
-    ? process.env
+    ? _ChildProcess_process.env
     : env.__$option === 1
-      ? __Utils_update(process.env, _ChildProcess_dictToObj(env.__$value))
+      ? __Utils_update(_ChildProcess_process.env, _ChildProcess_dictToObj(env.__$value))
       : _ChildProcess_dictToObj(env.__$value);
 }
 
