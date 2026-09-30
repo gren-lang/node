@@ -34,7 +34,9 @@ var _Node_init = __Scheduler_binding(function (callback) {
   callback(
     __Scheduler_succeed({
       __$applicationPath: __FilePath_fromString(
-        typeof module !== "undefined" ? module.filename : _Node_process.execPath,
+        typeof module !== "undefined"
+          ? module.filename
+          : _Node_process.execPath,
       ),
       __$arch: _Node_process.arch,
       __$args: _Node_process.argv,

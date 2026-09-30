@@ -166,7 +166,8 @@ function _ChildProcess_getSubProc(options) {
           ? "pipe"
           : "ignore",
     detached:
-      options.__$connection.__$kind === 3 && _ChildProcess_process.platform === "win32",
+      options.__$connection.__$kind === 3 &&
+      _ChildProcess_process.platform === "win32",
   };
 
   var subproc;
@@ -198,7 +199,10 @@ function _ChildProcess_handleEnv(env) {
   return env.__$option === 0
     ? _ChildProcess_process.env
     : env.__$option === 1
-      ? __Utils_update(_ChildProcess_process.env, _ChildProcess_dictToObj(env.__$value))
+      ? __Utils_update(
+          _ChildProcess_process.env,
+          _ChildProcess_dictToObj(env.__$value),
+        )
       : _ChildProcess_dictToObj(env.__$value);
 }
 

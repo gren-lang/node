@@ -53,7 +53,8 @@ var _FileSystem_close = function (fh) {
 
 var _FileSystem_readFromOffset = F2(function (fh, options) {
   var requestedLength =
-    options.__$length < 0 || options.__$length > _FileSystem_buffer.constants.MAX_LENGTH
+    options.__$length < 0 ||
+    options.__$length > _FileSystem_buffer.constants.MAX_LENGTH
       ? _FileSystem_buffer.constants.MAX_LENGTH
       : options.__$length;
 
@@ -264,13 +265,20 @@ var _FileSystem_fchmod = F2(function (mode, fd) {
 
 var _FileSystem_fchown = F2(function (ids, fd) {
   return __Scheduler_binding(function (callback) {
-    _FileSystem_fs.fchown(fd.__$fd, ids.__$userID, ids.__$groupID, function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(fd.__$path, err)));
-      } else {
-        callback(__Scheduler_succeed(fd));
-      }
-    });
+    _FileSystem_fs.fchown(
+      fd.__$fd,
+      ids.__$userID,
+      ids.__$groupID,
+      function (err) {
+        if (err) {
+          callback(
+            __Scheduler_fail(_FileSystem_constructError(fd.__$path, err)),
+          );
+        } else {
+          callback(__Scheduler_succeed(fd));
+        }
+      },
+    );
   });
 });
 
@@ -528,13 +536,16 @@ var _FileSystem_readFileStream = F2(function (opts, path) {
 
 var _FileSystem_readLink = function (path) {
   return __Scheduler_binding(function (callback) {
-    _FileSystem_fs.readlink(__FilePath_toString(path), function (err, linkedPath) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
-      } else {
-        callback(__Scheduler_succeed(__FilePath_fromString(linkedPath)));
-      }
-    });
+    _FileSystem_fs.readlink(
+      __FilePath_toString(path),
+      function (err, linkedPath) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
+        } else {
+          callback(__Scheduler_succeed(__FilePath_fromString(linkedPath)));
+        }
+      },
+    );
   });
 };
 
@@ -556,13 +567,16 @@ var _FileSystem_rename = F2(function (oldPath, newPath) {
 
 var _FileSystem_realpath = function (path) {
   return __Scheduler_binding(function (callback) {
-    _FileSystem_fs.realpath(__FilePath_toString(path), function (err, resolvedPath) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
-      } else {
-        callback(__Scheduler_succeed(__FilePath_fromString(resolvedPath)));
-      }
-    });
+    _FileSystem_fs.realpath(
+      __FilePath_toString(path),
+      function (err, resolvedPath) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
+        } else {
+          callback(__Scheduler_succeed(__FilePath_fromString(resolvedPath)));
+        }
+      },
+    );
   });
 };
 
@@ -620,25 +634,35 @@ var _FileSystem_truncate = F2(function (len, path) {
 
 var _FileSystem_utimes = F3(function (atime, mtime, path) {
   return __Scheduler_binding(function (callback) {
-    _FileSystem_fs.utimes(__FilePath_toString(path), atime, mtime, function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
-      } else {
-        callback(__Scheduler_succeed(path));
-      }
-    });
+    _FileSystem_fs.utimes(
+      __FilePath_toString(path),
+      atime,
+      mtime,
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
+        } else {
+          callback(__Scheduler_succeed(path));
+        }
+      },
+    );
   });
 });
 
 var _FileSystem_lutimes = F3(function (atime, mtime, path) {
   return __Scheduler_binding(function (callback) {
-    _FileSystem_fs.lutimes(__FilePath_toString(path), atime, mtime, function (err) {
-      if (err) {
-        callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
-      } else {
-        callback(__Scheduler_succeed(path));
-      }
-    });
+    _FileSystem_fs.lutimes(
+      __FilePath_toString(path),
+      atime,
+      mtime,
+      function (err) {
+        if (err) {
+          callback(__Scheduler_fail(_FileSystem_constructError(path, err)));
+        } else {
+          callback(__Scheduler_succeed(path));
+        }
+      },
+    );
   });
 });
 
@@ -717,12 +741,16 @@ var _FileSystem_watch = F3(function (path, isRecursive, sendToSelf) {
   });
 });
 var _FileSystem_homeDir = __Scheduler_binding(function (callback) {
-  callback(__Scheduler_succeed(__FilePath_fromString(_FileSystem_os.homedir())));
+  callback(
+    __Scheduler_succeed(__FilePath_fromString(_FileSystem_os.homedir())),
+  );
 });
 
 var _FileSystem_currentWorkingDirectory = __Scheduler_binding(
   function (callback) {
-    callback(__Scheduler_succeed(__FilePath_fromString(_FileSystem_process.cwd())));
+    callback(
+      __Scheduler_succeed(__FilePath_fromString(_FileSystem_process.cwd())),
+    );
   },
 );
 
