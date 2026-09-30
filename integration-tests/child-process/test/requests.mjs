@@ -20,10 +20,31 @@ describe("ChildProcess", () => {
       .notStderr(/DeprecationWarning/);
   });
 
+  it("No Shell, No Args", async () => {
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["ExecNoArgsNoShell"], {})
+      .stdout("Working");
+  });
+
   it("Program not found", async () => {
     await runner()
       .cwd(baseDir)
       .fork("app", ["NotFound"], {})
       .stdout("Process Not Found");
+  });
+
+  it("Timeout", async () => {
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["Timeout"], {})
+      .stdout("Error: -1");
+  });
+
+  it("Max bytes", async () => {
+    await runner()
+      .cwd(baseDir)
+      .fork("app", ["MaxBytes"], {})
+      .stdout("Error: -1");
   });
 });

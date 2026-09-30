@@ -55,7 +55,7 @@ var _ChildProcess_run = function (options) {
           callback(
             __Scheduler_fail(
               __ChildProcess_ProgramError({
-                __$exitCode: err.code,
+                __$exitCode: typeof err.code === "number" ? err.code : -1,
                 __$stdout: new DataView(
                   stdout.buffer,
                   stdout.byteOffset,

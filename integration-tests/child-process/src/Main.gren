@@ -49,6 +49,17 @@ init env =
                         |> Task.executeCmd
                 }
 
+            Just "ExecNoArgsNoShell" ->
+                { model = {}
+                , command =
+                    { (ChildProcess.defaultRunOptions) | shell = ChildProcess.NoShell }
+                        |> ChildProcess.run cpPerm "true" [] 
+                        |> Task.andThen (\result -> Stream.Log.line env.stdout "Working")
+                        |> Task.map (\_ -> Cmd.none)
+                        |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode 1)
+                        |> Task.executeCmd
+                }
+
             Just "ExecShell" ->
                 { model = {}
                 , command =
@@ -77,6 +88,48 @@ init env =
 
                                     ChildProcess.ProgramError _ ->
                                         Stream.Log.line env.stdout "Program Error"
+                            )
+                        |> Task.execute
+                }
+
+            Just "Timeout" ->
+                { model = {}
+                , command =
+                    { (ChildProcess.defaultRunOptions)
+                        | shell = ChildProcess.NoShell
+                        , runDuration = ChildProcess.Milliseconds 100
+                    }
+                        |> ChildProcess.run cpPerm "sleep" ["5"] 
+                        |> Task.map (\_ -> {})
+                        |> Task.onError
+                            (\err ->
+                                when err is
+                                    ChildProcess.InitError inerr ->
+                                        Stream.Log.line env.stdout inerr.errorCode
+
+                                    ChildProcess.ProgramError perr ->
+                                        Stream.Log.line env.stdout ("Error: " ++ String.fromInt perr.exitCode)
+                            )
+                        |> Task.execute
+                }
+
+            Just "MaxBytes" ->
+                { model = {}
+                , command =
+                    { (ChildProcess.defaultRunOptions)
+                        | shell = ChildProcess.NoShell
+                        , maximumBytesWrittenToStreams = 4
+                    }
+                        |> ChildProcess.run cpPerm "echo" ["longer than four bytes"] 
+                        |> Task.map (\_ -> {})
+                        |> Task.onError
+                            (\err ->
+                                when err is
+                                    ChildProcess.InitError inerr ->
+                                        Stream.Log.line env.stdout inerr.errorCode
+
+                                    ChildProcess.ProgramError perr ->
+                                        Stream.Log.line env.stdout ("Error: " ++ String.fromInt perr.exitCode)
                             )
                         |> Task.execute
                 }
