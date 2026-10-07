@@ -1,0 +1,9 @@
+.gren/
+server-app
+client-tests-app
+refused-test-app
+in-use-test-app
+node_modules/
+/test-results/
+/playwright-report/
+/playwright/.cache/

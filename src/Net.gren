@@ -1,0 +1,376 @@
+effect module Net where { subscription = NetSubscription } exposing (Listener, NetError(..), Option(..), Permission, Socket, connect, errorIsBrokenPipe, errorIsConnectionRefused, errorIsReset, errorIsTimeout, initialize, listen, netErrorCode, netErrorToString, onClose, onConnection)
+
+{-| Connect to TCP servers and accept TCP connections.
+
+You write your client using The Gren Architecture by connecting to a server
+and exchanging bytes via [`Net.Socket`](Net-Socket). Servers are created with
+[`listen`](#listen) and accept connections via
+[`onConnection`](#onConnection).
+
+## Initialization
+
+@docs Permission, initialize, Option
+
+## Client
+
+@docs Socket, connect
+
+## Server
+
+@docs Listener, listen, onConnection, onClose
+
+## Errors
+
+@docs NetError, netErrorCode, netErrorToString, errorIsConnectionRefused, errorIsTimeout, errorIsReset, errorIsBrokenPipe
+-}
+
+import Array exposing (Array)
+import Gren.Kernel.Net
+import Init
+import Internal.Init
+import Task exposing (Task)
+
+
+
+-- INITIALIZATION
+
+
+{-| The permission to use the [`Net`](Net) module: [`connect`](#connect) or
+[`listen`](#listen).
+
+You get this from [`initialize`](#initialize).
+-}
+type Permission
+    = Permission
+
+
+{-| Initialize the [`Net`](Net) module and get permission to connect or listen.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+{-| Optional configuration for [`connect`](#connect) and [`listen`](#listen).
+
+Pass an empty array to use defaults for everything:
+
+    Net.connect permission
+        { host = "127.0.0.1"
+        , port_ = 9310
+        , options = []
+        }
+
+-}
+type Option
+    = KeepAlive Bool
+    | NoDelay Bool
+    | ReadBufferCapacity Int
+    | AllowHalfOpen Bool
+
+
+{-| Internal decoding of an `Array Option` into a plain record the kernel
+consumes directly. Defaults mirror node's stream defaults, except
+`readBufferCapacity` which configures the read-side backpressure queue.
+
+If the same option is passed more than once, the last occurrence wins.
+-}
+type alias Settings =
+    { keepAlive : Bool
+    , noDelay : Bool
+    , allowHalfOpen : Bool
+    , readBufferCapacity : Int
+    }
+
+
+decodeOptions : Array Option -> Settings
+decodeOptions options =
+    Array.foldl
+        (\option settings ->
+            when option is
+                KeepAlive value ->
+                    { settings | keepAlive = value }
+
+                NoDelay value ->
+                    { settings | noDelay = value }
+
+                ReadBufferCapacity value ->
+                    { settings | readBufferCapacity = value }
+
+                AllowHalfOpen value ->
+                    { settings | allowHalfOpen = value }
+        )
+        { keepAlive = False
+        , noDelay = True
+        , allowHalfOpen = False
+        , readBufferCapacity = 16
+        }
+        options
+
+
+
+
+
+
+-- CLIENT
+
+
+{-| An opaque handle representing a TCP socket, either a connection created
+with [`connect`](#connect) or one accepted by a [`Listener`](#Listener).
+
+Use [`Net.Socket.readable`](Net-Socket#readable) to read incoming bytes and
+[`Net.Socket.write`](Net-Socket#write) to send outgoing bytes.
+-}
+type Socket
+    = -- Note: Actual implementation in Kernel code. Backed by a JS object with __$id and __$readable fields.
+      Socket
+
+
+{-| Task to connect to a TCP server.
+
+Resolves once the connection has been established, and fails with a
+[`NetError`](#NetError) carrying the node error code (e.g. `ECONNREFUSED`,
+`ETIMEDOUT`) otherwise.
+
+    Net.connect permission
+        { host = "127.0.0.1"
+        , port_ = 9310
+        , options = []
+        }
+        |> Task.attempt Connected
+
+Use [`Option`](#Option) values to customize behavior. For example,
+[`ReadBufferCapacity`](#Option) controls how many unread data chunks are
+buffered before backpressure is applied to the remote peer:
+
+    Net.connect permission
+        { host = "127.0.0.1"
+        , port_ = 9310
+        , options = [ Net.ReadBufferCapacity 4 ]
+        }
+
+-}
+connect : Permission -> { host : String, port_ : Int, options : Array Option } -> Task NetError Socket
+connect _ options =
+    Gren.Kernel.Net.connect options.host options.port_ (decodeOptions options.options)
+
+
+
+-- SERVER
+
+
+{-| An opaque handle representing a listening TCP server.
+
+Use [`onConnection`](#onConnection) and [`onClose`](#onClose) to react to
+sockets connecting and disconnecting.
+-}
+type Listener
+    = -- Note: Actual implementation in Kernel code. Backed by a node net.Server object.
+      Listener
+
+
+{-| Task to start a TCP server.
+
+Resolves once the server is listening, and fails with a
+[`NetError`](#NetError) carrying the node error code (e.g. `EADDRINUSE`)
+otherwise.
+
+    Net.listen permission
+        { host = "127.0.0.1"
+        , port_ = 9310
+        , options = []
+        }
+        |> Task.attempt ServerStarted
+
+[`AllowHalfOpen`](#Option) controls whether the socket half-closes (FIN)
+independently in each direction, and [`ReadBufferCapacity`](#Option) controls
+the per-connection read backlog used for backpressure.
+-}
+listen : Permission -> { host : String, port_ : Int, options : Array Option } -> Task NetError Listener
+listen _ options =
+    Gren.Kernel.Net.listen options.host options.port_ (decodeOptions options.options)
+
+
+
+-- SUBSCRIPTIONS
+
+
+{-| Subscribe to new incoming connections on a listener.
+
+For each new connection the handler receives the accepted
+[`Socket`](#Socket). Read incoming bytes with
+[`Net.Socket.readable`](Net-Socket#readable) and send replies with
+[`Net.Socket.write`](Net-Socket#write).
+
+    Net.onConnection listener (\socket -> ClientConnected socket)
+
+-}
+onConnection :
+    Listener
+    -> (Socket -> msg)
+    -> Sub msg
+onConnection listener handler =
+    subscription (OnConnectionSub { listener = listener, handler = handler })
+
+
+{-| Subscribe to connection close events on a listener.
+
+Fires when a previously accepted socket has fully closed.
+
+    Net.onClose listener ClientDisconnected
+
+-}
+onClose : Listener -> (Socket -> msg) -> Sub msg
+onClose listener handler =
+    subscription (OnCloseSub { listener = listener, handler = handler })
+
+
+
+-- ERRORS
+
+
+{-| Error code and message from node.
+Most likely from a failed attempt to connect (e.g. `ECONNREFUSED`) or to start
+listening (e.g. `EADDRINUSE`).
+
+Use the `errorIs*` helper functions to check for specific error conditions,
+or [`netErrorToString`](#netErrorToString) for a human-readable description.
+-}
+type NetError
+    = NetError { code : String, message : String }
+
+
+{-| Get the error code, if one is available.
+
+Network-level errors from the operating system will have a code like
+`"ECONNREFUSED"` or `"EADDRINUSE"`. Errors without an OS-level code return an
+empty string.
+-}
+netErrorCode : NetError -> String
+netErrorCode (NetError { code }) =
+    code
+
+
+{-| Get a human-readable description of the error.
+-}
+netErrorToString : NetError -> String
+netErrorToString (NetError { message }) =
+    message
+
+
+{-| If `True`, a [`connect`](#connect) attempt failed because the connection
+was actively refused by the remote host (no process listening on the port).
+-}
+errorIsConnectionRefused : NetError -> Bool
+errorIsConnectionRefused (NetError { code }) =
+    code == "ECONNREFUSED"
+
+
+{-| If `True`, the operation timed out.
+-}
+errorIsTimeout : NetError -> Bool
+errorIsTimeout (NetError { code }) =
+    code == "ETIMEDOUT"
+
+
+{-| If `True`, the connection was reset by the remote peer.
+-}
+errorIsReset : NetError -> Bool
+errorIsReset (NetError { code }) =
+    code == "ECONNRESET"
+
+
+{-| If `True`, the write failed because the connection has been closed.
+
+This is a system-level error that can occur when the underlying TCP socket
+is closed while a write is in progress.
+-}
+errorIsBrokenPipe : NetError -> Bool
+errorIsBrokenPipe (NetError { code }) =
+    code == "EPIPE" || code == "ERR_STREAM_DESTROYED"
+
+
+
+-- EFFECT STUFF
+
+
+type NetSubscription msg
+    = OnConnectionSub { listener : Listener, handler : Socket -> msg }
+    | OnCloseSub { listener : Listener, handler : Socket -> msg }
+
+
+subMap : (a -> b) -> NetSubscription a -> NetSubscription b
+subMap fn sub =
+    when sub is
+        OnConnectionSub { listener, handler } ->
+            OnConnectionSub
+                { listener = listener
+                , handler = handler >> fn
+                }
+
+        OnCloseSub { listener, handler } ->
+            OnCloseSub
+                { listener = listener
+                , handler = handler >> fn
+                }
+
+
+type alias State msg =
+    Array (NetSubscription msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed []
+
+
+onEffects :
+    Platform.Router msg SelfMsg
+    -> Array (NetSubscription msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router subs state =
+    let
+        -- Clear all handler references for listeners that had subscriptions in
+        -- the previous cycle. clearHandlers is idempotent. This does not
+        -- remove the server-level "connection" EventEmitter listener, it only
+        -- resets the mutable handler arrays that per-connection closures read
+        -- on each event fire.
+        _clearOldHandlers =
+            state
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnConnectionSub { listener } ->
+                                Gren.Kernel.Net.clearHandlers listener
+
+                            OnCloseSub { listener } ->
+                                Gren.Kernel.Net.clearHandlers listener
+                    )
+
+        -- Set the current handler references. Per-socket event closures read
+        -- these on every event fire, so existing long-lived connections will
+        -- use the updated handlers without needing to be re-wired.
+        _setNewHandlers =
+            subs
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnConnectionSub { listener, handler } ->
+                                Gren.Kernel.Net.setConnectionHandler listener router handler
+
+                            OnCloseSub { listener, handler } ->
+                                Gren.Kernel.Net.setCloseHandler listener router handler
+                    )
+    in
+    Task.succeed subs
+
+
+type SelfMsg
+    = Never
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task Never (State msg)
+onSelfMsg _ _ state =
+    Task.succeed state

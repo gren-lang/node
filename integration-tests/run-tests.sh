@@ -36,3 +36,8 @@ echo -e "Running websocket-client tests...\n\n"
 pushd websocket-client
 make test || exit 1
 popd
+
+echo -e "Running net tests...\n\n"
+pushd net
+make test || exit 1
+popd

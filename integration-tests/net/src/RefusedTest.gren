@@ -1,0 +1,83 @@
+module RefusedTest exposing (main)
+
+{-| Connect to a port that is never bound and assert the connect Task fails
+with a connection-refused NetError. Exits 0 on success, 1 otherwise.
+-}
+
+import Init
+import Net
+import Node exposing (Environment, Program)
+import Stream.Log as Log
+import Task exposing (Task)
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+type alias Model =
+    { env : Environment
+    }
+
+
+type Msg
+    = ConnectFinished Bool
+    | OutputDone Int
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Net.initialize <|
+        \permission ->
+            let
+                check =
+                    Net.connect permission
+                        { host = "127.0.0.1"
+                        , port_ = refusedPort
+                        , options = []
+                        }
+                        |> Task.map (\_ -> False)
+                        |> Task.onError
+                            (\err ->
+                                Task.succeed (Net.errorIsConnectionRefused err)
+                            )
+            in
+            Node.startProgram
+                { model = { env = env }
+                , command = check |> Task.perform ConnectFinished
+                }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ConnectFinished ok ->
+            let
+                exitCode =
+                    if ok then
+                        0
+
+                    else
+                        1
+            in
+            { model = model
+            , command =
+                Log.line model.env.stdout (if ok then "PASS refused" else "FAIL refused")
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+refusedPort : Int
+refusedPort =
+    9312

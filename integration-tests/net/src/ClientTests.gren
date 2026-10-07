@@ -1,0 +1,448 @@
+module ClientTests exposing (main)
+
+import Array exposing (Array)
+import Bytes exposing (Bytes)
+import Bytes.Decode as Decode
+import Bytes.Encode as Encode
+import Init
+import Net
+import Net.Socket as Socket
+import Node
+import Node exposing (Environment, Program)
+import Stream
+import Stream.Log as Log
+import Task exposing (Task)
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+
+-- MODEL
+
+
+type alias Model =
+    { env : Environment
+    , exitCode : Int
+    }
+
+
+type Msg
+    = TestsCompleted (Array TestResult)
+    | OutputDone Int
+
+
+
+-- INIT
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Net.initialize <|
+        \permission ->
+            Node.startProgram
+                { model = { env = env, exitCode = 0 }
+                , command =
+                    runAllTests permission
+                        |> Task.perform TestsCompleted
+                }
+
+
+
+-- UPDATE
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        TestsCompleted results ->
+            let
+                summary =
+                    formatResults results
+
+                passCount =
+                    Array.foldl
+                        (\r acc ->
+                            if r.passed then
+                                acc + 1
+
+                            else
+                                acc
+                        )
+                        0
+                        results
+
+                exitCode =
+                    if passCount == Array.length results then
+                        0
+
+                    else
+                        1
+            in
+            { model = { model | exitCode = exitCode }
+            , command =
+                Log.line model.env.stdout summary
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+
+-- TEST RUNNER
+
+
+type alias TestResult =
+    { name : String
+    , passed : Bool
+    , detail : String
+    }
+
+
+runAllTests : Net.Permission -> Task Never (Array TestResult)
+runAllTests permission =
+    [ test "connects and echoes a text chunk" (testEchoText permission)
+    , test "echoes binary data with NUL bytes" (testEchoBinary permission)
+    , test "echoes multiple chunks in order" (testMultipleChunks permission)
+    , test "echoes a large chunk" (testLargeChunk permission)
+    , test "end() half-closes and reader sees Closed" (testEnd permission)
+    , test "close() destroys the socket" (testClose permission)
+    ]
+        |> Task.sequence
+
+
+test : String -> Task NetErr Bool -> Task Never TestResult
+test name task_ =
+    task_
+        |> Task.map
+            (\passed ->
+                { name = name
+                , passed = passed
+                , detail =
+                    if passed then
+                        ""
+
+                    else
+                        "Assertion failed"
+                }
+            )
+        |> Task.onError
+            (\err ->
+                Task.succeed
+                    { name = name
+                    , passed = False
+                    , detail = "Error: " ++ errorToString err
+                    }
+            )
+
+
+
+-- TESTS
+
+
+testEchoText : Net.Permission -> Task NetErr Bool
+testEchoText permission =
+    connect permission
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "hello net"
+                    |> Task.andThen (\_ -> readN socket 9)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just "hello net")
+
+
+{-| Sends [0x00, 0xFF, 0x0A, 'b', 0x00] — includes NUL bytes and a high byte —
+and verifies the echoed bytes exactly.
+-}
+testEchoBinary : Net.Permission -> Task NetErr Bool
+testEchoBinary permission =
+    let
+        payload =
+            Encode.encode
+                (Encode.sequence
+                    [ Encode.unsignedInt8 0
+                    , Encode.unsignedInt8 255
+                    , Encode.unsignedInt8 10
+                    , Encode.unsignedInt8 98
+                    , Encode.unsignedInt8 0
+                    ]
+                )
+
+        byteChecker =
+            Decode.map5
+                (\b1 b2 b3 b4 b5 ->
+                    b1 == 0 && b2 == 255 && b3 == 10 && b4 == 98 && b5 == 0
+                )
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+    in
+    connect permission
+        |> Task.andThen
+            (\socket ->
+                Socket.write socket payload
+                    |> Task.mapError NetE
+                    |> Task.andThen (\_ -> readN socket 5)
+            )
+        |> Task.map
+            (\collected ->
+                Bytes.length collected == 5
+                    && (Decode.decode byteChecker collected == Just True)
+            )
+
+
+testMultipleChunks : Net.Permission -> Task NetErr Bool
+testMultipleChunks permission =
+    connect permission
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "first"
+                    |> Task.andThen (\_ ->
+                        writeChunk socket "second"
+                            |> Task.andThen (\_ ->
+                                writeChunk socket "third"
+                                    |> Task.andThen (\_ ->
+                                        readN socket 16
+                                    )
+                            )
+                    )
+            )
+        |> Task.map
+            (\collected ->
+                Bytes.toString collected == Just "firstsecondthird"
+            )
+
+
+testLargeChunk : Net.Permission -> Task NetErr Bool
+testLargeChunk permission =
+    let
+        text =
+            String.repeat (1024 * 1024) "x"
+
+        totalBytes =
+            Bytes.length (Bytes.fromString text)
+
+        loop socket acc remaining =
+            if remaining <= 0 then
+                Task.succeed acc
+
+            else
+                readChunk socket
+                    |> Task.andThen
+                        (\chunk ->
+                            loop socket
+                                (Bytes.flatten [ acc, chunk ])
+                                (remaining - Bytes.length chunk)
+                        )
+    in
+    connect permission
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket text
+                    |> Task.andThen (\_ -> loop socket Bytes.empty totalBytes)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just text)
+
+
+testEnd : Net.Permission -> Task NetErr Bool
+testEnd permission =
+    connect permission
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "bye"
+                    |> Task.andThen (\_ -> Socket.end socket |> Task.mapError NetE)
+                    |> Task.andThen (\_ ->
+                        readN socket 3
+                            |> Task.andThen
+                                (\collected ->
+                                    if Bytes.toString collected == Just "bye" then
+                                        Stream.read (Socket.readable socket)
+                                            |> Task.mapError StreamE
+                                            |> Task.map (\_ -> False)
+                                            |> Task.onError
+                                                (\err ->
+                                                    when err is
+                                                        StreamE Stream.Closed ->
+                                                            Task.succeed True
+
+                                                        _ ->
+                                                            Task.fail err
+                                                )
+                                    else
+                                        Task.succeed False
+                                )
+                    )
+            )
+
+
+testClose : Net.Permission -> Task NetErr Bool
+testClose permission =
+    connect permission
+        |> Task.andThen
+            (\socket ->
+                Socket.close socket
+                    |> Task.mapError NetE
+                    |> Task.andThen
+                        (\_ ->
+                            -- close() destroys the socket, so any later write
+                            -- must fail through node with ERR_STREAM_DESTROYED.
+                            Socket.write socket (Bytes.fromString "x")
+                                |> Task.mapError NetE
+                                |> Task.map (\_ -> False)
+                                |> Task.onError
+                                    (\err ->
+                                        when err is
+                                            NetE (Net.NetError { code }) ->
+                                                Task.succeed
+                                                    (code == "ERR_STREAM_DESTROYED")
+
+                                            _ ->
+                                                Task.fail err
+                                    )
+                        )
+            )
+
+
+
+-- ERROR TYPES
+
+
+type NetErr
+    = NetE Net.NetError
+    | StreamE Stream.Error
+
+
+errorToString : NetErr -> String
+errorToString err =
+    when err is
+        NetE (Net.NetError { code, message }) ->
+            "NetError " ++ code ++ ": " ++ message
+
+        StreamE streamErr ->
+            when streamErr is
+                Stream.Closed ->
+                    "Stream.Closed"
+
+                Stream.Cancelled reason ->
+                    "Stream.Cancelled: " ++ reason
+
+                Stream.Locked ->
+                    "Stream.Locked"
+
+
+
+-- HELPERS
+
+
+connect : Net.Permission -> Task NetErr Net.Socket
+connect permission =
+    Net.connect permission { host = "127.0.0.1", port_ = serverPort, options = [ Net.NoDelay True ] }
+        |> Task.mapError NetE
+
+
+writeChunk : Net.Socket -> String -> Task NetErr {}
+writeChunk socket text =
+    Socket.write socket (Bytes.fromString text)
+        |> Task.mapError NetE
+
+
+readChunk : Net.Socket -> Task NetErr Bytes
+readChunk socket =
+    Stream.read (Socket.readable socket)
+        |> Task.mapError StreamE
+
+
+{-| Read exactly `n` bytes, aggregating stream chunks; TCP chunk boundaries
+are not guaranteed.
+-}
+readN : Net.Socket -> Int -> Task NetErr Bytes
+readN socket n =
+    let
+        loop acc remaining =
+            if remaining <= 0 then
+                Task.succeed acc
+
+            else
+                readChunk socket
+                    |> Task.andThen
+                        (\chunk ->
+                            loop
+                                (Bytes.flatten [ acc, chunk ])
+                                (remaining - Bytes.length chunk)
+                        )
+    in
+    loop Bytes.empty n
+
+
+
+-- OUTPUT
+
+
+formatResults : Array TestResult -> String
+formatResults results =
+    let
+        total =
+            Array.length results
+
+        formatLine r =
+            (if r.passed then
+                "PASS"
+
+             else
+                "FAIL"
+            )
+                ++ "  "
+                ++ r.name
+                ++ (if r.detail == "" then
+                        ""
+
+                    else
+                        " - " ++ r.detail
+                   )
+
+        lines =
+            Array.foldl
+                (\r acc ->
+                    if acc == "" then
+                        formatLine r
+
+                    else
+                        acc ++ "\n" ++ formatLine r
+                )
+                ""
+                results
+
+        passCount =
+            Array.foldl
+                (\r acc ->
+                    if r.passed then
+                        acc + 1
+
+                    else
+                        acc
+                )
+                0
+                results
+    in
+    "\n" ++ lines ++ "\n\n" ++ String.fromInt passCount ++ "/" ++ String.fromInt total ++ " passed"
+
+
+
+-- CONSTANTS
+
+
+serverPort : Int
+serverPort =
+    9310

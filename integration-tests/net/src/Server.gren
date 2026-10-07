@@ -1,0 +1,179 @@
+module Server exposing (main)
+
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
+import Init
+import Net
+import Net.Socket as Socket
+import Node exposing (Environment, Program)
+import Stream
+import Stream.Log
+import Task exposing (Task)
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias Model =
+    { stdout : Stream.Writable Bytes
+    , stderr : Stream.Writable Bytes
+    , listener : Maybe Net.Listener
+    , sockets : Dict Int Net.Socket
+    }
+
+
+type Msg
+    = ListenerCreated (Result Net.NetError Net.Listener)
+    | ClientConnected Net.Socket
+    | ReadResult { socketId : Int, result : Result Stream.Error Bytes }
+    | ClientDisconnected Net.Socket
+    | WriteDone (Result Net.NetError {})
+    | EndDone (Result Net.NetError {})
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Net.initialize <|
+        \permission ->
+            Node.startProgram
+                { model =
+                    { stdout = env.stdout
+                    , stderr = env.stderr
+                    , listener = Nothing
+                    , sockets = Dict.empty
+                    }
+                , command =
+                    Net.listen permission
+                        { host = "127.0.0.1"
+                        , port_ = serverPort
+                        , options =
+                            [ Net.ReadBufferCapacity 16
+                            , Net.AllowHalfOpen True
+                            ]
+                        }
+                        |> Task.attempt ListenerCreated
+                }
+
+
+serverPort : Int
+serverPort =
+    9310
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ListenerCreated result ->
+            when result is
+                Ok listener ->
+                    { model = { model | listener = Just listener }
+                    , command =
+                        Stream.Log.line model.stdout "Net server started on port 9310"
+                            |> Task.execute
+                    }
+
+                Err (Net.NetError { code, message }) ->
+                    { model = model
+                    , command =
+                        Stream.Log.line model.stderr ("Listener error: " ++ code ++ " " ++ message)
+                            |> Task.execute
+                    }
+
+        ClientConnected socket ->
+            let
+                socketId =
+                    Socket.socketId socket
+            in
+            { model = { model | sockets = Dict.set socketId socket model.sockets }
+            , command = readFromSocket socketId socket
+            }
+
+        ReadResult { socketId, result } ->
+            when result is
+                Ok chunk ->
+                    when Dict.get socketId model.sockets is
+                        Just socket ->
+                            { model = model
+                            , command =
+                                Cmd.batch
+                                    [ Socket.write socket chunk
+                                        |> Task.attempt WriteDone
+                                    , readFromSocket socketId socket
+                                    ]
+                            }
+
+                        Nothing ->
+                            { model = model
+                            , command = Cmd.none
+                            }
+
+                Err Stream.Closed ->
+                    -- The remote peer half-closed (FIN): echo mode done, half-close back.
+                    when Dict.get socketId model.sockets is
+                        Just socket ->
+                            { model = model
+                            , command = Socket.end socket |> Task.attempt EndDone
+                            }
+
+                        Nothing ->
+                            { model = model
+                            , command = Cmd.none
+                            }
+
+                Err (Stream.Cancelled reason) ->
+                    { model = model
+                    , command =
+                        Stream.Log.line model.stdout ("stream error: " ++ reason)
+                            |> Task.execute
+                    }
+
+                Err Stream.Locked ->
+                    { model = model
+                    , command = Cmd.none
+                    }
+
+
+        ClientDisconnected socket ->
+            let
+                socketId =
+                    Socket.socketId socket
+            in
+            { model = { model | sockets = Dict.remove socketId model.sockets }
+            , command = Cmd.none
+            }
+
+        WriteDone _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+        EndDone _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    when model.listener is
+        Just listener ->
+            Sub.batch
+                [ Net.onConnection listener ClientConnected
+                , Net.onClose listener ClientDisconnected
+                ]
+
+        Nothing ->
+            Sub.none
+
+
+readFromSocket : Int -> Net.Socket -> Cmd Msg
+readFromSocket socketId socket =
+    Socket.readable socket
+        |> Stream.read
+        |> Task.attempt (\result -> ReadResult { socketId = socketId, result = result })

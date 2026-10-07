@@ -6,3 +6,7 @@ docs.json
 tests/app
 
 integration-tests/websocket/app
+integration-tests/net/server-app
+integration-tests/net/client-tests-app
+integration-tests/net/refused-test-app
+integration-tests/net/in-use-test-app

@@ -1,0 +1,103 @@
+module InUseTest exposing (main)
+
+{-| Try to listen on a port that is already bound (the echo server runs there
+while the mocha suite executes) and assert the listen Task fails with an
+EADDRINUSE NetError. Exits 0 on success, 1 otherwise.
+-}
+
+import Init
+import Net
+import Node exposing (Environment, Program)
+import Stream.Log as Log
+import Task exposing (Task)
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+type alias Model =
+    { env : Environment
+    }
+
+
+type Msg
+    = ListenFinished (Maybe String)
+    | OutputDone Int
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Net.initialize <|
+        \permission ->
+            let
+                check =
+                    Net.listen permission
+                        { host = "127.0.0.1"
+                        , port_ = inUsePort
+                        , options = []
+                        }
+                        |> Task.map (\_ -> Nothing)
+                        |> Task.onError (\err -> Task.succeed (Just (Net.netErrorCode err)))
+            in
+            Node.startProgram
+                { model = { env = env }
+                , command = check |> Task.perform ListenFinished
+                }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ListenFinished maybeCode ->
+            let
+                ok =
+                    maybeCode == Just "EADDRINUSE"
+
+                exitCode =
+                    if ok then
+                        0
+
+                    else
+                        1
+
+                detail =
+                    case_ maybeCode
+            in
+            { model = model
+            , command =
+                Log.line model.env.stdout
+                    (if ok then
+                        "PASS in-use"
+
+                     else
+                        "FAIL in-use: " ++ detail
+                    )
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+case_ : Maybe String -> String
+case_ maybeCode =
+    when maybeCode is
+        Just code ->
+            "code=" ++ code
+
+        Nothing ->
+            "listen unexpectedly succeeded"
+
+
+inUsePort : Int
+inUsePort =
+    9310
