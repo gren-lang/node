@@ -1,0 +1,188 @@
+module BadPemTest exposing (main)
+
+{-| Start a TLS server with garbage (non-PEM) certificate and key bytes and
+assert the listen Task fails with a TlsError instead of crashing the process.
+
+Regression for the review finding that malformed PEM makes node's
+tls.createServer *throw synchronously* (ERR_OSSL_PEM_NO_START_LINE) — before
+the server's "error" listener exists — so the throw escaped the scheduler, the
+Task never settled, and the process exited silently. The kernel must now catch
+it and fail the Task.
+
+The Cert/Key bytes are non-empty, so the Gren-side MissingCert guard does not
+short-circuit the test. Exits 0 when the Task fails with a non-empty node code
+(expected: ERR_OSSL_PEM_NO_START_LINE); a hang fails via the built-in 5 s
+watchdog and a crash/non-zero exit is surfaced by the mocha runner.
+-}
+
+import Bytes exposing (Bytes)
+import Init
+import Node exposing (Environment, Program)
+import Stream.Log as Log
+import Task exposing (Task)
+import Time exposing (Posix, posixToMillis)
+import Tls
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias Model =
+    { env : Environment
+    , deadline : Maybe Int
+    , settled : Bool
+    }
+
+
+type Msg
+    = ListenFinished (Maybe String)
+    | Tick Posix
+    | OutputDone Int
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Tls.initialize <|
+        \permission ->
+            Init.awaitTask Time.now <|
+                \startPosix ->
+                    Node.startProgram
+                        { model =
+                            { env = env
+                            , deadline = Just (posixToMillis startPosix + watchdogMs)
+                            , settled = False
+                            }
+                        , command =
+                            check permission
+                                |> Task.attempt (\outcome -> ListenFinished (outcomeToMaybeCode outcome))
+                        }
+
+
+{-| Tls.listen with Cert/Key set to bytes that are not PEM at all.
+-}
+check : Tls.Permission -> Task String (Result Tls.TlsError Tls.Listener)
+check permission =
+    Tls.listen permission
+        { host = "127.0.0.1"
+        , port_ = listenPort
+        , options =
+            [ Tls.Cert (Bytes.fromString "not pem at all")
+            , Tls.Key (Bytes.fromString "also not pem")
+            ]
+        }
+        |> Task.map Ok
+        |> Task.onError (\err -> Task.succeed (Err err))
+
+
+outcomeToMaybeCode : Result String (Result Tls.TlsError Tls.Listener) -> Maybe String
+outcomeToMaybeCode outcome =
+    when outcome is
+        Ok (Err tlsErr) ->
+            Just (Tls.tlsErrorCode tlsErr)
+
+        Ok (Ok _) ->
+            Just "LISTENED"
+
+        Err _ ->
+            Nothing
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ListenFinished maybeCode ->
+            let
+                ok =
+                    when maybeCode is
+                        Just code ->
+                            code /= "" && code /= "LISTENED"
+
+                        Nothing ->
+                            False
+
+                exitCode =
+                    if ok then
+                        0
+
+                    else
+                        1
+
+                detail =
+                    case_ maybeCode
+            in
+            { model = { model | settled = True }
+            , command =
+                Log.line model.env.stdout
+                    (if ok then
+                        "PASS bad-pem"
+
+                     else
+                        "FAIL bad-pem: " ++ detail
+                    )
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        Tick posix ->
+            let
+                nowMillis =
+                    posixToMillis posix
+
+                timedOut =
+                    when model.deadline is
+                        Just deadline ->
+                            not model.settled && nowMillis >= deadline
+
+                        Nothing ->
+                            False
+            in
+            if timedOut then
+                { model = { model | settled = True }
+                , command =
+                    Log.line model.env.stdout "FAIL bad-pem: watchdog timeout (task never settled)"
+                        |> Task.andThen (\_ -> Node.setExitCode 1)
+                        |> Task.perform (\_ -> OutputDone 1)
+                }
+
+            else
+                { model = model, command = Cmd.none }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+case_ : Maybe String -> String
+case_ maybeCode =
+    when maybeCode is
+        Just code ->
+            "code=" ++ code
+
+        Nothing ->
+            "fatal: listen task did not report an error"
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    if model.settled then
+        Sub.none
+
+    else
+        Time.every 100 Tick
+
+
+listenPort : Int
+listenPort =
+    9414
+
+
+watchdogMs : Int
+watchdogMs =
+    5000

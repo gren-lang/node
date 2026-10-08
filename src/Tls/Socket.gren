@@ -1,0 +1,105 @@
+module Tls.Socket exposing (close, end, readable, socketId, write)
+
+{-| Read from and write to TLS sockets.
+
+These operations are used on the [`Socket`](Tls#Socket) values handed out by
+[`Tls.connect`](Tls#connect), [`Tls.secure`](Tls#secure), and
+[`Tls.onConnection`](Tls#onConnection).
+
+## Identifying
+
+@docs socketId
+
+## Reading
+
+@docs readable
+
+## Writing
+
+@docs write, end, close
+-}
+
+import Bytes exposing (Bytes)
+import Gren.Kernel.Tls
+import Stream exposing (Readable)
+import Task exposing (Task)
+import Tls exposing (Socket, TlsError)
+
+
+
+-- IDENTIFYING
+
+
+{-| Get a comparable identifier for a socket.
+
+Useful for storing sockets in a `Dict Int Socket`.
+-}
+socketId : Socket -> Int
+socketId socket =
+    Gren.Kernel.Tls.getSocketId socket
+
+
+
+-- READING
+
+
+{-| The stream of incoming decrypted data for a socket.
+
+Each read yields the next chunk of received bytes; TLS is a byte stream over
+TCP, so chunk boundaries follow the socket's data events and are not part of
+any application-level framing. Read chunks from it using the [`Stream`](Stream)
+module, for example [`Stream.read`](Stream#read) or
+[`Stream.readUntilClosed`](Stream#readUntilClosed). The stream closes when
+the connection ends, and errors if the connection errors (observed as
+`Stream.Cancelled`).
+
+    Tls.Socket.readable socket
+        |> Stream.read
+        |> Task.attempt ReadResult
+
+-}
+readable : Socket -> Readable Bytes
+readable socket =
+    Gren.Kernel.Tls.getReadable socket
+
+
+
+-- WRITING
+
+
+{-| Send bytes to the remote peer (encrypted).
+
+The task resolves once the plaintext has been framed, encrypted, and handed
+off to the underlying socket (node's `socket.write` callback), and fails with
+a [`TlsError`](Tls#TlsError) if the write fails.
+
+    Tls.Socket.write socket (Bytes.fromString "Hello!")
+        |> Task.attempt WriteCompleted
+
+-}
+write : Socket -> Bytes -> Task TlsError {}
+write socket bytes =
+    Gren.Kernel.Tls.write socket bytes
+
+
+{-| Half-close the socket: send a TLS `close_notify` alert followed by a FIN
+to the remote peer.
+
+The socket stops sending data but can continue reading until the remote peer
+closes its side as well; use this to signal "no more data from me" while
+[`close`](#close) tears the socket down entirely.
+-}
+end : Socket -> Task TlsError {}
+end socket =
+    Gren.Kernel.Tls.end socket
+
+
+{-| Close the socket immediately (destroy).
+
+Queued writes are discarded and the socket (including the underlying TCP
+connection) is torn down without a `close_notify`. Use [`end`](#end) for a
+graceful half-close.
+-}
+close : Socket -> Task TlsError {}
+close socket =
+    Gren.Kernel.Tls.close socket

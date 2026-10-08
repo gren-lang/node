@@ -1,0 +1,130 @@
+module InUseTest exposing (main)
+
+{-| Try to listen on a port that is already bound (the TLS echo server runs
+there while the mocha suite executes) and assert the listen Task fails with an
+EADDRINUSE TlsError. Exits 0 on success, 1 otherwise.
+
+Certs are read first (via FileSystem) because listen only reaches the socket
+layer once the Cert/Key options are present — the MissingCert guard must not
+short-circuit this test.
+-}
+
+import FileSystem
+import FileSystem.Path as Path
+import Init
+import Node exposing (Environment, Program)
+import Stream.Log as Log
+import Task exposing (Task)
+import Tls
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+type alias Model =
+    { env : Environment
+    }
+
+
+type Msg
+    = ListenFinished (Result String (Maybe String))
+    | OutputDone Int
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await FileSystem.initialize <|
+        \fsPermission ->
+            Init.await Tls.initialize <|
+                \permission ->
+                    let
+                        check =
+                            FileSystem.readFile fsPermission (Path.fromPosixString "certs/server-good.crt")
+                                |> Task.mapError (\_ -> "failed to read cert")
+                                |> Task.andThen
+                                    (\certPem ->
+                                        FileSystem.readFile fsPermission (Path.fromPosixString "certs/server-good.key")
+                                            |> Task.mapError (\_ -> "failed to read key")
+                                            |> Task.andThen
+                                                (\keyPem ->
+                                                    Tls.listen permission
+                                                        { host = "127.0.0.1"
+                                                        , port_ = inUsePort
+                                                        , options =
+                                                            [ Tls.Cert certPem
+                                                            , Tls.Key keyPem
+                                                            ]
+                                                        }
+                                                        |> Task.map (\_ -> Nothing)
+                                                        |> Task.onError
+                                                            (\err ->
+                                                                Task.succeed (Just (Tls.tlsErrorCode err))
+                                                            )
+                                                )
+                                    )
+                    in
+                    Node.startProgram
+                        { model = { env = env }
+                        , command = check |> Task.attempt ListenFinished
+                        }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ListenFinished outcome ->
+            let
+                ok =
+                    outcome == Ok (Just "EADDRINUSE")
+
+                exitCode =
+                    if ok then
+                        0
+
+                    else
+                        1
+
+                detail =
+                    case_ outcome
+            in
+            { model = model
+            , command =
+                Log.line model.env.stdout
+                    (if ok then
+                        "PASS in-use"
+
+                     else
+                        "FAIL in-use: " ++ detail
+                    )
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+case_ : Result String (Maybe String) -> String
+case_ outcome =
+    when outcome is
+        Ok (Just code) ->
+            "code=" ++ code
+
+        Ok Nothing ->
+            "listen unexpectedly succeeded"
+
+        Err message ->
+            "fatal: " ++ message
+
+
+inUsePort : Int
+inUsePort =
+    9410

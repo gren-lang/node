@@ -10,3 +10,8 @@ integration-tests/net/server-app
 integration-tests/net/client-tests-app
 integration-tests/net/refused-test-app
 integration-tests/net/in-use-test-app
+integration-tests/tls/server-app
+integration-tests/tls/client-tests-app
+integration-tests/tls/in-use-test-app
+integration-tests/tls/secure-after-close-test-app
+integration-tests/tls/bad-pem-test-app

@@ -1,0 +1,187 @@
+module SecureAfterCloseTest exposing (main)
+
+{-| Secure an already-closed Net.Socket and assert the Tls.secure Task fails
+instead of hanging forever.
+
+Regression for the review finding that tls.connect({ socket }) on a destroyed
+TCP socket emits *nothing* (no secureConnect, no tlsClientError, no close), so
+the secure Task leaked and never settled. The kernel must now fail it with
+ERR_STREAM_DESTROYED up front.
+
+Includes its own 5 s watchdog (Time.every): a re-introduced hang exits 1 with
+an explicit FAIL, a correct failure exits 0. Run by mocha via
+fixtures.mjs runGrenApp while the Server.gren echo server holds port 9410.
+-}
+
+import Init
+import Net
+import Net.Socket as NetSocket
+import Node exposing (Environment, Program)
+import Stream.Log as Log
+import Task exposing (Task)
+import Time exposing (Posix, posixToMillis)
+import Tls
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias Model =
+    { env : Environment
+    , deadline : Maybe Int
+    , settled : Bool
+    }
+
+
+type Msg
+    = SecureFinished (Maybe String)
+    | Tick Posix
+    | OutputDone Int
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await Net.initialize <|
+        \netPermission ->
+            Init.await Tls.initialize <|
+                \tlsPermission ->
+                    Init.awaitTask Time.now <|
+                        \startPosix ->
+                            Node.startProgram
+                                { model =
+                                    { env = env
+                                    , deadline = Just (posixToMillis startPosix + watchdogMs)
+                                    , settled = False
+                                    }
+                                , command =
+                                    check netPermission tlsPermission
+                                        |> Task.attempt (\outcome -> SecureFinished (outcomeToMaybeCode outcome))
+                                }
+
+
+{-| Net.connect to the live echo server, close (destroy) the raw socket, then
+try to upgrade it: must fail with ERR_STREAM_DESTROYED, never hang.
+-}
+check : Net.Permission -> Tls.Permission -> Task String (Result Tls.TlsError Tls.Socket)
+check netPermission tlsPermission =
+    Net.connect netPermission { host = "127.0.0.1", port_ = serverPort, options = [] }
+        |> Task.mapError (\_ -> "failed to connect")
+        |> Task.andThen
+            (\netSocket ->
+                NetSocket.close netSocket
+                    |> Task.mapError (\_ -> "failed to close")
+                    |> Task.andThen
+                        (\_ ->
+                            Tls.secure tlsPermission { socket = netSocket, options = [] }
+                                |> Task.map Ok
+                                |> Task.onError (\err -> Task.succeed (Err err))
+                        )
+            )
+
+
+outcomeToMaybeCode : Result String (Result Tls.TlsError Tls.Socket) -> Maybe String
+outcomeToMaybeCode outcome =
+    when outcome is
+        Ok (Err tlsErr) ->
+            Just (Tls.tlsErrorCode tlsErr)
+
+        Ok (Ok _) ->
+            Just "SECURED"
+
+        Err _ ->
+            Nothing
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        SecureFinished maybeCode ->
+            let
+                ok =
+                    maybeCode == Just "ERR_STREAM_DESTROYED"
+
+                exitCode =
+                    if ok then
+                        0
+
+                    else
+                        1
+
+                detail =
+                    case_ maybeCode
+            in
+            { model = { model | settled = True }
+            , command =
+                Log.line model.env.stdout
+                    (if ok then
+                        "PASS secure-after-close"
+
+                     else
+                        "FAIL secure-after-close: " ++ detail
+                    )
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        Tick posix ->
+            let
+                nowMillis =
+                    posixToMillis posix
+
+                timedOut =
+                    when model.deadline is
+                        Just deadline ->
+                            not model.settled && nowMillis >= deadline
+
+                        Nothing ->
+                            False
+            in
+            if timedOut then
+                { model = { model | settled = True }
+                , command =
+                    Log.line model.env.stdout "FAIL secure-after-close: watchdog timeout (task never settled)"
+                        |> Task.perform (\_ -> OutputDone 1)
+                }
+
+            else
+                { model = model, command = Cmd.none }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+case_ : Maybe String -> String
+case_ maybeCode =
+    when maybeCode is
+        Just code ->
+            "code=" ++ code
+
+        Nothing ->
+            "fatal: precondition failed (connect/close)"
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    if model.settled then
+        Sub.none
+
+    else
+        Time.every 100 Tick
+
+
+serverPort : Int
+serverPort =
+    9410
+
+
+watchdogMs : Int
+watchdogMs =
+    5000

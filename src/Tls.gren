@@ -1,0 +1,552 @@
+effect module Tls where { subscription = TlsSubscription } exposing (CertificateBytes, ClientOption(..), KeyBytes, Listener, Permission, Socket, ServerOption(..), TlsError(..), connect, errorIsHostnameMismatch, errorIsUnauthorized, initialize, listen, onConnection, onClose, secure, tlsErrorCode, tlsErrorToString)
+
+{-| Connect to TLS servers and accept TLS connections.
+
+Clients are created with [`connect`](#connect) (a fresh TLS connection over
+its own TCP connection) or [`secure`](#secure) (upgrade an existing
+[`Net.Socket`](Net-Socket) — the STARTTLS-style building block). Servers are
+created with [`listen`](#listen) and accept connections via
+[`onConnection`](#onConnection).
+
+Certificates are [`Bytes`](Bytes) (PEM contents), so your app can read
+fixtures from disk via [`FileSystem`](FileSystem) and hand the bytes to
+options like [`ClientCa`](#ClientOption) — the kernel never touches the
+filesystem.
+
+## Initialization
+
+@docs Permission, initialize, CertificateBytes, KeyBytes
+
+## Client
+
+@docs Socket, connect, secure, ClientOption
+
+## Server
+
+@docs Listener, listen, onConnection, onClose, ServerOption
+
+## Errors
+
+@docs TlsError, tlsErrorCode, tlsErrorToString, errorIsUnauthorized, errorIsHostnameMismatch
+-}
+
+import Array exposing (Array)
+import Bytes exposing (Bytes)
+import Gren.Kernel.Net
+import Gren.Kernel.Tls
+import Init
+import Internal.Init
+import Net exposing (NetError(..))
+import Task exposing (Task)
+
+
+
+-- INITIALIZATION
+
+
+{-| The permission to use the [`Tls`](Tls) module: [`connect`](#connect),
+[`secure`](#secure), or [`listen`](#listen).
+
+You get this from [`initialize`](#initialize).
+-}
+type Permission
+    = Permission
+
+
+{-| Initialize the [`Tls`](Tls) module and get permission to connect, secure,
+or listen.
+-}
+initialize : Init.Task Permission
+initialize =
+    Task.succeed Permission
+        |> Internal.Init.Task
+
+
+{-| A PEM-encoded certificate (or certificate chain), passed as bytes so apps
+can read fixtures via [`FileSystem`](FileSystem#readFile).
+-}
+type alias CertificateBytes =
+    Bytes
+
+
+{-| A PEM-encoded private key.
+-}
+type alias KeyBytes =
+    Bytes
+
+
+{-| Optional configuration for [`connect`](#connect) and [`secure`](#secure).
+
+Pass an empty array to use defaults for everything:
+
+    Tls.connect permission
+        { host = "127.0.0.1"
+        , port_ = 9410
+        , options = [ Tls.ClientCa caCert ]
+        }
+
+If the same option is passed more than once, the last occurrence wins.
+-}
+type ClientOption
+    = ClientCa CertificateBytes
+    | ClientCert KeyBytes
+    | ClientKey KeyBytes
+    | RejectUnauthorized Bool
+    | ServerName String
+    | ClientAlpnProtocols (Array String)
+
+
+{-| Optional configuration for [`listen`](#listen).
+
+[`Cert`](#ServerOption) and [`Key`](#ServerOption) are required: a server
+started without both fails with a [`TlsError`](#TlsError) whose
+[`tlsErrorCode`](#tlsErrorCode) is `"MissingCert"`.
+
+If the same option is passed more than once, the last occurrence wins.
+-}
+type ServerOption
+    = Cert KeyBytes
+    | Key KeyBytes
+    | Ca CertificateBytes
+    | RequestClientCert Bool
+    | AlpnProtocols (Array String)
+
+
+{-| Internal decoding of an `Array ClientOption` into a plain record the
+kernel consumes directly. Field accessors written with a double-underscore
+prefix are rewritten by the compiler to the mangled record field names.
+
+Empty `Bytes` (for ca/cert/key) and empty values for the other fields mean
+"not provided" and become `undefined` in the node options.
+
+`rejectUnauthorized` defaults to `True` — certificate verification is on
+unless you explicitly opt out with `RejectUnauthorized False`.
+-}
+type alias ClientSettings =
+    { ca : Bytes
+    , cert : Bytes
+    , key : Bytes
+    , rejectUnauthorized : Bool
+    , servername : String
+    , alpnProtocols : Array String
+    }
+
+
+decodeClientOptions : Array ClientOption -> ClientSettings
+decodeClientOptions options =
+    Array.foldl
+        (\option settings ->
+            when option is
+                ClientCa bytes ->
+                    { settings | ca = bytes }
+
+                ClientCert bytes ->
+                    { settings | cert = bytes }
+
+                ClientKey bytes ->
+                    { settings | key = bytes }
+
+                RejectUnauthorized value ->
+                    { settings | rejectUnauthorized = value }
+
+                ServerName value ->
+                    { settings | servername = value }
+
+                ClientAlpnProtocols values ->
+                    { settings | alpnProtocols = values }
+        )
+        { ca = Bytes.empty
+        , cert = Bytes.empty
+        , key = Bytes.empty
+        , rejectUnauthorized = True
+        , servername = ""
+        , alpnProtocols = []
+        }
+        options
+
+
+{-| Internal decoding of an `Array ServerOption` into a plain record the
+kernel consumes directly. See [`ClientSettings`](#ClientSettings) for the
+mangling note.
+-}
+type alias ServerSettings =
+    { cert : Bytes
+    , key : Bytes
+    , ca : Bytes
+    , requestCert : Bool
+    , alpnProtocols : Array String
+    }
+
+
+decodeServerOptions : Array ServerOption -> ServerSettings
+decodeServerOptions options =
+    Array.foldl
+        (\option settings ->
+            when option is
+                Cert bytes ->
+                    { settings | cert = bytes }
+
+                Key bytes ->
+                    { settings | key = bytes }
+
+                Ca bytes ->
+                    { settings | ca = bytes }
+
+                RequestClientCert value ->
+                    { settings | requestCert = value }
+
+                AlpnProtocols values ->
+                    { settings | alpnProtocols = values }
+        )
+        { cert = Bytes.empty
+        , key = Bytes.empty
+        , ca = Bytes.empty
+        , requestCert = False
+        , alpnProtocols = []
+        }
+        options
+
+
+
+-- CLIENT
+
+
+{-| An opaque handle representing a TLS socket, either a connection created
+with [`connect`](#connect)/[`secure`](#secure) or one accepted by a
+[`Listener`](#Listener).
+
+Use [`Tls.Socket.readable`](Tls-Socket#readable) to read incoming decrypted
+bytes and [`Tls.Socket.write`](Tls-Socket#write) to send outgoing bytes.
+-}
+type Socket
+    = -- Note: Actual implementation in Kernel code. Backed by a JS object with __$id and __$readable fields.
+      Socket
+
+
+{-| Task to connect to a TLS server over its own TCP connection.
+
+Internally this composes [`Net.connect`](Net#connect) with
+[`secure`](#secure), so a failure is either a TCP-level error (e.g.
+`ECONNREFUSED`) or a TLS handshake error (e.g. a certificate failure), both
+surfaced as a [`TlsError`](#TlsError) carrying node's code and message.
+
+    Tls.connect permission
+        { host = "127.0.0.1"
+        , port_ = 9410
+        , options = [ Tls.ClientCa caCert ]
+        }
+        |> Task.attempt Connected
+
+[`ServerName`](#ClientOption) (the hostname used for SNI and certificate
+verification) defaults to the `host` you connect to.
+-}
+connect : Permission -> { host : String, port_ : Int, options : Array ClientOption } -> Task TlsError Socket
+connect _ { host, port_, options } =
+    let
+        settings =
+            decodeClientOptions options
+
+        -- node can only infer the SNI/verification hostname from a host/port
+        -- connect; since we upgrade an already-connected socket, mirror
+        -- node's behavior by defaulting the servername to the connect host.
+        settingsWithServerName =
+            if settings.servername == "" then
+                { settings | servername = host }
+
+            else
+                settings
+
+        -- Defaults mirror Net.connect's defaults; Tls.ClientOption does not
+        -- expose TCP tuning, so these stay at the node/stream defaults.
+        netSettings =
+            { keepAlive = False
+            , noDelay = True
+            , allowHalfOpen = False
+            , readBufferCapacity = 16
+            }
+    in
+    Gren.Kernel.Net.connect host port_ netSettings
+        |> Task.mapError netErrorToTlsError
+        |> Task.andThen (\netSocket -> Gren.Kernel.Tls.secure netSocket settingsWithServerName)
+
+
+{-| Task to upgrade an existing TCP connection to TLS — the STARTTLS-style
+building block (this is what [`connect`](#connect) uses internally, and what
+`wss://` upgrades use).
+
+The `socket` **must be freshly connected and unused**: its
+[`Net.Socket.readable`](Net-Socket#readable) is discarded and replaced by the
+TLS one, and any data already read from (or written to) the raw socket would
+be lost from the TLS byte stream. Do not read from the `Net.Socket` before
+calling `secure`.
+
+    Net.connect netPermission { host = "127.0.0.1", port_ = 9410, options = [] }
+        |> Task.andThen
+            (\netSocket ->
+                Tls.secure tlsPermission
+                    { socket = netSocket
+                    , options = [ Tls.ClientCa caCert, Tls.ServerName "localhost" ]
+                    }
+            )
+        |> Task.attempt Secured
+
+Unlike [`connect`](#connect), `secure` has no hostname to infer from, so
+[`ServerName`](#ClientOption) has **no default**: without it, node sends no
+SNI and performs no hostname check (certificate-chain verification still
+applies). Pass `ServerName` explicitly unless you have a reason not to.
+
+**The `RejectUnauthorized False` foot-gun:** it disables certificate-chain
+*and* hostname verification entirely — the connection remains encrypted but
+anyone can impersonate the server. Only opt in deliberately (equivalent of
+`ws`' `insecure`); the default is `True`.
+-}
+secure : Permission -> { socket : Net.Socket, options : Array ClientOption } -> Task TlsError Socket
+secure _ { socket, options } =
+    Gren.Kernel.Tls.secure socket (decodeClientOptions options)
+
+
+
+-- SERVER
+
+
+{-| An opaque handle representing a listening TLS server.
+
+Use [`onConnection`](#onConnection) and [`onClose`](#onClose) to react to
+sockets connecting and disconnecting.
+-}
+type Listener
+    = -- Note: Actual implementation in Kernel code. Backed by a node tls.Server object.
+      Listener
+
+
+{-| Task to start a TLS server.
+
+Requires both a [`Cert`](#ServerOption) and a [`Key`](#ServerOption) option;
+if either is missing the task fails immediately with a [`TlsError`](#TlsError)
+whose [`tlsErrorCode`](#tlsErrorCode) is `"MissingCert"`. Otherwise it
+resolves once the server is listening and fails with a
+[`TlsError`](#TlsError) carrying the node error code (e.g. `EADDRINUSE`).
+
+    Tls.listen permission
+        { host = "127.0.0.1"
+        , port_ = 9410
+        , options = [ Tls.Cert certPem, Tls.Key keyPem ]
+        }
+        |> Task.attempt ServerStarted
+
+[`Ca`](#ServerOption) plus [`RequestClientCert`](#ServerOption) enable
+client-certificate requests. Note that node does not *require* client
+certificates to be valid unless you also set `RequestClientCert True` and
+handle verification yourself — a missing client cert still delivers the
+socket.
+-}
+listen : Permission -> { host : String, port_ : Int, options : Array ServerOption } -> Task TlsError Listener
+listen _ { host, port_, options } =
+    let
+        settings =
+            decodeServerOptions options
+    in
+    if Bytes.length settings.cert == 0 || Bytes.length settings.key == 0 then
+        Task.fail
+            (TlsError
+                { code = "MissingCert"
+                , message = "Tls.listen requires both a Cert and a Key server option; node cannot start a TLS server without them."
+                }
+            )
+
+    else
+        Gren.Kernel.Tls.listen host port_ settings
+
+
+
+-- SUBSCRIPTIONS
+
+
+{-| Subscribe to new incoming connections on a listener.
+
+For each new connection the handler receives the accepted (fully
+handshaked) [`Socket`](#Socket). Read incoming bytes with
+[`Tls.Socket.readable`](Tls-Socket#readable) and send replies with
+[`Tls.Socket.write`](Tls-Socket#write).
+
+    Tls.onConnection listener (\socket -> ClientConnected socket)
+
+-}
+onConnection :
+    Listener
+    -> (Socket -> msg)
+    -> Sub msg
+onConnection listener handler =
+    subscription (OnConnectionSub { listener = listener, handler = handler })
+
+
+{-| Subscribe to connection close events on a listener.
+
+Fires when a previously accepted socket has fully closed.
+
+    Tls.onClose listener ClientDisconnected
+
+-}
+onClose : Listener -> (Socket -> msg) -> Sub msg
+onClose listener handler =
+    subscription (OnCloseSub { listener = listener, handler = handler })
+
+
+
+-- ERRORS
+
+
+{-| Error code and message from node.
+Most likely from a failed TLS handshake (e.g. `ERR_TLS_CERT_ALTNAME_INVALID`,
+`SELF_SIGNED_CERT`), a failed connect attempt (e.g. `ECONNREFUSED`, since
+[`connect`](#connect) owns the TCP leg), or a failed attempt to start
+listening (e.g. `EADDRINUSE`).
+
+Use the `errorIs*` helper functions to check for common error conditions, use
+[`tlsErrorCode`](#tlsErrorCode) to match raw node codes yourself, or
+[`tlsErrorToString`](#tlsErrorToString) for a human-readable description.
+-}
+type TlsError
+    = TlsError { code : String, message : String }
+
+
+{-| Convert a [`Net.NetError`](Net#NetError) (from the TCP leg of
+[`connect`](#connect)) into the [`TlsError`](#TlsError) the task exposes,
+preserving node's code and message.
+-}
+netErrorToTlsError : NetError -> TlsError
+netErrorToTlsError (NetError { code, message }) =
+    TlsError { code = code, message = message }
+
+
+{-| Get the error code, if one is available.
+
+Handshake failures surface node's error codes such as
+`"ERR_TLS_CERT_ALTNAME_INVALID"` or `"DEPTH_ZERO_SELF_SIGNED_CERT"`;
+listen/connect failures surface OS codes such as `"EADDRINUSE"`. Errors
+without a code return an empty string.
+-}
+tlsErrorCode : TlsError -> String
+tlsErrorCode (TlsError { code }) =
+    code
+
+
+{-| Get a human-readable description of the error.
+-}
+tlsErrorToString : TlsError -> String
+tlsErrorToString (TlsError { message }) =
+    message
+
+
+{-| If `True`, the server's certificate chain could not be verified: it was
+self-signed, untrusted, expired, or otherwise unverifiable.
+
+This is the family of errors you get when
+[`RejectUnauthorized`](#ClientOption) is left at its `True` default and the
+[`ClientCa`](#ClientOption) option does not pin (or the system roots do not
+contain) a chain for the server's certificate. Covers
+`DEPTH_ZERO_SELF_SIGNED_CERT`, `SELF_SIGNED_CERT`,
+`UNABLE_TO_VERIFY_LEAF_SIGNATURE`, and `CERT_HAS_EXPIRED`.
+-}
+errorIsUnauthorized : TlsError -> Bool
+errorIsUnauthorized (TlsError { code }) =
+    code == "DEPTH_ZERO_SELF_SIGNED_CERT"
+        || code == "SELF_SIGNED_CERT"
+        || code == "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+        || code == "CERT_HAS_EXPIRED"
+
+
+{-| If `True`, the certificate the server presented is valid but does not
+cover the hostname being connected to ([`ServerName`](#ClientOption)):
+node's `ERR_TLS_CERT_ALTNAME_INVALID`. Check this separately from
+[`errorIsUnauthorized`](#errorIsUnauthorized): a hostname mismatch means the
+chain verified but for the *wrong host*.
+-}
+errorIsHostnameMismatch : TlsError -> Bool
+errorIsHostnameMismatch (TlsError { code }) =
+    code == "ERR_TLS_CERT_ALTNAME_INVALID"
+
+
+
+-- EFFECT STUFF
+
+
+type TlsSubscription msg
+    = OnConnectionSub { listener : Listener, handler : Socket -> msg }
+    | OnCloseSub { listener : Listener, handler : Socket -> msg }
+
+
+subMap : (a -> b) -> TlsSubscription a -> TlsSubscription b
+subMap fn sub =
+    when sub is
+        OnConnectionSub { listener, handler } ->
+            OnConnectionSub
+                { listener = listener
+                , handler = handler >> fn
+                }
+
+        OnCloseSub { listener, handler } ->
+            OnCloseSub
+                { listener = listener
+                , handler = handler >> fn
+                }
+
+
+type alias State msg =
+    Array (TlsSubscription msg)
+
+
+init : Task Never (State msg)
+init =
+    Task.succeed []
+
+
+onEffects :
+    Platform.Router msg SelfMsg
+    -> Array (TlsSubscription msg)
+    -> State msg
+    -> Task Never (State msg)
+onEffects router subs state =
+    let
+        -- Clear all handler references for listeners that had subscriptions in
+        -- the previous cycle. clearHandlers is idempotent. This does not
+        -- remove the server-level "secureConnection" EventEmitter listener, it
+        -- only resets the mutable handler arrays that per-connection closures
+        -- read on each event fire.
+        _clearOldHandlers =
+            state
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnConnectionSub { listener } ->
+                                Gren.Kernel.Tls.clearHandlers listener
+
+                            OnCloseSub { listener } ->
+                                Gren.Kernel.Tls.clearHandlers listener
+                    )
+
+        -- Set the current handler references. Per-socket event closures read
+        -- these on every event fire, so existing long-lived connections will
+        -- use the updated handlers without needing to be re-wired.
+        _setNewHandlers =
+            subs
+                |> Array.map
+                    (\sub ->
+                        when sub is
+                            OnConnectionSub { listener, handler } ->
+                                Gren.Kernel.Tls.setConnectionHandler listener router handler
+
+                            OnCloseSub { listener, handler } ->
+                                Gren.Kernel.Tls.setCloseHandler listener router handler
+                    )
+    in
+    Task.succeed subs
+
+
+type SelfMsg
+    = Never
+
+
+onSelfMsg : Platform.Router msg SelfMsg -> SelfMsg -> State msg -> Task Never (State msg)
+onSelfMsg _ _ state =
+    Task.succeed state

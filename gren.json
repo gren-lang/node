@@ -21,7 +21,9 @@
         "WebSocketClient",
         "WebSocketClient.Connection",
         "Net",
-        "Net.Socket"
+        "Net.Socket",
+        "Tls",
+        "Tls.Socket"
     ],
     "gren-version": "0.6.0 <= v < 0.7.0",
     "dependencies": {

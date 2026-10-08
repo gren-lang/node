@@ -1,0 +1,213 @@
+module Server exposing (main)
+
+{-| TLS echo server for the integration suite.
+
+Reads the committed fixture certificates via FileSystem (this is what proves
+the "certificates are bytes" story: the kernel never touches the
+filesystem), listens on 9410, and echoes every received chunk back to the
+client until the client half-closes.
+-}
+
+import Bytes exposing (Bytes)
+import Dict exposing (Dict)
+import FileSystem
+import FileSystem.Path as Path
+import Init
+import Node exposing (Environment, Program)
+import Stream
+import Stream.Log
+import Task exposing (Task)
+import Tls
+import Tls.Socket as Socket
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+type alias Model =
+    { stdout : Stream.Writable Bytes
+    , stderr : Stream.Writable Bytes
+    , listener : Maybe Tls.Listener
+    , sockets : Dict Int Tls.Socket
+    }
+
+
+type Msg
+    = ListenerCreated (Result String Tls.Listener)
+    | ClientConnected Tls.Socket
+    | ReadResult { socketId : Int, result : Result Stream.Error Bytes }
+    | ClientDisconnected Tls.Socket
+    | WriteDone (Result Tls.TlsError {})
+    | EndDone (Result Tls.TlsError {})
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await FileSystem.initialize <|
+        \fsPermission ->
+            Init.await Tls.initialize <|
+                \permission ->
+                    Node.startProgram
+                        { model =
+                            { stdout = env.stdout
+                            , stderr = env.stderr
+                            , listener = Nothing
+                            , sockets = Dict.empty
+                            }
+                        , command =
+                            startServer fsPermission permission
+                                |> Task.attempt ListenerCreated
+                        }
+
+
+{-| Read the fixture PEMs through FileSystem, then start the TLS listener.
+
+Flattens FileSystem.Error and Tls.TlsError into a String for the message so
+the update function has a single failure shape to log.
+-}
+startServer : FileSystem.Permission -> Tls.Permission -> Task String Tls.Listener
+startServer fsPermission tlsPermission =
+    FileSystem.readFile fsPermission (Path.fromPosixString "certs/server-good.crt")
+        |> Task.mapError FileSystem.errorToString
+        |> Task.andThen
+            (\certPem ->
+                FileSystem.readFile fsPermission (Path.fromPosixString "certs/server-good.key")
+                    |> Task.mapError FileSystem.errorToString
+                    |> Task.andThen
+                        (\keyPem ->
+                            Tls.listen tlsPermission
+                                { host = "127.0.0.1"
+                                , port_ = serverPort
+                                , options =
+                                    [ Tls.Cert certPem
+                                    , Tls.Key keyPem
+                                    ]
+                                }
+                                |> Task.mapError Tls.tlsErrorToString
+                        )
+            )
+
+
+serverPort : Int
+serverPort =
+    9410
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ListenerCreated result ->
+            when result is
+                Ok listener ->
+                    { model = { model | listener = Just listener }
+                    , command =
+                        Stream.Log.line model.stdout "TLS server started on port 9410"
+                            |> Task.execute
+                    }
+
+                Err message ->
+                    { model = model
+                    , command =
+                        Stream.Log.line model.stderr ("Listener error: " ++ message)
+                            |> Task.execute
+                    }
+
+        ClientConnected socket ->
+            let
+                socketId =
+                    Socket.socketId socket
+            in
+            { model = { model | sockets = Dict.set socketId socket model.sockets }
+            , command = readFromSocket socketId socket
+            }
+
+        ReadResult { socketId, result } ->
+            when result is
+                Ok chunk ->
+                    when Dict.get socketId model.sockets is
+                        Just socket ->
+                            { model = model
+                            , command =
+                                Cmd.batch
+                                    [ Socket.write socket chunk
+                                        |> Task.attempt WriteDone
+                                    , readFromSocket socketId socket
+                                    ]
+                            }
+
+                        Nothing ->
+                            { model = model
+                            , command = Cmd.none
+                            }
+
+                Err Stream.Closed ->
+                    -- The remote peer half-closed (close_notify + FIN): echo
+                    -- mode done, half-close back.
+                    when Dict.get socketId model.sockets is
+                        Just socket ->
+                            { model = model
+                            , command = Socket.end socket |> Task.attempt EndDone
+                            }
+
+                        Nothing ->
+                            { model = model
+                            , command = Cmd.none
+                            }
+
+                Err (Stream.Cancelled reason) ->
+                    { model = model
+                    , command =
+                        Stream.Log.line model.stdout ("stream error: " ++ reason)
+                            |> Task.execute
+                    }
+
+                Err Stream.Locked ->
+                    { model = model
+                    , command = Cmd.none
+                    }
+
+
+        ClientDisconnected socket ->
+            let
+                socketId =
+                    Socket.socketId socket
+            in
+            { model = { model | sockets = Dict.remove socketId model.sockets }
+            , command = Cmd.none
+            }
+
+        WriteDone _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+        EndDone _ ->
+            { model = model
+            , command = Cmd.none
+            }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    when model.listener is
+        Just listener ->
+            Sub.batch
+                [ Tls.onConnection listener ClientConnected
+                , Tls.onClose listener ClientDisconnected
+                ]
+
+        Nothing ->
+            Sub.none
+
+
+readFromSocket : Int -> Tls.Socket -> Cmd Msg
+readFromSocket socketId socket =
+    Socket.readable socket
+        |> Stream.read
+        |> Task.attempt (\result -> ReadResult { socketId = socketId, result = result })

@@ -41,3 +41,8 @@ echo -e "Running net tests...\n\n"
 pushd net
 make test || exit 1
 popd
+
+echo -e "Running tls tests...\n\n"
+pushd tls
+make test || exit 1
+popd

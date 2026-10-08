@@ -1,0 +1,638 @@
+module ClientTests exposing (main)
+
+{-| Gren-side TLS client tests against the Server.gren echo server.
+
+The fixture PEMs are read through FileSystem — certificates are plain
+Bytes, exactly how user apps are expected to supply them.
+-}
+
+import Array exposing (Array)
+import Bytes exposing (Bytes)
+import Bytes.Decode as Decode
+import Bytes.Encode as Encode
+import FileSystem
+import FileSystem.Path as Path
+import Init
+import Net
+import Node
+import Node exposing (Environment, Program)
+import Stream
+import Stream.Log as Log
+import Task exposing (Task)
+import Tls
+import Tls.Socket as Socket
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+
+-- MODEL
+
+
+type alias Model =
+    { env : Environment
+    , exitCode : Int
+    }
+
+
+type Msg
+    = TestsFinished (Result String (Array TestResult))
+    | OutputDone Int
+
+
+
+-- INIT
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await FileSystem.initialize <|
+        \fsPermission ->
+            Init.await Net.initialize <|
+                \netPermission ->
+                    Init.await Tls.initialize <|
+                        \permission ->
+                            Node.startProgram
+                                { model = { env = env, exitCode = 0 }
+                                , command =
+                                    runAllTests fsPermission netPermission permission
+                                        |> Task.attempt TestsFinished
+                                }
+
+
+
+-- UPDATE
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        TestsFinished outcome ->
+            let
+                { summary, exitCode } =
+                    summarize outcome
+            in
+            { model = { model | exitCode = exitCode }
+            , command =
+                Log.line model.env.stdout summary
+                    |> Task.andThen (\_ -> Node.setExitCode exitCode)
+                    |> Task.perform (\_ -> OutputDone exitCode)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+summarize : Result String (Array TestResult) -> { summary : String, exitCode : Int }
+summarize outcome =
+    when outcome is
+        Ok results ->
+            let
+                passCount =
+                    Array.foldl
+                        (\r acc ->
+                            if r.passed then
+                                acc + 1
+
+                            else
+                                acc
+                        )
+                        0
+                        results
+
+                exitCode =
+                    if passCount == Array.length results then
+                        0
+
+                    else
+                        1
+            in
+            { summary = formatResults results
+            , exitCode = exitCode
+            }
+
+        Err message ->
+            { summary = "FATAL: " ++ message
+            , exitCode = 1
+            }
+
+
+
+
+-- TEST RUNNER
+
+
+type alias TestResult =
+    { name : String
+    , passed : Bool
+    , detail : String
+    }
+
+
+runAllTests : FileSystem.Permission -> Net.Permission -> Tls.Permission -> Task String (Array TestResult)
+runAllTests fsPermission netPermission permission =
+    readFixtures fsPermission
+        |> Task.andThen
+            (\fixtures ->
+                [ test "Tls.connect handshake + text echo (Ca pinned, ServerName localhost)"
+                    (testConnectEchoText permission fixtures)
+                , test "Tls.connect echoes binary data with NUL bytes"
+                    (testConnectEchoBinary permission fixtures)
+                , test "Tls.connect echoes a 1 MB chunk byte-equal"
+                    (testConnectLargeChunk permission fixtures)
+                , test "secure() over a fresh Net.Socket echoes text"
+                    (testSecureRoundtrip netPermission permission fixtures)
+                , test "end() half-closes and reader sees Closed"
+                    (testEnd permission fixtures)
+                , test "close() destroys the socket"
+                    (testClose permission fixtures)
+                , test "wrong Ca pin fails the handshake (errorIsUnauthorized)"
+                    (testWrongCa permission fixtures)
+                , test "ServerName example.com fails with ERR_TLS_CERT_ALTNAME_INVALID"
+                    (testHostnameMismatch permission fixtures)
+                , test "RejectUnauthorized False accepts the self-signed cert unpinning"
+                    (testRejectUnauthorizedFalse permission)
+                , test "listen without Cert/Key fails with MissingCert"
+                    (testMissingCert permission)
+                , test "connect with ClientAlpnProtocols still succeeds when the server offers none"
+                    (testClientAlpnNoServerAlpn permission fixtures)
+                ]
+                    |> Task.sequence
+                    |> Task.mapError (\_ -> "")
+            )
+
+
+test : String -> Task Err Bool -> Task Never TestResult
+test name task_ =
+    task_
+        |> Task.map
+            (\passed ->
+                { name = name
+                , passed = passed
+                , detail =
+                    if passed then
+                        ""
+
+                    else
+                        "Assertion failed"
+                }
+            )
+        |> Task.onError
+            (\err ->
+                Task.succeed
+                    { name = name
+                    , passed = False
+                    , detail = "Error: " ++ errorToString err
+                    }
+            )
+
+
+
+-- FIXTURES
+
+
+type alias Fixtures =
+    { goodCert : Bytes
+    , wrongCert : Bytes
+    }
+
+
+readFixtures : FileSystem.Permission -> Task String Fixtures
+readFixtures fsPermission =
+    FileSystem.readFile fsPermission (Path.fromPosixString "certs/server-good.crt")
+        |> Task.mapError (\_ -> "failed to read certs/server-good.crt")
+        |> Task.andThen
+            (\goodCert ->
+                FileSystem.readFile fsPermission (Path.fromPosixString "certs/server-wrong.crt")
+                    |> Task.mapError (\_ -> "failed to read certs/server-wrong.crt")
+                    |> Task.map
+                        (\wrongCert ->
+                            { goodCert = goodCert
+                            , wrongCert = wrongCert
+                            }
+                        )
+            )
+
+
+
+-- TESTS
+
+
+{-| Connect with the leaf certificate pinned via Ca and ServerName "localhost"
+(which server-good.crt covers) and echo a text chunk.
+-}
+testConnectEchoText : Tls.Permission -> Fixtures -> Task Err Bool
+testConnectEchoText permission fixtures =
+    connect permission [ Tls.ClientCa fixtures.goodCert, Tls.ServerName "localhost" ]
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "hello tls"
+                    |> Task.andThen (\_ -> readN socket 9)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just "hello tls")
+
+
+{-| Sends [0x00, 0xFF, 0x0A, 'b', 0x00] — includes NUL bytes and a high byte —
+and verifies the echoed bytes exactly, proving the encrypted channel is a
+faithful byte pipe.
+-}
+testConnectEchoBinary : Tls.Permission -> Fixtures -> Task Err Bool
+testConnectEchoBinary permission fixtures =
+    let
+        payload =
+            Encode.encode
+                (Encode.sequence
+                    [ Encode.unsignedInt8 0
+                    , Encode.unsignedInt8 255
+                    , Encode.unsignedInt8 10
+                    , Encode.unsignedInt8 98
+                    , Encode.unsignedInt8 0
+                    ]
+                )
+
+        byteChecker =
+            Decode.map5
+                (\b1 b2 b3 b4 b5 ->
+                    b1 == 0 && b2 == 255 && b3 == 10 && b4 == 98 && b5 == 0
+                )
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+                Decode.unsignedInt8
+    in
+    connect permission [ Tls.ClientCa fixtures.goodCert ]
+        |> Task.andThen
+            (\socket ->
+                Socket.write socket payload
+                    |> Task.mapError TlsE
+                    |> Task.andThen (\_ -> readN socket 5)
+            )
+        |> Task.map
+            (\collected ->
+                Bytes.length collected == 5
+                    && (Decode.decode byteChecker collected == Just True)
+            )
+
+
+testConnectLargeChunk : Tls.Permission -> Fixtures -> Task Err Bool
+testConnectLargeChunk permission fixtures =
+    let
+        text =
+            String.repeat (1024 * 1024) "x"
+
+        totalBytes =
+            Bytes.length (Bytes.fromString text)
+
+        loop socket acc remaining =
+            if remaining <= 0 then
+                Task.succeed acc
+
+            else
+                readChunk socket
+                    |> Task.andThen
+                        (\chunk ->
+                            loop socket
+                                (Bytes.flatten [ acc, chunk ])
+                                (remaining - Bytes.length chunk)
+                        )
+    in
+    connect permission [ Tls.ClientCa fixtures.goodCert ]
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket text
+                    |> Task.andThen (\_ -> loop socket Bytes.empty totalBytes)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just text)
+
+
+{-| The STARTTLS-style building block: an explicit Net.connect followed by
+Tls.secure on the fresh socket must behave like Tls.connect.
+-}
+testSecureRoundtrip : Net.Permission -> Tls.Permission -> Fixtures -> Task Err Bool
+testSecureRoundtrip netPermission permission fixtures =
+    Net.connect netPermission { host = "127.0.0.1", port_ = serverPort, options = [] }
+        |> Task.mapError NetE
+        |> Task.andThen
+            (\netSocket ->
+                Tls.secure permission
+                    { socket = netSocket
+                    , options =
+                        [ Tls.ClientCa fixtures.goodCert
+                        , Tls.ServerName "localhost"
+                        ]
+                    }
+                    |> Task.mapError TlsE
+            )
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "starttls"
+                    |> Task.andThen (\_ -> readN socket 8)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just "starttls")
+
+
+testEnd : Tls.Permission -> Fixtures -> Task Err Bool
+testEnd permission fixtures =
+    connect permission [ Tls.ClientCa fixtures.goodCert ]
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "bye"
+                    |> Task.andThen (\_ -> Socket.end socket |> Task.mapError TlsE)
+                    |> Task.andThen (\_ ->
+                        readN socket 3
+                            |> Task.andThen
+                                (\collected ->
+                                    if Bytes.toString collected == Just "bye" then
+                                        Stream.read (Socket.readable socket)
+                                            |> Task.mapError StreamE
+                                            |> Task.map (\_ -> False)
+                                            |> Task.onError
+                                                (\err ->
+                                                    when err is
+                                                        StreamE Stream.Closed ->
+                                                            Task.succeed True
+
+                                                        _ ->
+                                                            Task.fail err
+                                                )
+                                    else
+                                        Task.succeed False
+                                )
+                    )
+            )
+
+
+testClose : Tls.Permission -> Fixtures -> Task Err Bool
+testClose permission fixtures =
+    connect permission [ Tls.ClientCa fixtures.goodCert ]
+        |> Task.andThen
+            (\socket ->
+                Socket.close socket
+                    |> Task.mapError TlsE
+                    |> Task.andThen
+                        (\_ ->
+                            -- close() destroys the socket, so any later write
+                            -- must fail through node with ERR_STREAM_DESTROYED.
+                            Socket.write socket (Bytes.fromString "x")
+                                |> Task.mapError TlsE
+                                |> Task.map (\_ -> False)
+                                |> Task.onError
+                                    (\err ->
+                                        when err is
+                                            TlsE (Tls.TlsError { code }) ->
+                                                Task.succeed
+                                                    (code == "ERR_STREAM_DESTROYED")
+
+                                            _ ->
+                                                Task.fail err
+                                    )
+                        )
+            )
+
+
+{-| Pin the WRONG certificate (server-wrong.crt) against the server that
+presents server-good.crt: chain verification must fail with a self-signed /
+unverifiable code (the pinned CA is not the server's issuer), asserted via
+the documented predicate.
+-}
+testWrongCa : Tls.Permission -> Fixtures -> Task Err Bool
+testWrongCa permission fixtures =
+    connect permission [ Tls.ClientCa fixtures.wrongCert, Tls.ServerName "localhost" ]
+        |> Task.map (\_ -> False)
+        |> Task.onError
+            (\err ->
+                when err is
+                    TlsE tlsErr ->
+                        Task.succeed (Tls.errorIsUnauthorized tlsErr)
+
+                    _ ->
+                        Task.fail err
+            )
+
+
+{-| ServerName "example.com" against the server presenting server-good.crt
+(SAN: DNS:localhost, IP:127.0.0.1): the pinned chain verifies but the
+hostname does not match, so node must fail with
+ERR_TLS_CERT_ALTNAME_INVALID — the exact-code half of the
+hostname-mismatch acceptance criterion.
+-}
+testHostnameMismatch : Tls.Permission -> Fixtures -> Task Err Bool
+testHostnameMismatch permission fixtures =
+    connect permission [ Tls.ClientCa fixtures.goodCert, Tls.ServerName "example.com" ]
+        |> Task.map (\_ -> False)
+        |> Task.onError
+            (\err ->
+                when err is
+                    TlsE tlsErr ->
+                        Task.succeed
+                            (Tls.tlsErrorCode tlsErr == "ERR_TLS_CERT_ALTNAME_INVALID"
+                                && Tls.errorIsHostnameMismatch tlsErr
+                            )
+
+                    _ ->
+                        Task.fail err
+            )
+
+
+{-| The documented foot-gun, exercised: with NO Ca option and
+RejectUnauthorized False, the self-signed server cert (not in any trust
+store) must be accepted and echo work. Proves the opt-in actually opts out.
+-}
+testRejectUnauthorizedFalse : Tls.Permission -> Task Err Bool
+testRejectUnauthorizedFalse permission =
+    connect permission [ Tls.RejectUnauthorized False ]
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "insecure"
+                    |> Task.andThen (\_ -> readN socket 8)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just "insecure")
+
+
+{-| listen without Cert/Key must fail with the MissingCert code (node cannot
+run a TLS server without them).
+-}
+testMissingCert : Tls.Permission -> Task Err Bool
+testMissingCert permission =
+    Tls.listen permission
+        { host = "127.0.0.1"
+        , port_ = 9411
+        , options = [ Tls.RequestClientCert True ]
+        }
+        |> Task.map (\_ -> False)
+        |> Task.onError
+            (\err ->
+                Task.succeed (Tls.tlsErrorCode err == "MissingCert")
+            )
+
+{-| ALPN smoke check on the Gren side: connecting to the Gren echo server
+(which starts without an AlpnProtocols option, so it offers none) while the
+client advertises ClientAlpnProtocols ["hq-29"] must still connect and echo —
+node negotiates no protocol (alpnProtocol false) rather than failing.
+
+Documented choice: Tls.Socket exposes no negotiatedProtocol accessor, so the
+Gren side can only prove the option is accepted end-to-end without breaking
+the handshake. The real ALPN gate (negotiated value asserted on a match and
+on a rejected no-overlap handshake) is the independent node:tls
+server/client test in test/requests.mjs.
+-}
+testClientAlpnNoServerAlpn : Tls.Permission -> Fixtures -> Task Err Bool
+testClientAlpnNoServerAlpn permission fixtures =
+    connect permission
+        [ Tls.ClientCa fixtures.goodCert
+        , Tls.ServerName "localhost"
+        , Tls.ClientAlpnProtocols [ "hq-29" ]
+        ]
+        |> Task.andThen
+            (\socket ->
+                writeChunk socket "alpn"
+                    |> Task.andThen (\_ -> readN socket 4)
+            )
+        |> Task.map (\collected -> Bytes.toString collected == Just "alpn")
+
+
+
+-- ERROR TYPES
+
+
+type Err
+    = NetE Net.NetError
+    | TlsE Tls.TlsError
+    | StreamE Stream.Error
+
+
+errorToString : Err -> String
+errorToString err =
+    when err is
+        NetE (Net.NetError { code, message }) ->
+            "NetError " ++ code ++ ": " ++ message
+
+        TlsE (Tls.TlsError { code, message }) ->
+            "TlsError " ++ code ++ ": " ++ message
+
+        StreamE streamErr ->
+            when streamErr is
+                Stream.Closed ->
+                    "Stream.Closed"
+
+                Stream.Cancelled reason ->
+                    "Stream.Cancelled: " ++ reason
+
+                Stream.Locked ->
+                    "Stream.Locked"
+
+
+
+-- HELPERS
+
+
+connect : Tls.Permission -> Array Tls.ClientOption -> Task Err Tls.Socket
+connect permission options =
+    Tls.connect permission { host = "127.0.0.1", port_ = serverPort, options = options }
+        |> Task.mapError TlsE
+
+
+writeChunk : Tls.Socket -> String -> Task Err {}
+writeChunk socket text =
+    Socket.write socket (Bytes.fromString text)
+        |> Task.mapError TlsE
+
+
+readChunk : Tls.Socket -> Task Err Bytes
+readChunk socket =
+    Stream.read (Socket.readable socket)
+        |> Task.mapError StreamE
+
+
+{-| Read exactly `n` bytes, aggregating stream chunks; TLS is a byte stream,
+so chunk boundaries are not guaranteed.
+-}
+readN : Tls.Socket -> Int -> Task Err Bytes
+readN socket n =
+    let
+        loop acc remaining =
+            if remaining <= 0 then
+                Task.succeed acc
+
+            else
+                readChunk socket
+                    |> Task.andThen
+                        (\chunk ->
+                            loop
+                                (Bytes.flatten [ acc, chunk ])
+                                (remaining - Bytes.length chunk)
+                        )
+    in
+    loop Bytes.empty n
+
+
+
+-- OUTPUT
+
+
+formatResults : Array TestResult -> String
+formatResults results =
+    let
+        total =
+            Array.length results
+
+        formatLine r =
+            (if r.passed then
+                "PASS"
+
+             else
+                "FAIL"
+            )
+                ++ "  "
+                ++ r.name
+                ++ (if r.detail == "" then
+                        ""
+
+                    else
+                        " - " ++ r.detail
+                   )
+
+        lines =
+            Array.foldl
+                (\r acc ->
+                    if acc == "" then
+                        formatLine r
+
+                    else
+                        acc ++ "\n" ++ formatLine r
+                )
+                ""
+                results
+
+        passCount =
+            Array.foldl
+                (\r acc ->
+                    if r.passed then
+                        acc + 1
+
+                    else
+                        acc
+                )
+                0
+                results
+    in
+    "\n" ++ lines ++ "\n\n" ++ String.fromInt passCount ++ "/" ++ String.fromInt total ++ " passed"
+
+
+
+-- CONSTANTS
+
+
+serverPort : Int
+serverPort =
+    9410
