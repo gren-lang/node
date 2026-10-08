@@ -1,3 +1,7 @@
+/*
+
+*/
+
 // Gren.Kernel.WebSocketHandshake
 //
 // RFC 6455 §4/§5 handshake helpers shared by the client and server WebSocket

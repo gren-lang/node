@@ -1,3 +1,7 @@
+/*
+
+*/
+
 // Gren.Kernel.WebSocketCore
 //
 // RFC 6455 framing engine shared by the client and server WebSocket kernels
