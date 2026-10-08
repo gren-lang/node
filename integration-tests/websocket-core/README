@@ -1,0 +1,31 @@
+# websocket-core
+
+Gates for the pure RFC 6455 engine that replaces the npm `ws` dependency
+(tasks/native-websocket/PLAN.md, Phase 3). This suite tests
+`src/Gren/Kernel/WebSocketCore.js` (framing FSM, masking, control frames,
+close handshake, UTF-8 validation) and
+`src/Gren/Kernel/WebSocketHandshake.js` (client/server HTTP upgrade
+handshake) directly, with plain `node --test` — no Gren application, no
+npm dependencies, no Docker.
+
+Both kernel files are deliberately ctor-free plain JavaScript: every Gren
+value constructor is injected through the `attach()` config, so the tests
+load the files verbatim into a `vm` context (test/harness.mjs) and exercise
+the exported `_WebSocketCore_*` / `_WebSocketHandshake_*` globals. The
+frame encoder used to construct peer traffic is a hand-written independent
+oracle (test/harness.mjs `oracleFrame`/`oracleParse`), written from the RFC
+without sharing code with the kernel.
+
+- `test/handshake.test.mjs` — URL parsing, accept-value (RFC 6455 §1.3
+  example), client request byte layout, response validation matrix, server
+  request parsing and 400/426 rejections.
+- `test/framing.test.mjs` — the PLAN §4.3 validation matrix over a fake
+  socket, plus outbound framing/masking/fragmentation and the close
+  handshake.
+- `test/live-probe.test.mjs` — the Phase 3 acceptance probe kept as a
+  permanent test: real loopback TCP, manual handshake via the handshake
+  helpers, text/binary/fragmented/ping/close roundtrips in both directions
+  (raw client vs core server handle, core client handle vs raw server).
+
+The orchestrator (Phase 4) wires this directory into
+integration-tests/run-tests.sh; that file is intentionally untouched here.
