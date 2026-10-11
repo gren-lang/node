@@ -5,7 +5,19 @@ artifacts.dat
 docs.json
 tests/app
 
+integration-tests/autobahn/autobahn-client-app
+integration-tests/autobahn/autobahn-server-app
+integration-tests/autobahn/reports/
+integration-tests/child-process/bin/app
+integration-tests/file-system/bin/app
+integration-tests/http-client/server-app
+integration-tests/http-client/tests-app
+integration-tests/http-server/app
+integration-tests/signals/bin/app
 integration-tests/websocket/app
+integration-tests/websocket/server-app
+integration-tests/websocket/client-tests-app
+integration-tests/websocket/wss-app
 integration-tests/net/server-app
 integration-tests/net/client-tests-app
 integration-tests/net/refused-test-app

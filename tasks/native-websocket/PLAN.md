@@ -493,6 +493,10 @@ that suite is the compatibility oracle for the old `ws` semantics.
   http server object; unlocks ws+http on one port).
 - F8 `Node.attachToHttpServer`-style helper for `Net` keepalive/`SO_LINGER`
   options once real users ask.
+- F9 `errorIsTimeout` is implemented as a predicate but no test asserts an
+  ETIMEDOUT connect (needs a blackhole route / iptables; brittle locally).
+  §7 row 1's "timeout error codes asserted" is met only for ECONNREFUSED and
+  EADDRINUSE; add a timeout case when a reliable harness exists.
 
 ## 9. Risks
 
