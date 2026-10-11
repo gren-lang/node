@@ -1,0 +1,406 @@
+module AutobahnClient exposing (main)
+
+import Bytes exposing (Bytes)
+import Init
+import Node exposing (Environment, Program)
+import Process
+import Stream
+import Stream.Log as Log
+import String
+import Task exposing (Task)
+import WebSocketClient
+import WebSocketClient.Connection as WsConn
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+
+-- MODEL
+--
+-- Case-protocol driver for an Autobahn fuzzingserver on 127.0.0.1:9001:
+-- connect ?count=1 -> getCaseCount -> for each case connect ?id=N, send
+-- runCase, echo any case traffic, wait for the connection to end ->
+-- connect ?report=1 -> updateReports -> exit 0. Each connection is tagged
+-- with a token (0 = count phase, 1..N = cases, -1 = report phase); events
+-- from a stale token are ignored, which tolerates the race between a read
+-- failing with Stream.Closed and the onClose subscription firing.
+
+
+type alias Model =
+    { env : Environment
+    , permission : WebSocketClient.Permission
+    , token : Int
+    , state : State
+    , connection : Maybe WebSocketClient.Connection
+    , caseCount : Int
+    , hadErrors : Bool
+    }
+
+
+type State
+    = Connecting Int
+    | ReadingCase Int
+    | AwaitClose Int
+    | UpdateReports
+    | Done
+
+
+type Msg
+    = ConnectDone { token : Int, result : Result WebSocketClient.ConnectError WebSocketClient.Connection }
+    | ReadDone { token : Int, result : Result Stream.Error WebSocketClient.Message }
+    | WriteDone { token : Int }
+    | CloseObserved { token : Int }
+    | CaseTimeout Int
+
+
+reportToken : Int
+reportToken =
+    -1
+
+
+-- Hang guard per connection, not a case-length budget: every case that
+-- actually runs against our no-extension handshake finishes in < 2.1 s
+-- (the slowest are 6.4.x, where the ~2 s is the fuzzer's own inter-chop
+-- timer). The 12.x cases with 480 s budgets never start streaming - the
+-- robot short-circuits UNIMPLEMENTED at 0 ms without deflate - so this
+-- guard never fires in the current exclusion set; if F1 (permessage-
+-- deflate) un-excludes 12.*, raise this to exceed the 480 s case budgets.
+watchdogMs : Float
+watchdogMs =
+    30000
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await WebSocketClient.initialize <|
+        \permission ->
+            Node.startProgram
+                { model =
+                    { env = env
+                    , permission = permission
+                    , token = 0
+                    , state = Connecting 0
+                    , connection = Nothing
+                    , caseCount = -1
+                    , hadErrors = False
+                    }
+                , command =
+                    Cmd.batch
+                        [ connectWith 0 "getCaseCount?agent=gren-node" permission
+                        , watchdog 0
+                        ]
+                }
+
+
+
+-- UPDATE
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        ConnectDone { token, result } ->
+            if token /= model.token then
+                { model = model, command = Cmd.none }
+
+            else
+                when result is
+                    Ok connection ->
+                        beginPhase token connection model
+
+                    Err (WebSocketClient.ConnectError { code, message }) ->
+                        -- Some client-side cases (6.x) deliberately abort
+                        -- the handshake; a failed connect for a case token
+                        -- counts as that case having ended.
+                        if token > 0 then
+                            advance token model
+
+                        else
+                            logFatal model
+                                ("connect failed (token "
+                                    ++ String.fromInt token
+                                    ++ "): "
+                                    ++ code
+                                    ++ " "
+                                    ++ message
+                                )
+
+        ReadDone { token, result } ->
+            if token /= model.token then
+                { model = model, command = Cmd.none }
+
+            else
+                when result is
+                    Ok message ->
+                        onMessage token message model
+
+                    Err _ ->
+                        -- Stream.Closed / Cancelled: the connection ended;
+                        -- advance regardless of which came first.
+                        advance token model
+
+        WriteDone _ ->
+            -- Write failures always surface later as a closed connection;
+            -- never fail on them here.
+            { model = model, command = Cmd.none }
+
+        CloseObserved { token } ->
+            if token /= model.token then
+                { model = model, command = Cmd.none }
+
+            else
+                advance token model
+
+        CaseTimeout tok ->
+            if tok == model.token then
+                when activeToken model.state is
+                    Just _ ->
+                        { model = model
+                        , command =
+                            Cmd.batch
+                                [ logErrorLine model ("TIMEOUT in phase token " ++ String.fromInt tok)
+                                , Node.exitWithCode 1
+                                ]
+                        }
+
+                    Nothing ->
+                        { model = model, command = Cmd.none }
+
+            else
+                { model = model, command = Cmd.none }
+
+
+beginPhase : Int -> WebSocketClient.Connection -> Model -> { model : Model, command : Cmd Msg }
+beginPhase tok connection model =
+    -- The classic fuzzingserver drives everything from the upgrade path
+    -- (/getCaseCount, /runCase?case=N, /updateReports); the client sends no
+    -- control messages at all — see fuzzing.py onOpen/onConnect.
+    { model =
+        { model
+            | state = ReadingCase tok
+            , connection = Just connection
+        }
+    , command = readFrom tok connection
+    }
+
+
+onMessage : Int -> WebSocketClient.Message -> Model -> { model : Model, command : Cmd Msg }
+onMessage tok message model =
+    when activeToken model.state is
+        Just t ->
+            if t /= tok then
+                { model = model, command = Cmd.none }
+
+            else if t == 0 then
+                onCaseCount message model
+
+            else if t < 0 then
+                -- updateReports answers with informational JSON; the only
+                -- thing that matters is the following close.
+                { model = model, command = Cmd.none }
+
+            else
+                -- Echo case traffic byte-for-byte and keep waiting for the
+                -- connection to end.
+                when model.connection is
+                    Just connection ->
+                        { model = { model | state = AwaitClose t }
+                        , command =
+                            Cmd.batch
+                                [ Stream.write message (WsConn.writable connection)
+                                    |> Task.attempt (\_ -> WriteDone { token = t })
+                                , readFrom t connection
+                                ]
+                        }
+
+                    Nothing ->
+                        { model = model, command = Cmd.none }
+
+        Nothing ->
+            { model = model, command = Cmd.none }
+
+
+onCaseCount : WebSocketClient.Message -> Model -> { model : Model, command : Cmd Msg }
+onCaseCount message model =
+    when message is
+        WebSocketClient.TextMessage text ->
+            when decodeCount text is
+                Ok count ->
+                    { model =
+                        { model
+                            | caseCount = count
+                            , token = 1
+                            , state = Connecting 1
+                            , connection = Nothing
+                        }
+                    , command =
+                        Cmd.batch
+                            [ Log.line model.env.stdout ("CASES=" ++ String.fromInt count)
+                                |> Task.execute
+                            , connectWith 1 "runCase?case=1&agent=gren-node" model.permission
+                            , watchdog 1
+                            ]
+                    }
+
+                Err error ->
+                    logFatal model ("bad getCaseCount response: " ++ error)
+
+        WebSocketClient.BinaryMessage _ ->
+            logFatal model "unexpected binary message in count phase"
+
+
+advance : Int -> Model -> { model : Model, command : Cmd Msg }
+advance tok model =
+    when activeToken model.state is
+        Just t ->
+            if t /= tok then
+                { model = model, command = Cmd.none }
+
+            else if t == 0 then
+                logFatal model "count phase ended before getCaseCount responded"
+
+            else if t < 0 then
+                -- The report connection closed: everything is done.
+                { model = { model | state = Done, connection = Nothing }
+                , command = Node.exitWithCode (if model.hadErrors then 1 else 0)
+                }
+
+            else if t >= model.caseCount then
+                { model =
+                    { model
+                        | token = reportToken
+                        , state = Connecting reportToken
+                        , connection = Nothing
+                    }
+                , command =
+                    Cmd.batch
+                        [ connectWith reportToken "updateReports?agent=gren-node" model.permission
+                        , watchdog reportToken
+                        ]
+                }
+
+            else
+                startCase (t + 1) { model | connection = Nothing }
+
+        Nothing ->
+            { model = model, command = Cmd.none }
+
+
+startCase : Int -> Model -> { model : Model, command : Cmd Msg }
+startCase k model =
+    { model =
+        { model
+            | token = k
+            , state = Connecting k
+            , connection = Nothing
+        }
+    , command =
+        Cmd.batch
+            [ connectWith k ("runCase?case=" ++ String.fromInt k ++ "&agent=gren-node") model.permission
+            , watchdog k
+            ]
+    }
+logFatal : Model -> String -> { model : Model, command : Cmd Msg }
+logFatal model text =
+    { model = { model | hadErrors = True }
+    , command =
+        Cmd.batch
+            [ logErrorLine model text
+            , Node.exitWithCode 1
+            ]
+    }
+
+
+
+
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    when model.connection is
+        Just connection ->
+            WebSocketClient.onClose connection (\_ -> CloseObserved { token = model.token })
+
+        Nothing ->
+            Sub.none
+
+
+
+-- HELPERS
+
+
+activeToken : State -> Maybe Int
+activeToken state =
+    when state is
+        Connecting t ->
+            Just t
+
+        ReadingCase t ->
+            Just t
+
+        AwaitClose t ->
+            Just t
+
+        UpdateReports ->
+            Nothing
+
+        Done ->
+            Nothing
+
+
+connectWith : Int -> String -> WebSocketClient.Permission -> Cmd Msg
+connectWith tok suffix permission =
+    WebSocketClient.connect permission
+        { url = "ws://127.0.0.1:9001/" ++ suffix, options = [] }
+        |> Task.attempt (\result -> ConnectDone { token = tok, result = result })
+
+
+watchdog : Int -> Cmd Msg
+watchdog tok =
+    Process.sleep watchdogMs
+        |> Task.attempt (\_ -> CaseTimeout tok)
+
+
+sendText : WebSocketClient.Connection -> String -> Int -> Cmd Msg
+sendText connection text tok =
+    WsConn.writable connection
+        |> Stream.write (WebSocketClient.TextMessage text)
+        |> Task.attempt (\_ -> WriteDone { token = tok })
+
+
+readFrom : Int -> WebSocketClient.Connection -> Cmd Msg
+readFrom tok connection =
+    WsConn.readable connection
+        |> Stream.read
+        |> Task.attempt (\result -> ReadDone { token = tok, result = result })
+
+
+decodeCount : String -> Result String Int
+decodeCount text =
+    -- Classic fuzzingserver getCaseCount replies with a bare integer as
+    -- text (fuzzing.py: sendText(str(num_cases))), not a JSON object.
+    when String.toInt (String.trim text) is
+        Just n ->
+            Ok n
+
+        Nothing ->
+            Err ("expected an integer, got " ++ text)
+
+
+
+
+logErrorLine : Model -> String -> Cmd Msg
+logErrorLine model text =
+    Log.line model.env.stderr text
+        |> Task.execute

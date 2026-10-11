@@ -27,3 +27,25 @@ jobs:
 
       - name: Run tests
         run: devbox run test
+
+  autobahn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@v0.12.0
+        with:
+          enable-cache: true
+
+      - name: Pull Autobahn TestSuite image
+        run: docker pull crossbario/autobahn-testsuite
+
+      - name: Autobahn suites
+        run: devbox run test:autobahn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: autobahn-reports
+          path: integration-tests/autobahn/reports

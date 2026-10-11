@@ -106,12 +106,12 @@ Read streams buffer messages using a `CountQueuingStrategy` with a high-water ma
 
 Both modules accept `Option` values to tune behavior; the defaults below are what you get with `options = []`:
 
-| Option | Default | Applies to |
-| --- | --- | --- |
-| `ReadBufferCapacity` | 16 messages | client and server |
-| `MaxMessageSize` | 104857600 bytes (100 MiB) | client and server |
-| `MaxFrameSize` | 104857600 bytes (100 MiB) | client and server |
-| `HandshakeTimeout` | 60000 ms | server only |
+| Option               | Default                   | Applies to        |
+| -------------------- | ------------------------- | ----------------- |
+| `ReadBufferCapacity` | 16 messages               | client and server |
+| `MaxMessageSize`     | 104857600 bytes (100 MiB) | client and server |
+| `MaxFrameSize`       | 104857600 bytes (100 MiB) | client and server |
+| `HandshakeTimeout`   | 60000 ms                  | server only       |
 
 Messages or frames exceeding `MaxMessageSize`/`MaxFrameSize` close the connection with code `1009` (`TOO_LARGE`) as required by RFC 6455. On the server, sockets that fail to complete the HTTP upgrade within `HandshakeTimeout`, or that send more than 16 KiB of request head, are destroyed (slow-loris protection). The client's connect handshake timeout is fixed at 10 seconds.
 

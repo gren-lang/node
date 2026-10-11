@@ -23,6 +23,10 @@
       "test:integration": [
         "cd integration-tests/",
         "./run-tests.sh"
+      ],
+      "test:autobahn": [
+        "cd integration-tests/autobahn",
+        "make test"
       ]
     }
   }

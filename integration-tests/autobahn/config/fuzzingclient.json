@@ -1,0 +1,11 @@
+{
+  "outdir": "/reports/server",
+  "servers": [
+    {
+      "url": "ws://127.0.0.1:9009"
+    }
+  ],
+  "cases": ["*"],
+  "exclude-cases": ["permessage-deflate.*", "12.*", "13.*"],
+  "exclude-agent-cases": {}
+}

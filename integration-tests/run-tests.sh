@@ -46,3 +46,15 @@ echo -e "Running tls tests...\n\n"
 pushd tls
 make test || exit 1
 popd
+
+echo -e "Running autobahn tests...\n\n"
+if docker info > /dev/null 2>&1; then
+  pushd autobahn
+  make test || exit 1
+  popd
+elif [ -n "${CI:-}" ]; then
+  echo "ERROR: docker unavailable but CI requires the autobahn suites" >&2
+  exit 1
+else
+  echo "SKIPPED: docker unavailable; autobahn suites need a docker daemon" >&2
+fi

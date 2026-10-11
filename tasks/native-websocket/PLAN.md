@@ -15,25 +15,25 @@ breaks every consumer (no `node_modules`, no install step). It must be replaced.
 What `ws` is currently used for (this is the complete feature surface to
 reimplement — nothing beyond this is used):
 
-| ws feature | Where used |
-| --- | --- |
-| Client `new WebSocket(url)` + `open`/`message`/`close`/`error` events | `Kernel/WebSocketClient.js` connect |
+| ws feature                                                                    | Where used                               |
+| ----------------------------------------------------------------------------- | ---------------------------------------- |
+| Client `new WebSocket(url)` + `open`/`message`/`close`/`error` events         | `Kernel/WebSocketClient.js` connect      |
 | Server `new WebSocket.Server({host,port})` + `listening`/`error`/`connection` | `Kernel/WebSocketServer.js` createServer |
-| per-socket `send(data, cb)` (text + binary) | send / sendBytes / writable |
-| `close(code, reason)` + close-event `(code, reason)` | close, onClose subs |
-| `client._socket.pause()/resume()` | backpressure via `CountQueuingStrategy` |
-| HTTP Upgrade handshake, masking, fragmentation, ping/pong, UTF-8 validation | (implicit — all inside ws today) |
+| per-socket `send(data, cb)` (text + binary)                                   | send / sendBytes / writable              |
+| `close(code, reason)` + close-event `(code, reason)`                          | close, onClose subs                      |
+| `client._socket.pause()/resume()`                                             | backpressure via `CountQueuingStrategy`  |
+| HTTP Upgrade handshake, masking, fragmentation, ping/pong, UTF-8 validation   | (implicit — all inside ws today)         |
 
 Everything else in the public Gren API (`WebSocketClient`, `WebSocketClient.Connection`,
 `WebSocketServer`, `WebSocketServer.Connection`) stays **byte-for-byte compatible**.
 App code does not change; `integration-tests/websocket/` must pass unchanged
-(it may keep using `ws` as a *test-only* dev dependency — that is allowed,
+(it may keep using `ws` as a _test-only_ dev dependency — that is allowed,
 test harnesses are not shipped code).
 
 ## 2. Decisions and rationale
 
 **D1 — `Net` and `Tls` become first-class exposed modules.** `node:net` (TCP)
-and `node:tls` get public Gren modules so WebSocket is built on them *and*
+and `node:tls` get public Gren modules so WebSocket is built on them _and_
 third-party libraries (raw TCP servers, custom protocols, database drivers)
 can too. This avoids the `ws`-shaped hole where a private socket layer
 accretes undocumented in kernel code.
@@ -42,6 +42,7 @@ accretes undocumented in kernel code.
 Tempting alternative: parse frames in Gren with `Bytes.Decode` + `Bitwise`
 (both exist in core 7: `unsignedInt8/16/32`, `and/or/xor/shiftLeftBy/...`).
 Rejection reasons:
+
 - The handshake cannot be pure Gren anyway: `Crypto.digest` in core 7.0.0
   supports only Sha256/384/512 — **no SHA-1**, which RFC 6455 §1.3 mandates for
   `Sec-WebSocket-Accept` — and there is no base64 codec. Both are one-liners in
@@ -55,12 +56,12 @@ Rejection reasons:
   `desiredSize` (`WebSocketServer.js:62-120`, `WebSocketClient.js:37-49`).
   Driving that through a Gren-level `Net.Socket` API would need pause/resume
   hooks leaking into the public Stream API anyway.
-- UTF-8 validation for text frames needs fatal decoding on *Bytes* (autobahn
+- UTF-8 validation for text frames needs fatal decoding on _Bytes_ (autobahn
   6.5.x/6.6.x close-code-1007 behavior). `Bytes.toString` is already fatal-Maybe
   (`TextDecoder("utf-8",{fatal:true})` in core kernel), but doing it in the frame
   parser avoids a double copy.
 
-So: `Net`/`Tls` are exposed *for users*; WebSocket consumes their **kernel
+So: `Net`/`Tls` are exposed _for users_; WebSocket consumes their **kernel
 internals** (`Gren.Kernel.Net` / `Gren.Kernel.Tls`), exactly like
 `WebSocketServer.gren` already reaches into `Gren.Kernel.WebSocketServer`.
 If/when pure-Gren framing becomes desirable, the frame codec can be factored
@@ -273,7 +274,7 @@ matching today's behavior (`createServer` takes host/port only; nothing regresse
   fine — everything used (`ReadableStream`/`CountQueuingStrategy` globals,
   `node:net`, `node:tls`, `node:crypto`) is stable there.
 - `integration-tests/websocket/package.json` keeps `ws` as dev dep (it is the
-  independent third-party *test client* — do not use our own client to test
+  independent third-party _test client_ — do not use our own client to test
   our own server; keep it and never use `ws` inside `src/`).
 - Preexisting bug to fix in passing: `integration-tests/run-tests.sh:36-38`
   pushes `websocket-client/` which does not exist on disk or in git — the
@@ -313,7 +314,7 @@ auto-pong, clean close handshake). `fuzzingclient.json`:
 ```json
 {
   "outdir": "/reports",
-  "servers": [ { "url": "ws://127.0.0.1:9009" } ],
+  "servers": [{ "url": "ws://127.0.0.1:9009" }],
   "cases": ["*"],
   "exclude-cases": ["permessage-deflate.*"],
   "exclude-agent-cases": {}
@@ -330,10 +331,9 @@ Runner (server suite): start `autobahn-server-app` (a fork, same stdout-
 `docker run --rm -v $PWD/config:/config -v $PWD/reports:/reports --network host
 crossbario/autobahn-testsuite wstest -m fuzzingclient -s /config/fuzzingclient.json`,
 then `check-reports.mjs`. `--network host` is required because the container
-must dial *our* port; Linux (CI ubuntu) has it, macOS Docker Desktop ≥4.34 also
+must dial _our_ port; Linux (CI ubuntu) has it, macOS Docker Desktop ≥4.34 also
 does (document the requirement; host network is the supported path — the
 published-port alternative is unreliable for fuzzingclient).
-
 
 ### 6.3 Client-side suite (`wstest -m fuzzingserver`)
 
@@ -386,12 +386,15 @@ Parses `reports/index.json` — classic format verified in
 - fail if any `behavior` in {`FAILED`, `UNIMPLEMENTED`};
 - fail if any `behaviorClose` in {`WRONG CODE`, `UNCLEAN`, `FAILED BY CLIENT`};
 - fail on `NON-STRICT` (strict posture; deviations require an entry in 6.5
-  with evidence);
-- `INFORMATIONAL` counts as pass (covers 12.x limits/performance);
+  with evidence — implemented as the `EXPECTED_NON_STRICT` map inside
+  `check-reports.mjs`, which waives a listed case id _only_ while its
+  verdict is exactly NON-STRICT with a clean close);
+- `INFORMATIONAL` counts as pass (in practice: 7.1.6, 7.13.x);
 - fail if executed case count ≠ N from step 6.3.1 (report JSON omits
   un-executed cases silently — this is the anti-silent-skip check);
-- case IDs absent because they are in `exclude-cases` pass by name check
-  against the config file.
+- case IDs matching `exclude-cases` patterns are skipped (not counted as
+  executed; the fuzzer never runs them) and pass by name check against the
+  config file;
 
 Prints a per-category table (`1.x`, `2.x`, … `13.x`), exits non-zero on any
 violation, and points at `reports/index.html`. Also the local-dev entry
@@ -400,20 +403,33 @@ violation, and points at `reports/index.html`. Also the local-dev entry
 ### 6.5 Expected exclusions and the honesty list
 
 v1 baseline expectation is **every included case PASS, no exceptions**. The
-gate (6.4) already treats `behavior == "INFORMATIONAL"` as non-failing, so the
-informational categories (`12.x` limits/performance) need no exclusion — they
-run and are reported. Verified against
-`crossbario/autobahn-testsuite` `fuzzing.py`/`case/case.py`:
+gate (6.4) treats `behavior == "INFORMATIONAL"` as non-failing. What the
+classic `crossbario/autobahn-testsuite` image actually does with each
+category was verified empirically (report JSONs + the image's own
+`fuzzing.py`/`case/case*.py`), not from the newer suite's docs:
 
 - `1.x`–`7.x` (echo, close×2, ping/pong, reserved bits, UTF-8/validation,
   HTTP handshake) — must all be `"OK"`; the close-handshake ones also require
   `behaviorClose` `"OK"` (owners: the validation matrix in §4.3).
-- `12.x` limits/performance — informational; pass through the gate as
-  `"INFORMATIONAL"`. Excluded (`"12.*"`) **only** if 12.1.x (10 MB messages)
-  proves flaky on slow CI runners; each exclusion then lives in the JSON
-  configs (auditable) with a one-line justification in the Makefile.
-- `13.x` (UTF-8 in close reason) — validate and pass strict (1002/1007); if a
-  NON-STRICT proves unavoidable, it goes on the list with evidence.
+- `12.x` limits/performance — verified empirically: the classic image's
+  12.x/13.x robots are **permessage-deflate streaming cases** (compressed
+  test data; `case/case12_x_x.py` onOpen reports `behavior =
+UNIMPLEMENTED` immediately when `_perMessageCompress is None`). With v1's
+  no-extension handshake (D4) all 216 cases report UNIMPLEMENTED at 0–3 ms
+  in **both** suites (server mode also because the fuzzingclient-mode
+  driver has no 12.x/13.x robot), identical to stock ws's server-mode
+  baseline. This is the D4 extension exclusion surfacing as UNIMPLEMENTED,
+  not an echo-server gap: excluded (`"12.*"`, `"13.*"`) in **both** JSON
+  configs (auditable), Makefile-documented. §6.5's earlier claim that 12.x
+  reports `"INFORMATIONAL"` and 13.x passes strict was verified against
+  the wrong (newer) suite and does not hold for this image.
+- `6.4.3`/`6.4.4` (invalid UTF-8 chopped within one text frame) land
+  NON-STRICT: no incremental validator can reject before FIN, so the
+  close arrives after the robot's 2 s chop timer — stock ws on the same
+  image shows the same NON-STRICT at the same ~2 s latency (server mode:
+  6.4.1–6.4.4 all NON-STRICT d=2011–2015 ms; Gren: 6.4.1/6.4.2 OK —
+  stricter than ws — and 6.4.3/6.4.4 NON-STRICT d=2009–2015 ms). Honesty
+  entry: `EXPECTED_NON_STRICT` in `check-reports.mjs`.
 - permessage-deflate: the classic `crossbario/autobahn-testsuite` image ships
   **no** extension cases (they exist in the newer Autobahn-Python suite), so
   no exclusion is needed for D4 to hold. When an image/test with extension
@@ -429,17 +445,17 @@ when `docker info` succeeds, else prints `SKIPPED` — never silently passes on
 Linux: gate with `[ -n "${CI:-}" ] && fail || warn`).
 
 ```yaml
-  autobahn:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jetify-com/devbox-install-action@v0.12.0
-        with: { enable-cache: true }
-      - name: Autobahn suites
-        run: devbox run test:autobahn
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: autobahn-reports, path: integration-tests/autobahn/reports }
+autobahn:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: jetify-com/devbox-install-action@v0.12.0
+      with: { enable-cache: true }
+    - name: Autobahn suites
+      run: devbox run test:autobahn
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with: { name: autobahn-reports, path: integration-tests/autobahn/reports }
 ```
 
 and a `devbox.json` script `"test:autobahn": ["cd integration-tests/autobahn", "make test"]`.
@@ -449,19 +465,19 @@ and distinct from test failures.
 
 ## 7. Phases, deliverables, acceptance
 
-| # | Deliverable | Files | Acceptance |
-|---|-------------|-------|------------|
-| 0 | Spike: drive `node:net` with ReadableStream/pause glue from a scratch Gren app | throwaway | raw TCP echo through kernel, 10 MB throughput sanity |
-| 1 | `Net` + `Net.Socket` | `src/Net.gren`, `src/Net/Socket.gren`, `src/Gren/Kernel/Net.js`, `gren.json` expose, `integration-tests/net/` | echo server+client tests pass; refused-connect/timeout error codes asserted; `require` scan clean |
-| 2 | `Tls` + `Tls.Socket` (`secure` upgrade included) | `src/Tls.gren`, `src/Tls/Socket.gren`, `src/Gren/Kernel/Tls.js`, fixture certs under `integration-tests/tls/` | TLS echo over self-signed fixture (client w/ `Ca` pin), hostname-mismatch error asserted |
-| 3 | `WebSocketCore` handshake + framing | `src/Gren/Kernel/WebSocketCore.js`, `WebSocketHandshake.js`, unit tests for pure helpers (URL parse wrapper, close-code table) | RFC 6455 matrix §4.3 unit-checked; loopback text/binary/fragmented/ping roundtrip via raw-socket probe script |
-| 4 | Rewire client/server kernels on core+net; **delete `require("ws")`** | `Kernel/WebSocketClient.js`, `Kernel/WebSocketServer.js`, `gren.json` | existing `integration-tests/websocket` mocha + Gren suites pass unchanged; repo-wide `grep 'require("ws")' src/` empty; run-tests.sh dead `websocket-client` block removed |
-| 5 | Autobahn harness | §6.1 files, `run-tests.sh`, `devbox.json`, `test.yml` | both suites green locally incl. `check-reports.mjs` gate; CI autobahn job green; artifact reports uploaded |
-| 6 | Hardening + docs | `README.md`, code comments | limits tested (maxMessageSize 1009 path), backpressure regression case (buffer=2 slow-reader from existing suite still passes), no npm requires |
+| #   | Deliverable                                                                    | Files                                                                                                                          | Acceptance                                                                                                                                                                 |
+| --- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | Spike: drive `node:net` with ReadableStream/pause glue from a scratch Gren app | throwaway                                                                                                                      | raw TCP echo through kernel, 10 MB throughput sanity                                                                                                                       |
+| 1   | `Net` + `Net.Socket`                                                           | `src/Net.gren`, `src/Net/Socket.gren`, `src/Gren/Kernel/Net.js`, `gren.json` expose, `integration-tests/net/`                  | echo server+client tests pass; refused-connect/timeout error codes asserted; `require` scan clean                                                                          |
+| 2   | `Tls` + `Tls.Socket` (`secure` upgrade included)                               | `src/Tls.gren`, `src/Tls/Socket.gren`, `src/Gren/Kernel/Tls.js`, fixture certs under `integration-tests/tls/`                  | TLS echo over self-signed fixture (client w/ `Ca` pin), hostname-mismatch error asserted                                                                                   |
+| 3   | `WebSocketCore` handshake + framing                                            | `src/Gren/Kernel/WebSocketCore.js`, `WebSocketHandshake.js`, unit tests for pure helpers (URL parse wrapper, close-code table) | RFC 6455 matrix §4.3 unit-checked; loopback text/binary/fragmented/ping roundtrip via raw-socket probe script                                                              |
+| 4   | Rewire client/server kernels on core+net; **delete `require("ws")`**           | `Kernel/WebSocketClient.js`, `Kernel/WebSocketServer.js`, `gren.json`                                                          | existing `integration-tests/websocket` mocha + Gren suites pass unchanged; repo-wide `grep 'require("ws")' src/` empty; run-tests.sh dead `websocket-client` block removed |
+| 5   | Autobahn harness                                                               | §6.1 files, `run-tests.sh`, `devbox.json`, `test.yml`                                                                          | both suites green locally incl. `check-reports.mjs` gate; CI autobahn job green; artifact reports uploaded                                                                 |
+| 6   | Hardening + docs                                                               | `README.md`, code comments                                                                                                     | limits tested (maxMessageSize 1009 path), backpressure regression case (buffer=2 slow-reader from existing suite still passes), no npm requires                            |
 
 Phase 3 is the risk center — budget the validation-matrix implementation and
 the first local autobahn run there (it is the first time framing meets a
-hostile fuzzer). Do NOT mark 4 done until the existing suite passes *unchanged*;
+hostile fuzzer). Do NOT mark 4 done until the existing suite passes _unchanged_;
 that suite is the compatibility oracle for the old `ws` semantics.
 
 ## 8. Follow-ups (explicitly out of v1)
