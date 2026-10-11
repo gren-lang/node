@@ -22,8 +22,12 @@ import Platform exposing (sendToApp)
 // request is torn down after this window.
 var _WebSocketServer_defaultHandshakeTimeoutMs = 60000;
 
-// Accumulated request-head cap: a slow-loris style request cannot pin
-// unbounded memory inside the timeout window.
+// Cap on the HTTP request HEAD BLOCK (request line + headers + CRLFCRLF),
+// not on the total bytes seen on the connection: a client may pipeline
+// frames immediately after its upgrade request (the Autobahn fuzzer does
+// exactly that), and those payload bytes are frame data, not handshake
+// bytes, and must not trip the cap. A slow-loris style request head cannot
+// pin unbounded memory inside the timeout window.
 var _WebSocketServer_MAX_HANDSHAKE_BYTES = 16384;
 
 var _WebSocketServer_createServer = F3(function (host, port, settings) {
@@ -132,31 +136,43 @@ function _WebSocketServer_ensureListenersAttached(server) {
 
     function onData(chunk) {
       totalLength += chunk.length;
-      if (totalLength > _WebSocketServer_MAX_HANDSHAKE_BYTES) {
-        destroy();
-        return;
-      }
       chunks.push(chunk);
       var buf = Buffer.concat(chunks);
       var sep = buf.indexOf("\r\n\r\n");
-      if (sep === -1) {
+      if (sep !== -1) {
+        // Head block complete: the cap applies to it alone; an over-long
+        // head is malformed HTTP we can answer with 400, and bytes past it
+        // are already-buffered frame payload handed to accept() below.
+        if (sep + 4 > _WebSocketServer_MAX_HANDSHAKE_BYTES) {
+          reject("BadRequest");
+          return;
+        }
+        var parsed = __WebSocketHandshake_parseRequestHead(
+          buf.subarray(0, sep + 4),
+        );
+        if (!parsed.ok) {
+          reject("BadRequest");
+          return;
+        }
+        var check = __WebSocketHandshake_validateClientRequest(parsed);
+        if (!check.ok) {
+          reject(check.reject);
+          return;
+        }
+        settled = true;
+        cleanup();
+        accept(parsed, buf.subarray(sep + 4));
         return;
       }
-      var parsed = __WebSocketHandshake_parseRequestHead(
-        buf.subarray(0, sep + 4),
-      );
-      if (!parsed.ok) {
-        reject("BadRequest");
-        return;
+      // No terminator yet. The head can hide at most 3 of its trailing CRLF
+      // bytes past this chunk boundary, so once the accumulated total passes
+      // cap + 3 no in-cap head can still complete. A never-terminated
+      // over-cap stream is garbage, not (answerable) HTTP: destroy without a
+      // reject response -- a 400 into a stream that may not even be HTTP
+      // would just be noise. Bounded either way by the handshake timer.
+      if (totalLength > _WebSocketServer_MAX_HANDSHAKE_BYTES + 3) {
+        destroy();
       }
-      var check = __WebSocketHandshake_validateClientRequest(parsed);
-      if (!check.ok) {
-        reject(check.reject);
-        return;
-      }
-      settled = true;
-      cleanup();
-      accept(parsed, buf.subarray(sep + 4));
     }
 
     function onEndOrClose() {

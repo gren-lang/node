@@ -26,8 +26,12 @@ var _WebSocketClient_nextConnectionId = 0;
 // attempt is failed and the socket torn down.
 var _WebSocketClient_MAX_HANDSHAKE_TIMEOUT_MS = 10000;
 
-// Accumulated handshake-response cap: a server that never finishes its
-// header block cannot pin unbounded memory.
+// Cap on the HTTP response HEAD BLOCK (status line + headers + CRLFCRLF),
+// not on the total bytes seen on the connection: the server may pipeline
+// its first frames immediately after the 101 response (the Autobahn fuzzer
+// does exactly that), and those payload bytes are frame data, not handshake
+// bytes, and must not trip the cap. A server that never finishes its header
+// block cannot pin unbounded memory.
 var _WebSocketClient_MAX_HANDSHAKE_BYTES = 16384;
 
 function _WebSocketClient_constructConnectError(code, message) {
@@ -199,41 +203,55 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
 
     function onData(chunk) {
       totalLength += chunk.length;
-      if (totalLength > _WebSocketClient_MAX_HANDSHAKE_BYTES) {
-        failHandshake(
-          "HandshakeError",
-          "Handshake response exceeded " +
-            _WebSocketClient_MAX_HANDSHAKE_BYTES +
-            " bytes",
-        );
-        return;
-      }
       chunks.push(chunk);
       var buf = Buffer.concat(chunks);
       var sep = buf.indexOf("\r\n\r\n");
-      if (sep === -1) {
+      if (sep !== -1) {
+        // Head block complete: the cap applies to it alone; bytes past it
+        // are already-buffered frame payload handed to the engine below.
+        if (sep + 4 > _WebSocketClient_MAX_HANDSHAKE_BYTES) {
+          failHandshake(
+            "HandshakeError",
+            "Handshake response head exceeded " +
+              _WebSocketClient_MAX_HANDSHAKE_BYTES +
+              " bytes",
+          );
+          return;
+        }
+        var result = __WebSocketHandshake_validateServerResponse(
+          key,
+          buf.subarray(0, sep + 4),
+        );
+        if (!result.ok) {
+          failHandshake(result.error.code, result.error.message || "");
+          return;
+        }
+        settled = true;
+        cleanup();
+        // cleanup removed the handshake error listener; cover the socket until
+        // attach() installs the engine's own (which still drives app logic).
+        socket.on("error", function () {});
+        _WebSocketClient_startConnection(
+          socket,
+          settings,
+          buf,
+          sep + 4,
+          safeCallback,
+        );
         return;
       }
-      var result = __WebSocketHandshake_validateServerResponse(
-        key,
-        buf.subarray(0, sep + 4),
-      );
-      if (!result.ok) {
-        failHandshake(result.error.code, result.error.message || "");
-        return;
+      // No terminator yet. The head can hide at most 3 of its trailing CRLF
+      // bytes past this chunk boundary, so once the accumulated total passes
+      // cap + 3 no in-cap head can still complete; fail the same way. Bounded
+      // either way by the 10 s handshake timer.
+      if (totalLength > _WebSocketClient_MAX_HANDSHAKE_BYTES + 3) {
+        failHandshake(
+          "HandshakeError",
+          "Handshake response head exceeded " +
+            _WebSocketClient_MAX_HANDSHAKE_BYTES +
+            " bytes",
+        );
       }
-      settled = true;
-      cleanup();
-      // cleanup removed the handshake error listener; cover the socket until
-      // attach() installs the engine's own (which still drives app logic).
-      socket.on("error", function () {});
-      _WebSocketClient_startConnection(
-        socket,
-        settings,
-        buf,
-        sep + 4,
-        safeCallback,
-      );
     }
 
     function onEnd() {

@@ -348,6 +348,94 @@ test("protocol violation errors the readable with a non-empty reason (Phase-4 or
   assert.equal(frames[0].payload.readUInt16BE(0), 1002);
 });
 
+test("protocol violation: Close(1002) then socket.end(); destroy stays the timer backstop", () => {
+  // Autobahn close-handshake timing (3.2/3.3, 4.1.3/4.1.4, 4.2.3/4.2.4):
+  // after a protocol-error Close the engine must FIN right after the Close
+  // flushes (ws Sender.fail(): write(close) then end()), not hold the
+  // socket open for the full close-timer window. The bounded destroy is
+  // still armed in case the peer never finishes teardown.
+  const { socket, handle } = setup();
+  socket.feed(Buffer.from([0x83, 0x00]));
+  assert.equal(socket.endCalled, false, "end waits for the write to flush");
+  socket.flushWrites();
+  const frames = writtenFrames(socket);
+  assert.equal(frames.length, 1);
+  assert.equal(frames[0].opcode, 0x8);
+  assert.equal(frames[0].payload.readUInt16BE(0), 1002);
+  assert.equal(socket.endCalled, true, "FIN after the Close flushes");
+  assert.equal(socket.destroyed, false, "no hard destroy before the timer");
+  assert.equal(handle.state, "closed", "fireClose settles the handle");
+});
+
+test("protocol violation while closing: still no second Close and no end() from failProtocol", () => {
+  // close()'s own teardown paths (peer Close ACK -> hard destroy, close
+  // timer -> bounded destroy) stand on their own; the protocol-violation
+  // early-return must not sneak an extra end() onto a connection whose
+  // Close is already in flight.
+  const { socket, handle } = setup();
+  handle.close(1000, "bye", () => {});
+  socket.flushWrites();
+  assert.equal(socket.endCalled, false, "close() itself does not end");
+  socket.feed(Buffer.from([0x83, 0x00]));
+  socket.flushWrites();
+  assert.equal(socket.endCalled, false);
+  assert.equal(socket.destroyed, false);
+  const frames = writtenFrames(socket);
+  assert.equal(frames.length, 1, "still exactly one Close on the wire");
+});
+
+test("protocol violation behind a same-event delivery: message survives, Close+FIN next turn", async () => {
+  // Autobahn 3.2/5.15: a valid message and a violating frame coalesced in
+  // one TCP segment. ws's receiver delivers the message (its abort lands
+  // after the read settles); a synchronous error here would wipe the
+  // queued echo. The engine must keep the message, then put Close(1002) +
+  // FIN on the wire one turn later.
+  const { socket, handle, closed, errors, messages, settle } = setup();
+  socket.feed(
+    serverText("Hello, world!"),
+    oracleFrame({ opcode: 0x3, payload: Buffer.alloc(0), mask: true, maskKey }),
+  );
+  assert.equal(
+    socket.writes.length,
+    0,
+    "wire teardown waits one turn behind the delivery",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  socket.flushWrites();
+  assert.equal(messages.length, 1, "the pre-violation message survived");
+  assert.deepEqual(
+    viewBytes(messages[0].view),
+    Buffer.from("Hello, world!", "utf8"),
+  );
+  const frames = writtenFrames(socket);
+  assert.equal(frames.length, 1);
+  assert.equal(frames[0].opcode, 0x8);
+  assert.equal(frames[0].payload.readUInt16BE(0), 1002);
+  assert.equal(socket.endCalled, true, "FIN after the deferred Close flushes");
+  assert.equal(errors.length, 1);
+  assert.equal(closed.length, 1);
+  assert.equal(closed[0].code, 1002);
+  assert.equal(settle.errored, true);
+  assert.equal(handle.state, "closed");
+});
+
+test("deferral window: violation stops deliveries in later events too", async () => {
+  // Between the deferred violation and the drain, a following data event
+  // must not deliver anything new -- the connection is logically failed
+  // (ws has already called fail() by then). The pre-violation message of
+  // the violating event itself survives.
+  const { socket, messages } = setup();
+  socket.feed(
+    serverText("one"),
+    oracleFrame({ opcode: 0x3, payload: Buffer.alloc(0), mask: true, maskKey }),
+  );
+  socket.feed(serverText("two"));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  socket.flushWrites();
+  assert.equal(messages.length, 1, "only the pre-violation message survives");
+  assert.deepEqual(viewBytes(messages[0].view), Buffer.from("one", "utf8"));
+});
+
 test("clean close contrast: normal Close ends the readable CLEAN, no error", () => {
   const { socket, errors, closed, settle } = setup();
   socket.feed(

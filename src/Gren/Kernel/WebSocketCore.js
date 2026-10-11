@@ -523,8 +523,44 @@ function _WebSocketCore_attach(nodeSocket, config) {
   // error notification above still stands -- the ws receiver also emits
   // 'error' after its close frame has been sent -- and the close-timer
   // armed by close() keeps the bounded destroy.
+  // A violation that lands in the same data event as messages already
+  // enqueued to the readable is deferred to the next macrotask: the
+  // consumer's read promise for those messages settles on microtasks, and
+  // erroring the stream synchronously right behind the enqueue wipes a
+  // valid echo that ws (whose receiver defers the abort) does deliver --
+  // exactly what the Autobahn 3.2/5.15 close-timing checks measure. With
+  // nothing delivered this event (the common case: violation as the first
+  // frame of a chunk) the teardown stays fully synchronous.
+  var enqueuedThisEvent = 0; // emitMessage successes since the last event
+  var deferredFailureDrainScheduled = false;
+
+  function drainDeferredFailures() {
+    deferredFailureDrainScheduled = false;
+    enqueuedThisEvent = 0;
+    failProtocol(lastDeferredCode, lastDeferredMessage);
+  }
+
+  var lastDeferredCode = 0;
+  var lastDeferredMessage = "";
+
   function failProtocol(code, message) {
     if (handle.state === "closed") {
+      return;
+    }
+    if (enqueuedThisEvent > 0) {
+      lastDeferredCode = code;
+      lastDeferredMessage = message;
+      // Logically failed from here on: nothing new may reach the app
+      // while the wire teardown waits one turn (a later data event in
+      // the window must not enqueue more messages).
+      stopEmitting = true;
+      if (!deferredFailureDrainScheduled) {
+        deferredFailureDrainScheduled = true;
+        var drain = setTimeout(drainDeferredFailures, 0);
+        if (drain && typeof drain.unref === "function") {
+          drain.unref();
+        }
+      }
       return;
     }
     fireError(
@@ -547,7 +583,19 @@ function _WebSocketCore_attach(nodeSocket, config) {
       return;
     }
     handle.state = "closing";
-    writeFrame(true, 0x8, _WebSocketCore_buildClosePayload(code), null);
+    // FIN right after the Close (mirroring the peer-Close reply below and
+    // the ws Sender.fail() behavior): a protocol violation kills the byte
+    // stream, so there is nothing left to read -- half-closing tells the
+    // peer teardown is complete rather than leaving it guessing. The
+    // bounded destroy from armCloseTimer stays as the backstop if the peer
+    // never finishes teardown.
+    writeFrame(true, 0x8, _WebSocketCore_buildClosePayload(code), function () {
+      try {
+        nodeSocket.end();
+      } catch (e) {
+        // already gone
+      }
+    });
     fireClose(code, "");
     // After fireClose (which clears any timer) so the bounded destroy stands.
     armCloseTimer();
@@ -676,6 +724,7 @@ function _WebSocketCore_attach(nodeSocket, config) {
       // stream torn down concurrently; drop the message
       return;
     }
+    enqueuedThisEvent += 1;
     if (
       streamController.desiredSize !== null &&
       streamController.desiredSize <= 0
@@ -792,6 +841,9 @@ function _WebSocketCore_attach(nodeSocket, config) {
     if (closeFired) {
       return;
     }
+    // Delivery bookkeeping is per data event: a violation deferred below
+    // must only wait for messages enqueued in THIS event.
+    enqueuedThisEvent = 0;
     pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
 
     // ignore-next: loop breaks on every return path
@@ -926,7 +978,9 @@ function _WebSocketCore_attach(nodeSocket, config) {
         var fin = frameFin;
         var opcode = frameOpcode;
         onFrameComplete(fin, opcode, payload);
-        if (closeFired) {
+        if (closeFired || deferredFailureDrainScheduled) {
+          // Close fired, or a violation deferred behind this event's
+          // deliveries: the byte stream is protocol-dead, stop parsing.
           return;
         }
       }
