@@ -196,6 +196,9 @@ function _WebSocketCore_once(fn) {
 //   ctors: { text: fn(DataView) -> MsgValue, binary: fn(DataView) -> MsgValue },
 //   onClose: fn(code, reasonString),
 //   onError: fn(messageString),
+//   initialBytes: Buffer (optional) -- bytes the caller already buffered past
+//     the end of the HTTP handshake (the start of the first frame); fed
+//     through the parser once, after all socket listeners are installed.
 // }
 //
 // Returns handle = {
@@ -977,6 +980,13 @@ function _WebSocketCore_attach(nodeSocket, config) {
       // already gone
     }
   });
+
+  // Handshake leftovers (the start of the first frame, already buffered by
+  // the caller) are parsed once every listener is installed, so bytes are
+  // neither lost nor double-parsed.
+  if (config.initialBytes && config.initialBytes.length > 0) {
+    ingest(config.initialBytes);
+  }
 
   return handle;
 }

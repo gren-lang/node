@@ -3,9 +3,11 @@ server-app: Makefile gren.json src/Server.gren
 
 client-tests-app: Makefile gren.json src/ClientTests.gren
 	gren make --optimize ClientTests --output=client-tests-app
+wss-app: Makefile gren.json src/WssClientTest.gren
+	gren make --optimize WssClientTest --output=wss-app
 
 .PHONY: test
-test: server-app client-tests-app node_modules
+test: server-app client-tests-app wss-app node_modules
 	node run.mjs
 	npx mocha --require test/fixtures.mjs
 
@@ -16,4 +18,4 @@ node_modules: package.json package-lock.json
 clean:
 	rm -rf .gren
 	rm -rf node_modules
-	rm -f server-app client-tests-app
+	rm -f server-app client-tests-app wss-app

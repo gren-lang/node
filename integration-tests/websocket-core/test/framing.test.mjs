@@ -1073,3 +1073,32 @@ test("queue full pauses the socket; a drain pull resumes it", async () => {
   assert.equal(viewBytes(first.value.view).toString(), "m1");
   assert.ok(socket.resumed >= 1, "pull must resume the socket");
 });
+
+// ---------------------------------------------------------------------------
+// initialBytes: handshake leftovers handed to attach() are parsed exactly
+// once, after the socket listeners exist (the Phase 4 client/server kernels
+// buffer bytes past the header block before attaching the engine).
+// ---------------------------------------------------------------------------
+
+test("initialBytes surfaces a complete frame without any socket feed", async () => {
+  const socket = makeFakeSocket();
+  const handle = C._WebSocketCore_attach(
+    socket,
+    makeConfig({
+      role: "server",
+      initialBytes: serverText("leftover"),
+    }),
+  );
+  // Nothing went through the fake socket -- the bytes arrived via config.
+  assert.equal(socket.writes.length, 0);
+  const reader = handle.readable.getReader();
+  const first = await reader.read();
+  assert.equal(first.done, false);
+  assert.equal(viewBytes(first.value.view).toString(), "leftover");
+  // Only that one frame was parsed: no double-feed of the same bytes.
+  const pending = await Promise.race([
+    reader.read(),
+    new Promise((resolve) => setTimeout(() => resolve("pending"), 20)),
+  ]);
+  assert.equal(pending, "pending", "initialBytes must be ingested once only");
+});

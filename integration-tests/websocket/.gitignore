@@ -1,6 +1,7 @@
 .gren/
 server-app
 client-tests-app
+wss-app
 node_modules/
 /test-results/
 /playwright-report/

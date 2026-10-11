@@ -1,0 +1,114 @@
+module WssClientTest exposing (main)
+
+{-| Phase 4 wss:// proof: a pure WebSocket *client* (WebSocketClient only --
+the server side stays ws://-only per PLAN 4.4) connecting through the native
+Net + TLS stack to a third-party (node:tls + ws, started by
+test/wss-client.mjs) wss echo server on 127.0.0.1:9516. The spec passes the
+self-signed fixture certificate through NODE_EXTRA_CA_CERTS, so the app's
+rejectUnauthorized = true path does real certificate verification against
+the SAN entry IP:127.0.0.1.
+
+Prints PASS and exits 0 on a successful echo roundtrip; FAIL + exit 1
+otherwise (the mocha spec additionally bounds the run with a timeout).
+-}
+
+import Bytes exposing (Bytes)
+import Init
+import Node
+import Node exposing (Environment, Program)
+import Stream
+import Stream.Log as Log
+import Task exposing (Task)
+import WebSocketClient
+import WebSocketClient.Connection as WsConn
+
+
+main : Program Model Msg
+main =
+    Node.defineProgram
+        { init = init
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+type alias Model =
+    { env : Environment }
+
+
+type Msg
+    = RoundtripCompleted (Result String Bool)
+    | OutputDone Int
+
+
+init : Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Init.await WebSocketClient.initialize <|
+        \permission ->
+            Node.startProgram
+                { model = { env = env }
+                , command =
+                    runTest permission
+                        |> Task.attempt RoundtripCompleted
+                }
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        RoundtripCompleted result ->
+            let
+                outcome =
+                    when result is
+                        Ok True ->
+                            { line = "PASS wss echo roundtrip", code = 0 }
+
+                        Ok False ->
+                            { line = "FAIL wss echo roundtrip: wrong echo payload", code = 1 }
+
+                        Err problem ->
+                            { line = "FAIL wss echo roundtrip: " ++ problem, code = 1 }
+            in
+            { model = model
+            , command =
+                Log.line model.env.stdout outcome.line
+                    |> Task.andThen (\_ -> Node.setExitCode outcome.code)
+                    |> Task.perform (\_ -> OutputDone outcome.code)
+            }
+
+        OutputDone code ->
+            { model = model
+            , command = Node.exitWithCode code
+            }
+
+
+runTest : WebSocketClient.Permission -> Task String Bool
+runTest permission =
+    WebSocketClient.connect permission
+        { url = "wss://127.0.0.1:9516"
+        , options = []
+        }
+        |> Task.mapError
+            (\(WebSocketClient.ConnectError { code, message }) ->
+                "connect failed: " ++ code ++ " " ++ message
+            )
+        |> Task.andThen
+            (\conn ->
+                WsConn.writable conn
+                    |> Stream.write (WebSocketClient.TextMessage "wss roundtrip")
+                    |> Task.mapError (\_ -> "write failed")
+                    |> Task.andThen
+                        (\_ ->
+                            Stream.read (WsConn.readable conn)
+                                |> Task.mapError (\_ -> "read failed")
+                        )
+                    |> Task.map
+                        (\msg ->
+                            when msg is
+                                WebSocketClient.TextMessage text ->
+                                    text == "wss roundtrip"
+
+                                _ ->
+                                    False
+                        )
+            )

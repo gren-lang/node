@@ -70,29 +70,42 @@ Pass an empty list to use defaults for everything:
 -}
 type Option
     = ReadBufferCapacity Int
+    | MaxMessageSize Int
+    | MaxFrameSize Int
 
 
-defaultReadBufferCapacity : Int
-defaultReadBufferCapacity =
-    16
+{-| Internal decoding of an `Array Option` into a plain record the kernel
+consumes directly. Defaults mirror the engine defaults (unbounded-ish 100 MiB
+message/frame caps, 16-message read queue).
+
+If the same option is passed more than once, the last occurrence wins.
+-}
+type alias Settings =
+    { readBufferCapacity : Int
+    , maxMessageSize : Int
+    , maxFrameSize : Int
+    }
 
 
-readBufferCapacity : Array Option -> Int
-readBufferCapacity options =
-    options
-        |> Array.foldl
-            (\opt maybeCapacity ->
-                when maybeCapacity is
-                    Just _ ->
-                        maybeCapacity
+decodeOptions : Array Option -> Settings
+decodeOptions options =
+    Array.foldl
+        (\option settings ->
+            when option is
+                ReadBufferCapacity value ->
+                    { settings | readBufferCapacity = value }
 
-                    Nothing ->
-                        when opt is
-                            ReadBufferCapacity n ->
-                                Just n
-            )
-            Nothing
-        |> Maybe.withDefault defaultReadBufferCapacity
+                MaxMessageSize value ->
+                    { settings | maxMessageSize = value }
+
+                MaxFrameSize value ->
+                    { settings | maxFrameSize = value }
+        )
+        { readBufferCapacity = 16
+        , maxMessageSize = 104857600
+        , maxFrameSize = 104857600
+        }
+        options
 
 
 
@@ -130,17 +143,18 @@ connectionId conn =
 
 Use [`Option`](#Option) values to customize behavior. For example,
 [`ReadBufferCapacity`](#Option) controls how many unread messages are buffered
-before backpressure is applied to the remote peer:
+before backpressure is applied to the remote peer, and
+[`MaxMessageSize`](#Option) caps the size of a single reassembled message:
 
     WebSocketClient.connect permission
         { url = "ws://localhost:8080"
-        , options = [ WebSocketClient.ReadBufferCapacity 4 ]
+        , options = [ WebSocketClient.ReadBufferCapacity 4, WebSocketClient.MaxMessageSize 65536 ]
         }
 
 -}
 connect : Permission -> { url : String, options : Array Option } -> Task ConnectError Connection
 connect _ options =
-    Gren.Kernel.WebSocketClient.connect options.url (readBufferCapacity options.options)
+    Gren.Kernel.WebSocketClient.connect options.url (decodeOptions options.options)
 
 
 

@@ -77,29 +77,48 @@ Pass an empty list to use defaults for everything:
 -}
 type Option
     = ReadBufferCapacity Int
+    | MaxMessageSize Int
+    | MaxFrameSize Int
+    | HandshakeTimeout Int
 
 
-defaultReadBufferCapacity : Int
-defaultReadBufferCapacity =
-    16
+{-| Internal decoding of an `Array Option` into a plain record the kernel
+consumes directly. Defaults mirror the engine defaults (unbounded-ish 100 MiB
+message/frame caps, 16-message read queue) plus the 60 s handshake window.
+
+If the same option is passed more than once, the last occurrence wins.
+-}
+type alias Settings =
+    { readBufferCapacity : Int
+    , maxMessageSize : Int
+    , maxFrameSize : Int
+    , handshakeTimeout : Int
+    }
 
 
-readBufferCapacity : Array Option -> Int
-readBufferCapacity options =
-    options
-        |> Array.foldl
-            (\opt maybeCapacity ->
-                when maybeCapacity is
-                    Just _ ->
-                        maybeCapacity
+decodeOptions : Array Option -> Settings
+decodeOptions options =
+    Array.foldl
+        (\option settings ->
+            when option is
+                ReadBufferCapacity value ->
+                    { settings | readBufferCapacity = value }
 
-                    Nothing ->
-                        when opt is
-                            ReadBufferCapacity n ->
-                                Just n
-            )
-            Nothing
-        |> Maybe.withDefault defaultReadBufferCapacity
+                MaxMessageSize value ->
+                    { settings | maxMessageSize = value }
+
+                MaxFrameSize value ->
+                    { settings | maxFrameSize = value }
+
+                HandshakeTimeout value ->
+                    { settings | handshakeTimeout = value }
+        )
+        { readBufferCapacity = 16
+        , maxMessageSize = 104857600
+        , maxFrameSize = 104857600
+        , handshakeTimeout = 60000
+        }
+        options
 
 
 {-| Task to create a WebSocket server.
@@ -113,18 +132,20 @@ readBufferCapacity options =
 
 Use [`Option`](#Option) values to customize behavior. For example,
 [`ReadBufferCapacity`](#Option) controls how many unread messages are buffered
-per connection before backpressure is applied to the remote peer:
+per connection before backpressure is applied to the remote peer, and
+[`HandshakeTimeout`](#Option) bounds how long a connection may take to
+complete its HTTP upgrade:
 
     WebSocketServer.createServer permission
         { host = "0.0.0.0"
         , port_ = 8080
-        , options = [ WebSocketServer.ReadBufferCapacity 4 ]
+        , options = [ WebSocketServer.ReadBufferCapacity 4, WebSocketServer.HandshakeTimeout 5000 ]
         }
 
 -}
 createServer : Permission -> { host : String, port_ : Int, options : Array Option } -> Task ServerError Server
 createServer _ options =
-    Gren.Kernel.WebSocketServer.createServer options.host options.port_ (readBufferCapacity options.options)
+    Gren.Kernel.WebSocketServer.createServer options.host options.port_ (decodeOptions options.options)
 
 
 
