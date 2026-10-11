@@ -104,6 +104,10 @@ function _WebSocketServer_ensureListenersAttached(server) {
       settled = true;
       cleanup();
       try {
+        // cleanup removed the handshake error listener; end() half-closes, so a
+        // peer that RSTs an unread rejection response would raise an 'error'
+        // with no listener and kill the process. Swallow it.
+        socket.on("error", function () {});
         socket.write(__WebSocketHandshake_rejectResponse(kind));
         socket.end();
       } catch (e) {

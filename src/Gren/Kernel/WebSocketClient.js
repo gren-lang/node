@@ -115,6 +115,10 @@ var _WebSocketClient_connect = F2(function (url, settings) {
         // Safe here because the TLS client always speaks first, so no
         // inbound bytes can be dropped in the gap; a no-op error listener
         // covers the one tick before tls.connect attaches its own.
+        // removeAllListeners here is safe only under the client-speaks-first
+        // TLS invariant (ClientHello before any server record); a future
+        // server-first protocol or TLS extension (e.g. 0-RTT/early data)
+        // must drain or preserve the zombie readable queue instead.
         grenSocket.__$socket.removeAllListeners();
         grenSocket.__$socket.on("error", function () {});
         return A2(
@@ -220,6 +224,9 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
       }
       settled = true;
       cleanup();
+      // cleanup removed the handshake error listener; cover the socket until
+      // attach() installs the engine's own (which still drives app logic).
+      socket.on("error", function () {});
       _WebSocketClient_startConnection(
         socket,
         settings,
