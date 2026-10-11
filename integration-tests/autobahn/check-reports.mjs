@@ -179,7 +179,15 @@ if (excludedCount > 0) {
   notes.push(`${excludedCount} reported cases skipped by exclusion patterns`);
 }
 
-// Anti-silent-skip: executed count must equal N from getCaseCount (client suite).
+// Anti-silent-skip: the suite must have executed SOMETHING (an empty or
+// truncated index.json parses cleanly and would otherwise pass vacuously),
+// and with --expected-count (client suite: N from getCaseCount) the
+// executed count must equal N exactly.
+if (executed === 0) {
+  violations.push(
+    "no cases executed (index.json empty or fully excluded/truncated)",
+  );
+}
 if (expectedCount !== null) {
   const n = Number(expectedCount);
   if (executed !== n) {

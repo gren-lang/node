@@ -52,8 +52,8 @@ if docker info > /dev/null 2>&1; then
   pushd autobahn
   make test || exit 1
   popd
-elif [ -n "${CI:-}" ]; then
-  echo "ERROR: docker unavailable but CI requires the autobahn suites" >&2
+elif [ -n "${CI:-}" ] && [ "$(uname -s)" = "Linux" ]; then
+  echo "ERROR: docker unavailable but CI on Linux requires the autobahn suites" >&2
   exit 1
 else
   echo "SKIPPED: docker unavailable; autobahn suites need a docker daemon" >&2

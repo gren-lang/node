@@ -85,26 +85,33 @@ async function waitForListening(timeoutMs = 60000) {
   }
 }
 
-await waitForListening();
-
 let cases = null;
-let stdoutBuf = "";
-const clientCode = await new Promise((resolve) => {
-  const client = childProc.fork(path.resolve(ROOT, "autobahn-client-app"), [], {
-    silent: true,
-  });
-  client.stdout.on("data", (data) => {
-    stdoutBuf += data.toString();
-    const m = stdoutBuf.match(/CASES=(\d+)/);
-    if (m && cases === null) cases = parseInt(m[1], 10);
-    process.stdout.write(data);
-  });
-  client.stderr.on("data", (data) => process.stderr.write(data));
-  client.on("exit", resolve);
-});
+let clientCode = null;
+try {
+  await waitForListening();
 
-sh("docker", ["rm", "-f", CONTAINER]);
-while (!dockerExited) await new Promise((r) => setTimeout(r, 100));
+  let stdoutBuf = "";
+  clientCode = await new Promise((resolve) => {
+    const client = childProc.fork(
+      path.resolve(ROOT, "autobahn-client-app"),
+      [],
+      { silent: true },
+    );
+    client.stdout.on("data", (data) => {
+      stdoutBuf += data.toString();
+      const m = stdoutBuf.match(/CASES=(\d+)/);
+      if (m && cases === null) cases = parseInt(m[1], 10);
+      process.stdout.write(data);
+    });
+    client.stderr.on("data", (data) => process.stderr.write(data));
+    client.on("exit", resolve);
+  });
+} finally {
+  // Run on every exit path, including a readiness-probe throw: --rm alone
+  // does not reap a container that is still up when this process dies.
+  sh("docker", ["rm", "-f", CONTAINER]);
+  while (!dockerExited) await new Promise((r) => setTimeout(r, 100));
+}
 
 if (cases === null) {
   console.error("autobahn-client-app never printed CASES=<n>");

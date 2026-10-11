@@ -46,11 +46,6 @@ function waitForServerStart(proc, timeoutMs = 10000) {
   });
 }
 
-const server = fork("autobahn-server-app");
-server.stdout.on("data", (d) => process.stdout.write(d));
-await waitForServerStart(server);
-console.log("autobahn-server-app listening on 9009; starting fuzzingclient");
-
 const dockerArgs = [
   "run",
   "--rm",
@@ -68,11 +63,20 @@ const dockerArgs = [
   "-s",
   "/config/fuzzingclient.json",
 ];
+const server = fork("autobahn-server-app");
+server.stdout.on("data", (d) => process.stdout.write(d));
+let fuzzCode = null;
+try {
+  await waitForServerStart(server);
+  console.log("autobahn-server-app listening on 9009; starting fuzzingclient");
 
-const fuzz = childProc.spawn("docker", dockerArgs, { stdio: "inherit" });
-const fuzzCode = await new Promise((resolve) => fuzz.on("exit", resolve));
-
-server.kill();
+  const fuzz = childProc.spawn("docker", dockerArgs, { stdio: "inherit" });
+  fuzzCode = await new Promise((resolve) => fuzz.on("exit", resolve));
+} finally {
+  // Run on every exit path, including a failed start handshake: a forked
+  // Gren app holding port 9009 would poison every later suite run.
+  server.kill();
+}
 
 const gate = childProc.spawn(
   process.execPath,
