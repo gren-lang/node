@@ -9,7 +9,7 @@ import Platform exposing (sendToApp, sendToSelf)
 
 var _HttpServer_createServer = F2(function (host, port) {
   return __Scheduler_binding(function (callback) {
-    const server = require("http").createServer();
+    const server = require("node:http").createServer();
     server.on("error", function (e) {
       callback(
         __Scheduler_fail(

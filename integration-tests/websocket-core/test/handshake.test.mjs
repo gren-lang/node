@@ -511,3 +511,569 @@ test("acceptResponse computes Sec-WebSocket-Accept from the key", () => {
   );
   assert.match(text, /\r\n\r\n$/);
 });
+
+// ---------------------------------------------------------------------------
+// RFC 7692 permessage-deflate: offer bytes, extension-header parsing, window
+// bits, and client-answer validation against the §1a contract.
+// ---------------------------------------------------------------------------
+
+const parseExtensionsHeader = H._WebSocketHandshake_parseExtensionsHeader;
+const parseWindowBits = H._WebSocketHandshake_parseWindowBits;
+const validateServerAnswer = H._WebSocketHandshake_validateServerAnswer;
+
+// Our default offer: a 15-bit client window, no server window offered.
+const OFFER_PARAMS = { serverMaxWindowBits: null, clientMaxWindowBits: 15 };
+
+function parseExtOk(value) {
+  const r = parseExtensionsHeader(value);
+  assert.equal(r.ok, true, "expected parseable: " + JSON.stringify(value));
+  return r.elements;
+}
+
+test("buildClientRequest appends the default permessage-deflate offer", () => {
+  const { key, request } = buildClientRequest({
+    host: "example.com",
+    port: 1234,
+    pathWithQuery: "/runCase?case=7&agent=a",
+    isTls: false,
+    extensions: true,
+  });
+  const expected =
+    "GET /runCase?case=7&agent=a HTTP/1.1\r\n" +
+    "Host: example.com:1234\r\n" +
+    "Upgrade: websocket\r\n" +
+    "Connection: Upgrade\r\n" +
+    "Sec-WebSocket-Key: " +
+    key +
+    "\r\n" +
+    "Sec-WebSocket-Version: 13\r\n" +
+    "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits=15\r\n" +
+    "\r\n";
+  assert.equal(request.toString("utf8"), expected);
+});
+
+test("buildClientRequest with no offer flag is byte-identical to v1", () => {
+  for (const extensions of [undefined, null]) {
+    const { key, request } = buildClientRequest({
+      host: "example.com",
+      port: 1234,
+      pathWithQuery: "/runCase?case=7&agent=a",
+      isTls: false,
+      extensions,
+    });
+    const expected =
+      "GET /runCase?case=7&agent=a HTTP/1.1\r\n" +
+      "Host: example.com:1234\r\n" +
+      "Upgrade: websocket\r\n" +
+      "Connection: Upgrade\r\n" +
+      "Sec-WebSocket-Key: " +
+      key +
+      "\r\n" +
+      "Sec-WebSocket-Version: 13\r\n" +
+      "\r\n";
+    assert.equal(request.toString("utf8"), expected, String(extensions));
+    assert.equal(
+      request.toString("utf8").includes("Sec-WebSocket-Extensions"),
+      false,
+      String(extensions),
+    );
+  }
+});
+
+test("acceptResponse with no extensions line is byte-identical to v1", () => {
+  const expected =
+    "HTTP/1.1 101 Switching Protocols\r\n" +
+    "Upgrade: websocket\r\n" +
+    "Connection: Upgrade\r\n" +
+    "Sec-WebSocket-Accept: " +
+    GOOD_ACCEPT +
+    "\r\n" +
+    "\r\n";
+  for (const extensionsLine of [undefined, null, ""]) {
+    assert.equal(
+      acceptResponse(GOOD_KEY, extensionsLine).toString("latin1"),
+      expected,
+      String(extensionsLine),
+    );
+  }
+});
+
+test("acceptResponse inserts the negotiated line after Sec-WebSocket-Accept", () => {
+  const text = acceptResponse(
+    GOOD_KEY,
+    "permessage-deflate; client_max_window_bits=15",
+  ).toString("latin1");
+  assert.equal(
+    text,
+    "HTTP/1.1 101 Switching Protocols\r\n" +
+      "Upgrade: websocket\r\n" +
+      "Connection: Upgrade\r\n" +
+      "Sec-WebSocket-Accept: " +
+      GOOD_ACCEPT +
+      "\r\n" +
+      "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits=15\r\n" +
+      "\r\n",
+  );
+});
+
+test("parseExtensionsHeader parses a bare extension element", () => {
+  assert.deepEqual(parseExtensionsHeader("permessage-deflate"), {
+    ok: true,
+    elements: [{ name: "permessage-deflate", params: [] }],
+  });
+});
+
+test("parseExtensionsHeader lowercases names, keeps values verbatim", () => {
+  assert.deepEqual(
+    parseExtensionsHeader(
+      "PerMessage-Deflate; Client_Max_Window_Bits=15; server_no_context_takeover",
+    ),
+    {
+      ok: true,
+      elements: [
+        {
+          name: "PerMessage-Deflate",
+          params: [
+            { name: "client_max_window_bits", value: "15" },
+            { name: "server_no_context_takeover", value: null },
+          ],
+        },
+      ],
+    },
+  );
+});
+
+test("parseExtensionsHeader keeps elements in offer-preference order", () => {
+  const r = parseExtensionsHeader("x-a; p=1, permessage-deflate, x-b");
+  assert.equal(r.ok, true);
+  assert.deepEqual(
+    r.elements.map((e) => e.name),
+    ["x-a", "permessage-deflate", "x-b"],
+  );
+  assert.deepEqual(r.elements[0].params, [{ name: "p", value: "1" }]);
+  assert.deepEqual(r.elements[1].params, []);
+});
+
+test("parseExtensionsHeader unescapes quoted-string values", () => {
+  assert.deepEqual(parseExtOk('permessage-deflate; c="15"')[0].params, [
+    { name: "c", value: "15" },
+  ]);
+  // a quoted-pair "\\1" unescapes to the token 1
+  assert.deepEqual(parseExtOk('permessage-deflate; c="\\1"')[0].params, [
+    { name: "c", value: "1" },
+  ]);
+});
+
+test("parseExtensionsHeader treats an absent header as no extensions", () => {
+  assert.deepEqual(parseExtensionsHeader(undefined), {
+    ok: true,
+    elements: [],
+  });
+  assert.deepEqual(parseExtensionsHeader(null), { ok: true, elements: [] });
+});
+
+test("parseExtensionsHeader rejects ABNF-malformed values", () => {
+  for (const bad of [
+    "",
+    "   ",
+    ",",
+    ";x=1",
+    "permessage-deflate;a=1;",
+    "permessage-deflate; a=",
+    "permessage-deflate; a=1=2",
+    "permessage-deflate; =1",
+    'permessage-deflate; a="unterminated',
+    'permessage-deflate; a="x"junk',
+  ]) {
+    const r = parseExtensionsHeader(bad);
+    assert.equal(r.ok, false, JSON.stringify(bad));
+    assert.deepEqual(r.elements, [], JSON.stringify(bad));
+  }
+});
+
+test("parseExtensionsHeader tolerates ABNF-legal empty list elements", () => {
+  // RFC 7230 §7 `1#element` permits "*( \",\" OWS )" before the first element
+  // and a trailing "OWS \",\"", so all of these are ok:true.
+  for (const [value, names] of [
+    ["permessage-deflate,", ["permessage-deflate"]],
+    [",permessage-deflate", ["permessage-deflate"]],
+    ["adf,", ["adf"]],
+    ["permessage-deflate; client_max_window_bits=15,", ["permessage-deflate"]],
+    ["x-a, , x-b", ["x-a", "x-b"]],
+  ]) {
+    const r = parseExtensionsHeader(value);
+    assert.equal(r.ok, true, JSON.stringify(value));
+    assert.deepEqual(
+      r.elements.map((e) => e.name),
+      names,
+      JSON.stringify(value),
+    );
+  }
+  assert.deepEqual(
+    parseExtOk("permessage-deflate; client_max_window_bits=15,")[0].params,
+    [{ name: "client_max_window_bits", value: "15" }],
+  );
+});
+
+test("parseExtensionsHeader marks a non-token quoted value element-invalid", () => {
+  // A quoted-string may legally hold a comma, a semicolon or a space (RFC 7230
+  // §7), so the header is NOT malformed; the unescaped value is simply not an
+  // RFC 7230 token, which makes the ELEMENT invalid (declined, never a 400).
+  assert.deepEqual(parseExtensionsHeader('permessage-deflate; x="a,b"'), {
+    ok: true,
+    elements: [
+      {
+        name: "permessage-deflate",
+        params: [{ name: "x", value: "a,b" }],
+        valid: false,
+      },
+    ],
+  });
+  assert.deepEqual(parseExtensionsHeader('permessage-deflate; a="sp ace"'), {
+    ok: true,
+    elements: [
+      {
+        name: "permessage-deflate",
+        params: [{ name: "a", value: "sp ace" }],
+        valid: false,
+      },
+    ],
+  });
+  // the same shape with a semicolon inside the quotes: one element, and the
+  // semicolon split must not have broken it apart
+  assert.deepEqual(
+    parseExtensionsHeader('permessage-deflate; a="x;y"').elements,
+    [
+      {
+        name: "permessage-deflate",
+        params: [{ name: "a", value: "x;y" }],
+        valid: false,
+      },
+    ],
+  );
+  // a quoted value that unescapes to a token stays a VALID element (no flag)
+  assert.deepEqual(
+    parseExtensionsHeader('permessage-deflate; a="15"').elements,
+    [{ name: "permessage-deflate", params: [{ name: "a", value: "15" }] }],
+  );
+});
+
+test("parseWindowBits accepts 8..15 and rejects everything else", () => {
+  for (let n = 8; n <= 15; n++) {
+    assert.equal(parseWindowBits(String(n)), n);
+  }
+  for (const bad of [
+    "0",
+    "7",
+    "16",
+    "19",
+    "08",
+    "015",
+    "150",
+    "8 ",
+    " 8",
+    "+8",
+    "8.0",
+    "",
+    "abc",
+    "-8",
+    null,
+    undefined,
+    15,
+  ]) {
+    assert.equal(parseWindowBits(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("validateServerAnswer declines absent and other-name-only answers", () => {
+  assert.deepEqual(validateServerAnswer([], OFFER_PARAMS), {
+    ok: true,
+    params: null,
+  });
+  assert.deepEqual(
+    validateServerAnswer(parseExtOk("x-custom; a=b"), OFFER_PARAMS),
+    {
+      ok: true,
+      params: null,
+    },
+  );
+  assert.deepEqual(validateServerAnswer(parseExtOk("x-a, x-b"), OFFER_PARAMS), {
+    ok: true,
+    params: null,
+  });
+});
+
+test("validateServerAnswer accepts a bare permessage-deflate answer", () => {
+  assert.deepEqual(
+    validateServerAnswer(parseExtOk("permessage-deflate"), OFFER_PARAMS),
+    {
+      ok: true,
+      params: {
+        serverNoContextTakeover: false,
+        clientNoContextTakeover: false,
+        serverMaxWindowBits: 15,
+        clientMaxWindowBits: null,
+      },
+    },
+  );
+});
+
+test("validateServerAnswer accepts the full parameter set", () => {
+  assert.deepEqual(
+    validateServerAnswer(
+      parseExtOk(
+        "permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=10; client_max_window_bits=12",
+      ),
+      OFFER_PARAMS,
+    ),
+    {
+      ok: true,
+      params: {
+        serverNoContextTakeover: true,
+        clientNoContextTakeover: true,
+        serverMaxWindowBits: 10,
+        clientMaxWindowBits: 12,
+      },
+    },
+  );
+});
+
+test("validateServerAnswer rejects each invalid answer rule", () => {
+  for (const bad of [
+    "permessage-deflate, permessage-deflate",
+    "permessage-deflate, x-custom",
+    "x-custom, permessage-deflate",
+    "permessage-deflate; client_max_window_bits=15; client_max_window_bits=14",
+    "permessage-deflate; server_no_context_takeover=1",
+    "permessage-deflate; client_no_context_takeover=x",
+    "permessage-deflate; server_max_window_bits",
+    "permessage-deflate; client_max_window_bits",
+    "permessage-deflate; server_max_window_bits=20",
+    "permessage-deflate; server_max_window_bits=7",
+    "permessage-deflate; server_max_window_bits=08",
+    "permessage-deflate; client_max_window_bits=16",
+    "permessage-deflate; x-unknown=1",
+  ]) {
+    const r = validateServerAnswer(parseExtOk(bad), OFFER_PARAMS);
+    assert.equal(r.ok, false, bad);
+    assert.equal(r.error.code, "HandshakeExtensions", bad);
+    assert.equal(Object.hasOwn(r, "params"), false, bad);
+  }
+});
+
+test("validateServerAnswer rejects windows larger than we offered", () => {
+  const offer = { serverMaxWindowBits: 10, clientMaxWindowBits: 12 };
+  const overServer = validateServerAnswer(
+    parseExtOk("permessage-deflate; server_max_window_bits=11"),
+    offer,
+  );
+  assert.equal(overServer.ok, false);
+  assert.equal(overServer.error.code, "HandshakeExtensions");
+  const overClient = validateServerAnswer(
+    parseExtOk("permessage-deflate; client_max_window_bits=13"),
+    offer,
+  );
+  assert.equal(overClient.ok, false);
+  assert.equal(overClient.error.code, "HandshakeExtensions");
+  const atLimit = validateServerAnswer(
+    parseExtOk("permessage-deflate; server_max_window_bits=10"),
+    offer,
+  );
+  assert.equal(atLimit.ok, true);
+  assert.equal(atLimit.params.serverMaxWindowBits, 10);
+});
+
+test("validateServerResponse ignores extensions with no offer sent", () => {
+  const withExtensions = (value) =>
+    responseBytes([
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      "Sec-WebSocket-Accept: " + GOOD_ACCEPT,
+      "Sec-WebSocket-Extensions: " + value,
+    ]);
+  const offer = "permessage-deflate; client_max_window_bits=15";
+  // omitted options, options null, options without offeredExtensions, and a
+  // malformed header all yield EXACTLY the pre-extensions success shape
+  assert.deepEqual(validateServerResponse(GOOD_KEY, withExtensions(offer)), {
+    ok: true,
+  });
+  assert.deepEqual(
+    validateServerResponse(GOOD_KEY, withExtensions(offer), null),
+    { ok: true },
+  );
+  assert.deepEqual(
+    validateServerResponse(GOOD_KEY, withExtensions(offer), {}),
+    {
+      ok: true,
+    },
+  );
+  assert.deepEqual(validateServerResponse(GOOD_KEY, withExtensions(",,,")), {
+    ok: true,
+  });
+});
+
+test("validateServerResponse returns params when we offered", () => {
+  const withExtensions = (value) =>
+    responseBytes([
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      "Sec-WebSocket-Accept: " + GOOD_ACCEPT,
+      "Sec-WebSocket-Extensions: " + value,
+    ]);
+  assert.deepEqual(
+    validateServerResponse(
+      GOOD_KEY,
+      withExtensions("permessage-deflate; client_max_window_bits=15"),
+      { offeredExtensions: true },
+    ),
+    {
+      ok: true,
+      params: {
+        serverNoContextTakeover: false,
+        clientNoContextTakeover: false,
+        serverMaxWindowBits: 15,
+        clientMaxWindowBits: 15,
+      },
+    },
+  );
+  // absent header: the server declined, connect proceeds without compression
+  const declined = responseBytes([
+    "HTTP/1.1 101 Switching Protocols",
+    "Upgrade: websocket",
+    "Connection: Upgrade",
+    "Sec-WebSocket-Accept: " + GOOD_ACCEPT,
+  ]);
+  assert.deepEqual(
+    validateServerResponse(GOOD_KEY, declined, {
+      offeredExtensions: "permessage-deflate; client_max_window_bits=15",
+    }),
+    { ok: true, params: null },
+  );
+});
+
+test("validateServerResponse rejects an invalid extension answer", () => {
+  for (const value of [
+    "permessage-deflate; x-unknown=1",
+    "permessage-deflate; server_max_window_bits=20",
+    "permessage-deflate, x-custom",
+    ",,", // present-but-malformed header
+  ]) {
+    const res = responseBytes([
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      "Sec-WebSocket-Accept: " + GOOD_ACCEPT,
+      "Sec-WebSocket-Extensions: " + value,
+    ]);
+    const r = validateServerResponse(GOOD_KEY, res, {
+      offeredExtensions: true,
+    });
+    assert.equal(r.ok, false, value);
+    assert.equal(r.error.code, "HandshakeExtensions", value);
+  }
+});
+
+test("buildClientRequest emits the exported default offer header verbatim", () => {
+  const { request } = buildClientRequest({
+    host: "example.com",
+    port: 1234,
+    pathWithQuery: "/",
+    isTls: false,
+    extensions: true,
+  });
+  const offer = H._WebSocketHandshake_DEFAULT_OFFER;
+  assert.match(offer, /^permessage-deflate/);
+  assert.equal(
+    request
+      .toString("utf8")
+      .includes("Sec-WebSocket-Extensions: " + offer + "\r\n"),
+    true,
+  );
+});
+
+test("validateServerResponse validates against the offered params object", () => {
+  // A mutated copy of the exported params object proves the decision follows
+  // the object actually offered, not a module constant.
+  const offered = {
+    ...H._WebSocketHandshake_DEFAULT_OFFER_PARAMS,
+    clientMaxWindowBits: 10,
+  };
+  const answer = (value) =>
+    responseBytes([
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      "Sec-WebSocket-Accept: " + GOOD_ACCEPT,
+      "Sec-WebSocket-Extensions: " + value,
+    ]);
+  const atLimit = validateServerResponse(
+    GOOD_KEY,
+    answer("permessage-deflate; client_max_window_bits=10"),
+    { offeredParams: offered },
+  );
+  assert.equal(atLimit.ok, true);
+  assert.equal(atLimit.params.clientMaxWindowBits, 10);
+  const over = validateServerResponse(
+    GOOD_KEY,
+    answer("permessage-deflate; client_max_window_bits=15"),
+    { offeredParams: offered },
+  );
+  assert.equal(over.ok, false);
+  assert.equal(over.error.code, "HandshakeExtensions");
+  // the unmutated default offer (15) accepts that very same answer
+  assert.equal(
+    validateServerResponse(
+      GOOD_KEY,
+      answer("permessage-deflate; client_max_window_bits=15"),
+      { offeredParams: H._WebSocketHandshake_DEFAULT_OFFER_PARAMS },
+    ).ok,
+    true,
+  );
+});
+
+test("validateServerAnswer rejects a client_max_window_bits answer never offered", () => {
+  // n6: the offer did not contain the parameter AT ALL (not even valuelessly),
+  // so the answer may not carry it (RFC 7692 §7.1.2.2).
+  const notOffered = {
+    serverMaxWindowBits: null,
+    clientMaxWindowBits: null,
+    clientMaxWindowBitsOffered: false,
+  };
+  const r = validateServerAnswer(
+    parseExtOk("permessage-deflate; client_max_window_bits=10"),
+    notOffered,
+  );
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, "HandshakeExtensions");
+  // the very same offer still accepts a bare answer
+  assert.deepEqual(
+    validateServerAnswer(parseExtOk("permessage-deflate"), notOffered),
+    {
+      ok: true,
+      params: {
+        serverNoContextTakeover: false,
+        clientNoContextTakeover: false,
+        serverMaxWindowBits: 15,
+        clientMaxWindowBits: null,
+      },
+    },
+  );
+});
+
+test("validateServerAnswer accepts a valued answer to a valueless offer", () => {
+  // n6, the other direction: a valueless offer followed by a valued answer is
+  // LEGAL (RFC 7692 §7.1.2.2); only a missing offer forbids the answer.
+  const valueless = {
+    serverMaxWindowBits: null,
+    clientMaxWindowBits: null,
+    clientMaxWindowBitsOffered: true,
+  };
+  const r = validateServerAnswer(
+    parseExtOk("permessage-deflate; client_max_window_bits=10"),
+    valueless,
+  );
+  assert.equal(r.ok, true);
+  assert.equal(r.params.clientMaxWindowBits, 10);
+});

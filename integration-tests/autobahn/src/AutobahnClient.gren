@@ -58,6 +58,7 @@ type Msg
     | WriteDone { token : Int }
     | CloseObserved { token : Int }
     | CaseTimeout Int
+    | DeferredExit Int
 
 
 reportToken : Int
@@ -65,16 +66,28 @@ reportToken =
     -1
 
 
--- Hang guard per connection, not a case-length budget: every case that
--- actually runs against our no-extension handshake finishes in < 2.1 s
--- (the slowest are 6.4.x, where the ~2 s is the fuzzer's own inter-chop
--- timer). The 12.x cases with 480 s budgets never start streaming - the
--- robot short-circuits UNIMPLEMENTED at 0 ms without deflate - so this
--- guard never fires in the current exclusion set; if F1 (permessage-
--- deflate) un-excludes 12.*, raise this to exceed the 480 s case budgets.
+-- Hang guard per connection, not a case-length budget: the 12.x/13.x
+-- robots cap every case at WAITSECS <= 480 s (case/case12_x_x.py MSG_SIZES
+-- + closeAfter(WAITSECS)), so a case that reaches 480 s is hung, not slow.
+-- The guard must therefore sit above that ceiling and never fire in a
+-- healthy run: 600000 ms = 1.25 x 480 s. Expiry logs 'TIMEOUT in phase
+-- token <t>' and exits 1 (CaseTimeout), aborting the whole run.
+-- Measured maxima: server suite 11815 ms, client suite 12762 ms; 12.x/13.x
+-- per-case max 11815 ms / 12762 ms; all <= 480000. See
+-- goals/implement-rfc-7692-permessage-deflate-in-gren-la/artifacts/
+-- cycle5-sg3-watchdog.txt.
 watchdogMs : Float
 watchdogMs =
-    30000
+    600000
+
+-- Margin between the diagnostic write and the exit in diagnosticThenExit.
+-- One bounded sleep, no retry: 250 ms is far above a pipe write callback
+-- and well under the 1 s control watchdog. Evidence:
+-- goals/implement-rfc-7692-permessage-deflate-in-gren-la/artifacts/
+-- cycle6-sg3-control.txt, cycle6-sg3-reversion.txt.
+exitMarginMs : Float
+exitMarginMs =
+    250
 
 
 init : Environment -> Init.Task { model : Model, command : Cmd Msg }
@@ -164,10 +177,7 @@ update msg model =
                     Just _ ->
                         { model = model
                         , command =
-                            Cmd.batch
-                                [ logErrorLine model ("TIMEOUT in phase token " ++ String.fromInt tok)
-                                , Node.exitWithCode 1
-                                ]
+                            diagnosticThenExit model 1 ("TIMEOUT in phase token " ++ String.fromInt tok)
                         }
 
                     Nothing ->
@@ -175,6 +185,12 @@ update msg model =
 
             else
                 { model = model, command = Cmd.none }
+
+        DeferredExit code ->
+            -- Token-free and unconditional: diagnosticThenExit has already
+            -- flushed the diagnostic, and no later CaseTimeout, token
+            -- change or phase advance may cancel this exit.
+            { model = model, command = Node.exitWithCode code }
 
 
 beginPhase : Int -> WebSocketClient.Connection -> Model -> { model : Model, command : Cmd Msg }
@@ -307,14 +323,25 @@ startCase k model =
             , watchdog k
             ]
     }
+
+
+-- Emit the diagnostic, then wait a bounded margin, then exit through ONE
+-- task CHAIN. A Cmd.batch of the log and the exit loses the line: the fd-2
+-- sink write only completes on the Node write callback, and process.exit
+-- does not wait for it (production fd 2 is a pipe). The CHAIN, not the
+-- delay, is the ordering guarantee; the final step ignores its Result so a
+-- fallible diagnostic can never turn a lost line into a lost exit.
+diagnosticThenExit : Model -> Int -> String -> Cmd Msg
+diagnosticThenExit model code text =
+    Log.line model.env.stderr text
+        |> Task.andThen (\_ -> Process.sleep exitMarginMs)
+        |> Task.attempt (\_ -> DeferredExit code)
+
+
 logFatal : Model -> String -> { model : Model, command : Cmd Msg }
 logFatal model text =
     { model = { model | hadErrors = True }
-    , command =
-        Cmd.batch
-            [ logErrorLine model text
-            , Node.exitWithCode 1
-            ]
+    , command = diagnosticThenExit model 1 text
     }
 
 
@@ -396,11 +423,3 @@ decodeCount text =
 
         Nothing ->
             Err ("expected an integer, got " ++ text)
-
-
-
-
-logErrorLine : Model -> String -> Cmd Msg
-logErrorLine model text =
-    Log.line model.env.stderr text
-        |> Task.execute

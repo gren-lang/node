@@ -3,7 +3,7 @@
 import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn, andThen, onError)
 import Gren.Kernel.Net exposing (listen)
 import Gren.Kernel.WebSocketCore exposing (attach)
-import Gren.Kernel.WebSocketHandshake exposing (parseRequestHead, validateClientRequest, rejectResponse, acceptResponse)
+import Gren.Kernel.WebSocketHandshake exposing (parseRequestHead, validateClientRequest, rejectResponse, acceptResponse, parseExtensionsHeader, negotiateServer)
 import WebSocketServer exposing (ServerError, TextMessage, BinaryMessage)
 import WebSocketServer.Connection as WsConn exposing (Error)
 import Platform exposing (sendToApp)
@@ -159,9 +159,34 @@ function _WebSocketServer_ensureListenersAttached(server) {
           reject(check.reject);
           return;
         }
+        // RFC 7692 §5: negotiate permessage-deflate unless the app disabled
+        // it. A malformed extensions header is an HTTP-level 400 (RFC 6455
+        // §9.1); an absent header parses as an empty offer. The disabled path
+        // skips parsing/negotiation entirely and stays byte-identical to v1.
+        var negotiated = { extensionsLine: null, permessageDeflate: null };
+        if (!settings || settings.__$compressionEnabled !== false) {
+          var extParsed = __WebSocketHandshake_parseExtensionsHeader(
+            parsed.headers["sec-websocket-extensions"],
+          );
+          if (!extParsed.ok) {
+            reject("BadRequest");
+            return;
+          }
+          var answer = __WebSocketHandshake_negotiateServer(extParsed.elements);
+          negotiated.extensionsLine = answer.responseLine;
+          if (answer.responseLine !== null) {
+            negotiated.permessageDeflate = {
+              role: "server",
+              resetInboundPerMessage: answer.params.clientNoContextTakeover,
+              resetOutboundPerMessage: answer.params.serverNoContextTakeover,
+              serverMaxWindowBits: answer.params.serverMaxWindowBits,
+              clientMaxWindowBits: answer.params.clientMaxWindowBits,
+            };
+          }
+        }
         settled = true;
         cleanup();
-        accept(parsed, buf.subarray(sep + 4));
+        accept(parsed, buf.subarray(sep + 4), negotiated);
         return;
       }
       // No terminator yet. The head can hide at most 3 of its trailing CRLF
@@ -193,7 +218,7 @@ function _WebSocketServer_ensureListenersAttached(server) {
       destroy();
     }
 
-    function accept(parsed, leftover) {
+    function accept(parsed, leftover, negotiated) {
       var connection = {
         __$id: _WebSocketServer_nextConnectionId++,
         __$client: null,
@@ -204,6 +229,7 @@ function _WebSocketServer_ensureListenersAttached(server) {
       socket.write(
         __WebSocketHandshake_acceptResponse(
           parsed.headers["sec-websocket-key"],
+          negotiated.extensionsLine,
         ),
       );
 
@@ -215,6 +241,7 @@ function _WebSocketServer_ensureListenersAttached(server) {
             : 16,
         maxMessageSize: settings.__$maxMessageSize,
         maxFrameSize: settings.__$maxFrameSize,
+        permessageDeflate: negotiated.permessageDeflate,
         initialBytes: leftover,
         ctors: {
           text: function (view) {

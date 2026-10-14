@@ -2,6 +2,12 @@
 // handshake as integration-tests/websocket/run.mjs: "server started"), runs
 // the fuzzingclient container against it, stops the server, then gates on
 // reports/clients/index.json. See Makefile target autobahn-server-suite.
+//
+// Completeness plumbing (sg4): the fuzzingclient's stdout is teed and
+// buffered so the case count it announces ("Ok, will run N test cases") can
+// be parsed the same way run-client-suite.mjs parses the app's CASES=<n>;
+// that N is handed to check-reports.mjs as --expected-count, and when no
+// announcement arrives the gate is never run at all.
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as childProc from "node:child_process";
@@ -66,11 +72,24 @@ const dockerArgs = [
 const server = fork("autobahn-server-app");
 server.stdout.on("data", (d) => process.stdout.write(d));
 let fuzzCode = null;
+let announcedCases = null;
+let fuzzBuf = "";
 try {
   await waitForServerStart(server);
   console.log("autobahn-server-app listening on 9009; starting fuzzingclient");
 
-  const fuzz = childProc.spawn("docker", dockerArgs, { stdio: "inherit" });
+  const fuzz = childProc.spawn("docker", dockerArgs, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  fuzz.stdout.on("data", (data) => {
+    fuzzBuf += data.toString();
+    if (announcedCases === null) {
+      const m = fuzzBuf.match(/Ok, will run (\d+) test cases/);
+      if (m) announcedCases = parseInt(m[1], 10);
+    }
+    process.stdout.write(data);
+  });
+  fuzz.stderr.on("data", (data) => process.stderr.write(data));
   fuzzCode = await new Promise((resolve) => fuzz.on("exit", resolve));
 } finally {
   // Run on every exit path, including a failed start handshake: a forked
@@ -78,9 +97,24 @@ try {
   server.kill();
 }
 
+if (announcedCases === null) {
+  console.error(
+    "fuzzingclient never announced a test-case count (no 'Ok, will run N test cases' line); refusing to gate without an expected count",
+  );
+  if (IS_DARWIN) fs.rmSync(CONFIG, { force: true });
+  process.exit(1);
+}
+console.log(`fuzzingclient announced N=${announcedCases} test cases`);
+
 const gate = childProc.spawn(
   process.execPath,
-  ["check-reports.mjs", "--suite", "server"],
+  [
+    "check-reports.mjs",
+    "--suite",
+    "server",
+    "--expected-count",
+    String(announcedCases),
+  ],
   { cwd: ROOT, stdio: "inherit" },
 );
 const gateCode = await new Promise((resolve) => gate.on("exit", resolve));

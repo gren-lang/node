@@ -4,7 +4,7 @@ import Gren.Kernel.Scheduler exposing (binding, succeed, fail, rawSpawn, andThen
 import Gren.Kernel.Net exposing (connect)
 import Gren.Kernel.Tls exposing (secure)
 import Gren.Kernel.WebSocketCore exposing (attach)
-import Gren.Kernel.WebSocketHandshake exposing (parseWsUrl, buildClientRequest, validateServerResponse)
+import Gren.Kernel.WebSocketHandshake exposing (parseWsUrl, buildClientRequest, validateServerResponse, DEFAULT_OFFER, DEFAULT_OFFER_PARAMS)
 import WebSocketClient exposing (ConnectError, TextMessage, BinaryMessage)
 import WebSocketClient.Connection as WsConn exposing (Error)
 import Platform exposing (sendToApp)
@@ -158,6 +158,10 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
     // takes ownership of the socket's data events.
     socket.removeAllListeners();
 
+    // RFC 7692 §5: permessage-deflate is offered unless the app disabled it;
+    // the kernel sees only the decoded kill-switch boolean.
+    var compressionEnabled = settings.__$compressionEnabled !== false;
+
     var called = false;
 
     function safeCallback(val) {
@@ -167,12 +171,18 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
       }
     }
 
-    var built = __WebSocketHandshake_buildClientRequest({
+    var requestSettings = {
       host: parsed.host,
       port: parsed.port,
       pathWithQuery: parsed.pathWithQuery,
       isTls: parsed.isTls,
-    });
+    };
+    if (compressionEnabled) {
+      // Offer permessage-deflate (RFC 7692 §7.1). The disabled path passes no
+      // `extensions` key at all, so its request stays byte-identical to v1.
+      requestSettings.extensions = true;
+    }
+    var built = __WebSocketHandshake_buildClientRequest(requestSettings);
     var key = built.key;
 
     var chunks = [];
@@ -218,13 +228,35 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
           );
           return;
         }
-        var result = __WebSocketHandshake_validateServerResponse(
-          key,
-          buf.subarray(0, sep + 4),
-        );
+        var head = buf.subarray(0, sep + 4);
+        // The offer has ONE source of truth in Gren.Kernel.WebSocketHandshake
+        // (the params object, with the wire header derived from it): this
+        // kernel offers the default offer, so it validates the answer against
+        // exactly those params.
+        var result = compressionEnabled
+          ? __WebSocketHandshake_validateServerResponse(key, head, {
+              offeredExtensions: __WebSocketHandshake_DEFAULT_OFFER,
+              offeredParams: __WebSocketHandshake_DEFAULT_OFFER_PARAMS,
+            })
+          : __WebSocketHandshake_validateServerResponse(key, head);
         if (!result.ok) {
+          // HandshakeExtensions fails the connect Task exactly like
+          // HandshakeAccept: failHandshake destroys the socket and rejects.
           failHandshake(result.error.code, result.error.message || "");
           return;
+        }
+        // permessageDeflate stays null when the server declined the offer
+        // (result.params === null): the engine then treats RSV1 as a protocol
+        // error, i.e. exactly the disabled path.
+        var permessageDeflate = null;
+        if (compressionEnabled && result.params !== null) {
+          permessageDeflate = {
+            role: "client",
+            resetInboundPerMessage: result.params.serverNoContextTakeover,
+            resetOutboundPerMessage: result.params.clientNoContextTakeover,
+            serverMaxWindowBits: result.params.serverMaxWindowBits,
+            clientMaxWindowBits: result.params.clientMaxWindowBits,
+          };
         }
         settled = true;
         cleanup();
@@ -237,6 +269,7 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
           buf,
           sep + 4,
           safeCallback,
+          permessageDeflate,
         );
         return;
       }
@@ -302,12 +335,15 @@ function _WebSocketClient_beginHandshake(socket, parsed, settings) {
 // handshake validated, then resolve the connect task. `headEnd` is the
 // offset just past the handshake header block; bytes from there on are
 // already-buffered frame bytes and go to the engine as initialBytes.
+// `permessageDeflate` is the agreed RFC 7692 configuration (null when the
+// extension was disabled or the server declined).
 function _WebSocketClient_startConnection(
   socket,
   settings,
   buf,
   headEnd,
   safeCallback,
+  permessageDeflate,
 ) {
   var writableController = null;
 
@@ -374,6 +410,7 @@ function _WebSocketClient_startConnection(
     readBufferCapacity: settings.__$readBufferCapacity,
     maxMessageSize: settings.__$maxMessageSize,
     maxFrameSize: settings.__$maxFrameSize,
+    permessageDeflate: permessageDeflate,
     initialBytes: buf.subarray(headEnd),
     ctors: {
       text: function (view) {

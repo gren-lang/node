@@ -1,4 +1,4 @@
-effect module WebSocketServer where { subscription = WebSocketSubscription } exposing (CloseReason, Connection, Message(..), Option(..), Permission, Server, ServerError(..), connectionId, createServer, initialize, onClose, onConnection)
+effect module WebSocketServer where { subscription = WebSocketSubscription } exposing (CloseReason, Compression(..), Connection, Message(..), Option(..), Permission, Server, ServerError(..), connectionId, createServer, initialize, onClose, onConnection)
 
 {-| Create a WebSocket server that can accept connections and exchange messages.
 
@@ -7,7 +7,7 @@ and message events and responding with commands via [WebSocketServer.Connection]
 
 ## Initialization
 
-@docs Permission, Server, ServerError, initialize, createServer, Option
+@docs Permission, Server, ServerError, initialize, createServer, Option, Compression
 
 ## Connections
 
@@ -64,6 +64,18 @@ initialize =
         |> Internal.Init.Task
 
 
+{-| Whether the server negotiates the permessage-deflate extension.
+
+permessage-deflate is accepted by default when the client offers it. Passing
+[`Compression Disabled`](#Compression) to [`createServer`](#createServer) accepts
+no extension even when the client offers one; such a connection still completes,
+but any inbound RSV1 (compressed) frame closes it with code `1002`.
+
+-}
+type Compression
+    = Disabled
+
+
 {-| Optional configuration for [`createServer`](#createServer).
 
 Pass an empty list to use defaults for everything:
@@ -80,11 +92,13 @@ type Option
     | MaxMessageSize Int
     | MaxFrameSize Int
     | HandshakeTimeout Int
+    | Compression Compression
 
 
 {-| Internal decoding of an `Array Option` into a plain record the kernel
 consumes directly. Defaults mirror the engine defaults (unbounded-ish 100 MiB
-message/frame caps, 16-message read queue) plus the 60 s handshake window.
+message/frame caps, 16-message read queue) plus the 60 s handshake window and
+compression enabled.
 
 If the same option is passed more than once, the last occurrence wins.
 -}
@@ -93,6 +107,7 @@ type alias Settings =
     , maxMessageSize : Int
     , maxFrameSize : Int
     , handshakeTimeout : Int
+    , compressionEnabled : Bool
     }
 
 
@@ -112,11 +127,15 @@ decodeOptions options =
 
                 HandshakeTimeout value ->
                     { settings | handshakeTimeout = value }
+
+                Compression Disabled ->
+                    { settings | compressionEnabled = False }
         )
         { readBufferCapacity = 16
         , maxMessageSize = 104857600
         , maxFrameSize = 104857600
         , handshakeTimeout = 60000
+        , compressionEnabled = True
         }
         options
 

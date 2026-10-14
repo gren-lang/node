@@ -4,6 +4,11 @@
 // Usage: node check-reports.mjs [--suite server|client] [--reports DIR]
 //            [--expected-count N] [--config FILE]
 //
+// --expected-count N is REQUIRED for --suite server: server-suite-runner.mjs
+// passes the N the fuzzingclient announced ("Ok, will run N test cases") and
+// this gate refuses to run without it. It is optional for --suite client,
+// where run-client-suite.mjs passes the N the app read from /getCaseCount.
+//
 // Parses reports/index.json in the classic master-report format produced by
 // createMasterReportJSON: { "<agent>": { "<caseId>": { "behavior",
 // "behaviorClose", "duration", "reportfile" } } }. See plan §6.4.
@@ -188,11 +193,19 @@ if (executed === 0) {
     "no cases executed (index.json empty or fully excluded/truncated)",
   );
 }
+if (suite === "server" && expectedCount === null) {
+  // Second layer (§2.2): the server runner must supply the count it parsed
+  // from the fuzzingclient's announcement; a count-less server gate would
+  // pass on a truncated report.
+  violations.push(
+    "expected case count not supplied for --suite server (silent skip?)",
+  );
+}
 if (expectedCount !== null) {
   const n = Number(expectedCount);
   if (executed !== n) {
     violations.push(
-      `executed case count ${executed} != getCaseCount N=${n} (silent skip?)`,
+      `executed case count ${executed} != expected N=${n} (silent skip?)`,
     );
   }
 }
@@ -209,6 +222,11 @@ for (const cat of cats) {
 }
 console.log(`---------|------|------|-----`);
 console.log(`total: ${executed} executed`);
+console.log(
+  expectedCount !== null
+    ? `expected count: ${expectedCount} (enforced)`
+    : "expected count: NOT ENFORCED",
+);
 for (const note of notes) console.log(`  - ${note}`);
 if (violations.length) {
   console.log(`\nVIOLATIONS (${violations.length}):`);

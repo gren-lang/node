@@ -13,6 +13,12 @@
 // messages and whether the readable ended CLEAN or ERRORED without racing
 // reader microtasks.
 //
+// The exported `loadKernelWith(requireImpl, relativePath)` is the opt-in
+// escape hatch: it returns a FRESH vm-loaded instance whose sandbox `require`
+// is the INJECTED implementation, so a test can instrument the node builtins
+// the kernel pulls in lazily (e.g. proxy `require("node:zlib")`) without
+// disturbing the module-level instances every existing suite imports.
+//
 // The README in this directory documents why this suite exists pre-Phase-4.
 
 import vm from "node:vm";
@@ -25,10 +31,16 @@ import assert from "node:assert/strict";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..");
 const RealReadableStream = ReadableStream;
-function loadKernel(relativePath) {
+
+// Shared loader core: build a fresh vm context for one kernel file with the
+// caller's `require`. The module-private `loadKernel` below binds it to
+// `createRequire(import.meta.url)` (the kernels only use node builtins); the
+// exported `loadKernelWith` is the opt-in variant for callers that need a
+// wrapping require. Both always return a brand new sandbox.
+export function loadKernelWith(requireImpl, relativePath) {
   const source = readFileSync(join(repoRoot, relativePath), "utf8");
   const sandbox = {
-    require: createRequire(import.meta.url), // node builtins only are used by the kernels
+    require: requireImpl, // node builtins only are used by the kernels
     Buffer,
     TextDecoder,
     Error, // outer-realm Error so instanceof works across the vm boundary
@@ -79,6 +91,10 @@ function loadKernel(relativePath) {
   return sandbox;
 }
 
+function loadKernel(relativePath) {
+  return loadKernelWith(createRequire(import.meta.url), relativePath);
+}
+
 const core = loadKernel("src/Gren/Kernel/WebSocketCore.js");
 const handshakeRaw = loadKernel("src/Gren/Kernel/WebSocketHandshake.js");
 
@@ -95,7 +111,7 @@ function plainify(value) {
   ) {
     return value;
   }
-  if (Array.isArray(value)) return value.map(plainify);
+  if (Array.isArray(value)) return Array.from(value, plainify);
   const out = {};
   for (const key of Object.keys(value)) out[key] = plainify(value[key]);
   return out;

@@ -1,6 +1,7 @@
 module ClientTests exposing (main)
 
 import Array exposing (Array)
+import Bitwise
 import Bytes exposing (Bytes)
 import Init
 import Node
@@ -359,9 +360,34 @@ writeLargeMessages : WebSocketClient.Connection -> Int -> Int -> Task WsError {}
 writeLargeMessages conn count size =
     let
         msg =
-            WebSocketClient.TextMessage (String.repeat size "x")
+            WebSocketClient.TextMessage (incompressibleText size)
     in
     writeLoop conn msg count
+
+incompressibleText : Int -> String
+incompressibleText size =
+    Array.range 0 (size - 1)
+        |> Array.map
+            (\i ->
+                let
+                    seed =
+                        Bitwise.shiftRightZfBy 0 (i * 2654435761)
+
+                    step1 =
+                        Bitwise.xor (Bitwise.shiftLeftBy 13 seed) seed
+
+                    step2 =
+                        Bitwise.xor step1 (Bitwise.shiftRightZfBy 17 step1)
+
+                    step3 =
+                        Bitwise.xor step2 (Bitwise.shiftLeftBy 5 step2)
+                in
+                String.fromChar
+                    (Char.fromCode
+                        (65536 + Bitwise.and 1048575 (Bitwise.shiftRightZfBy 12 step3))
+                    )
+            )
+        |> String.join ""
 
 
 writeLoop : WebSocketClient.Connection -> WebSocketClient.Message -> Int -> Task WsError {}

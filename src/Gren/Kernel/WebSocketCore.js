@@ -18,7 +18,8 @@
 //   - Gren value constructors arrive via config.ctors; this file never
 //     mentions any mangled Gren identifier.
 //   - Only node builtin modules may be required, lazily inside functions
-//     (node:crypto here), so the file loads even without a module system.
+//     (node:crypto, node:zlib here), so the file loads even without a module
+//     system.
 //   - Every callback is guarded to fire at most once; every node socket
 //     event that can occur is handled.
 //
@@ -57,6 +58,26 @@ var _WebSocketCore_CLOSE_TIMEOUT_MS = 5000;
 var _WebSocketCore_MAX_CLOSE_REASON_BYTES = 123;
 
 var _WebSocketCore_EMPTY = Buffer.alloc(0);
+
+// RFC 7692 §7.2.2: the 4-byte sync-flush marker (an empty DEFLATE block) a
+// sender strips from every compressed message. Used outbound only as the
+// documented zero-length-message fallback; node's zlib makes it unreachable
+// (the smallest Z_SYNC_FLUSH output is the 5-byte 00 00 00 FF FF).
+var _WebSocketCore_SYNC_FLUSH_TAIL = Buffer.from([0x00, 0x00, 0xff, 0xff]);
+
+// RFC 7692 §7.2.2: a permessage-deflate sender strips the 00 00 FF FF
+// sync-flush marker (an empty DEFLATE block, BFINAL=0/BTYPE=00) from the wire;
+// the receiver appends it back to complete a message's deflate stream. The
+// extra 03 00 is a synthetic final empty fixed-Huffman block (RFC 1951 §3.2.3)
+// so Z_FINISH both terminates the stream AND rejects an incomplete block
+// sequence, i.e. a mid-block truncation.
+var _WebSocketCore_INFLATE_TAIL = Buffer.from([
+  0x00, 0x00, 0xff, 0xff, 0x03, 0x00,
+]);
+
+// RFC 7692 §7.2.2: the take-over dictionary is the last 32768 bytes of the
+// connection's DELIVERED decompressed output -- the DEFLATE sliding window.
+var _WebSocketCore_TAKE_OVER_HISTORY = 32768;
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested directly)
@@ -122,13 +143,15 @@ function _WebSocketCore_utf8IsValid(bytes) {
 
 // Encode one complete frame. When maskKey (a 4-byte Buffer) is given the
 // frame is masked and the payload is copied before XOR so the caller's
-// buffer is never mutated. Uses minimal length encoding.
-function _WebSocketCore_encodeFrame(fin, opcode, payload, maskKey) {
+// buffer is never mutated. Uses minimal length encoding. rsv1 (boolean) sets
+// the RSV1 bit, i.e. the permessage-deflate compressed-message flag on a data
+// message's FIRST frame (never on continuations or control frames).
+function _WebSocketCore_encodeFrame(fin, opcode, payload, maskKey, rsv1) {
   var len = payload.length;
   var headerLen = 2 + (len < 126 ? 0 : len < 65536 ? 2 : 8) + (maskKey ? 4 : 0);
   var frame = Buffer.allocUnsafe(headerLen + len);
 
-  frame[0] = (fin ? 0x80 : 0x00) | (opcode & 0x0f);
+  frame[0] = (fin ? 0x80 : 0x00) | (rsv1 ? 0x40 : 0x00) | (opcode & 0x0f);
   var b1 = len < 126 ? len : len < 65536 ? 126 : 127;
   var offset = 2;
   if (b1 === 126) {
@@ -193,6 +216,10 @@ function _WebSocketCore_once(fn) {
 //   readBufferCapacity: number (default 16),
 //   maxMessageSize: number (default 100 MiB),
 //   maxFrameSize: number (default 100 MiB),
+//   permessageDeflate: null | { role, resetInboundPerMessage,
+//     resetOutboundPerMessage, serverMaxWindowBits, clientMaxWindowBits } --
+//     RFC 7692 config: the sg1 inbound decoder plus the sg2 outbound
+//     compressor (null when the extension was not negotiated),
 //   ctors: { text: fn(DataView) -> MsgValue, binary: fn(DataView) -> MsgValue },
 //   onClose: fn(code, reasonString),
 //   onError: fn(messageString),
@@ -229,6 +256,29 @@ function _WebSocketCore_attach(nodeSocket, config) {
     typeof config.onClose === "function" ? config.onClose : null;
   var onErrorHandler =
     typeof config.onError === "function" ? config.onError : null;
+  // RFC 7692 §5: null when permessage-deflate was not negotiated (disabled, or
+  // the peer declined). sg1 owns this shape; sg2 extends it with the outbound
+  // compressor fields.
+  var permessageDeflate = config.permessageDeflate || null;
+
+  // RFC 7692 sg2 outbound compressor config. The window cap is derived by
+  // role from the two sg1 window fields (one source of truth per side) with a
+  // symmetric defensive fallback so a hand-built config can never hand
+  // null/undefined to zlib: an absent/unagreed cap means 15 (§7.1.2.2 for the
+  // client; the server handshake already defaults it to 15).
+  var outboundResetPerMessage = false;
+  var outboundWindowBits = 15;
+  if (permessageDeflate !== null) {
+    outboundResetPerMessage = !!permessageDeflate.resetOutboundPerMessage;
+    var negotiatedWindowBits =
+      role === "server"
+        ? permessageDeflate.serverMaxWindowBits
+        : permessageDeflate.clientMaxWindowBits;
+    outboundWindowBits =
+      negotiatedWindowBits === null || negotiatedWindowBits === undefined
+        ? 15
+        : negotiatedWindowBits;
+  }
 
   var handle = { state: "open" };
 
@@ -344,12 +394,42 @@ function _WebSocketCore_attach(nodeSocket, config) {
   }
 
   // ---- outbound frames ------------------------------------------------------
-  function writeFrame(fin, opcode, payload, cb, maskKey) {
+  //
+  // RFC 7692 outbound codec (sg2). While permessage-deflate is negotiated every
+  // DATA message is compressed -- a deterministic policy with no threshold and
+  // no "uncompressed even though negotiated" shortcut. The payload is written
+  // to a per-connection raw-DEFLATE stream, Z_SYNC_FLUSHed (RFC 7692 §7.2.2;
+  // NEVER Z_FULL_FLUSH), the trailing 00 00 FF FF marker is stripped and the
+  // remainder is framed with RSV1 on its FIRST frame only. The stream is created
+  // lazily on the first compressed send, so a connection that never sends
+  // allocates no deflater at all.
+  //
+  // Messages are compressed strictly one at a time (a FIFO): message N+1 is
+  // neither written into zlib nor framed until message N's output has been
+  // snapshotted and framed. That is what makes frame order deterministic and
+  // what keeps reset() (context takeover) from ever racing a queued write. A
+  // message counts as finished for FIFO purposes when its LAST frame has been
+  // handed to nodeSocket.write -- not when that write's callback settles -- so
+  // a socket that defers write callbacks can never stall the pipeline while
+  // frame order stays intact.
+  var outboundDeflater = null; // lazily created raw-DEFLATE stream
+  var outboundZlib = null; // cached node:zlib module of this connection
+  var outboundAccumulator = []; // compressed chunks of the message in flight
+  var outboundQueue = []; // accepted data messages awaiting compression
+  var outboundActiveMessage = null; // message being compressed/framed right now
+  var outboundFlushPending = false; // a zlib.flush() callback is outstanding
+  var outboundDeflaterPendingClose = null; // stream whose close waits on flush
+  var outboundOutstanding = new Set(); // send callbacks not yet settled
+  var outboundClosePending = false; // Close frame deferred behind the FIFO
+  var outboundClosePayload = null;
+  var outboundCloseCallback = null;
+
+  function writeFrame(fin, opcode, payload, cb, maskKey, rsv1) {
     var done = _WebSocketCore_once(cb);
     var key = role === "client" ? maskKey || crypto.randomBytes(4) : maskKey;
     var frame;
     try {
-      frame = _WebSocketCore_encodeFrame(fin, opcode, payload, key);
+      frame = _WebSocketCore_encodeFrame(fin, opcode, payload, key, rsv1);
     } catch (e) {
       done(e);
       return;
@@ -389,10 +469,249 @@ function _WebSocketCore_attach(nodeSocket, config) {
     return Buffer.from(bytes);
   }
 
+  // ---- outbound permessage-deflate codec ------------------------------------
+
+  function outboundEnsureZlib() {
+    if (outboundZlib === null) {
+      outboundZlib = require("node:zlib");
+    }
+    return outboundZlib;
+  }
+
+  function outboundEnsureDeflater() {
+    if (outboundDeflater === null) {
+      var zlib = outboundEnsureZlib();
+      // windowBits 8 is silently clamped to 9 by zlib's deflateInit2 (it cannot
+      // compress through a 256-byte window); the negotiated 8..15 value is
+      // passed straight through, exactly like ws, with no 8-specific workaround
+      // and never a refusal to compress.
+      var deflater = zlib.createDeflateRaw({ windowBits: outboundWindowBits });
+      deflater.on("data", function (chunk) {
+        outboundAccumulator.push(chunk);
+      });
+      deflater.on("error", function (err) {
+        // Settle the in-flight send exactly once: the once-guards make the
+        // flush callback's later error report a no-op.
+        if (deflater === outboundDeflater) {
+          outboundFailActive(err);
+        }
+      });
+      outboundDeflater = deflater;
+    }
+    return outboundDeflater;
+  }
+
+  function outboundReleasePendingClose(deflater) {
+    if (outboundDeflaterPendingClose === deflater) {
+      outboundDeflaterPendingClose = null;
+      try {
+        deflater.close();
+      } catch (e) {
+        // already gone
+      }
+    }
+  }
+
+  function outboundDiscardDeflater() {
+    var deflater = outboundDeflater;
+    outboundDeflater = null;
+    outboundAccumulator = [];
+    if (deflater === null) {
+      return;
+    }
+    if (outboundFlushPending) {
+      // A zlib.flush() callback is still outstanding: NEITHER close() NOR
+      // reset() is safe here. Closing now could drop the pending callback
+      // (node before 13.10 never fired it), and reset() with a write in
+      // progress is a use-after-free in node 20's zlib that aborts the
+      // process (fixed upstream by nodejs/node 53bcd114b100). Just mark the
+      // stream for release and close it from the flush callback, once it has
+      // arrived.
+      outboundDeflaterPendingClose = deflater;
+      return;
+    }
+    try {
+      deflater.close();
+    } catch (e) {
+      // already gone
+    }
+  }
+
+  // Settle the message whose output is still being produced (compression in
+  // flight, or frames not yet issued) with err, discard the deflater and move
+  // on. Exactly-once is enforced by the send callback's own once-guard.
+  function outboundFailActive(err) {
+    var message = outboundActiveMessage;
+    if (message === null) {
+      return;
+    }
+    outboundActiveMessage = null;
+    outboundFlushPending = false;
+    outboundDiscardDeflater();
+    message.callback(err);
+    outboundAfterMessage();
+  }
+
+  function outboundAfterMessage() {
+    if (outboundQueue.length > 0) {
+      outboundPump();
+      return;
+    }
+    if (outboundClosePending) {
+      outboundClosePending = false;
+      var payload = outboundClosePayload;
+      var callback = outboundCloseCallback;
+      outboundClosePayload = null;
+      outboundCloseCallback = null;
+      // Every accepted message's data frames reached the socket before this, so
+      // the Close is the last frame on the wire.
+      writeFrame(true, 0x8, payload, callback);
+    }
+  }
+
+  // Frame the stripped (compressed) bytes: fragment at _WebSocketCore_FRAGMENT_SIZE
+  // measured on the COMPRESSED length, first frame carrying the real opcode with
+  // RSV1 set, continuations opcode 0x0 without RSV1, final frame FIN=1. onIssued
+  // fires once the last frame has been handed to nodeSocket.write; sendCallback
+  // settles with the first error (frame write or deflate) or null after the last
+  // frame's socket-write callback.
+  function outboundWriteMessage(opcode, compressed, sendCallback, onIssued) {
+    var issued = _WebSocketCore_once(onIssued);
+    if (compressed.length <= _WebSocketCore_FRAGMENT_SIZE) {
+      writeFrame(true, opcode, compressed, sendCallback, undefined, true);
+      issued();
+      return;
+    }
+    // The client role uses ONE fresh mask key per MESSAGE, shared by every
+    // fragment (never a per-fragment key).
+    var messageKey = role === "client" ? crypto.randomBytes(4) : null;
+    var offset = 0;
+    var first = true;
+
+    function step() {
+      var remaining = compressed.length - offset;
+      if (remaining <= _WebSocketCore_FRAGMENT_SIZE) {
+        writeFrame(
+          true,
+          first ? opcode : 0x0,
+          compressed.subarray(offset),
+          sendCallback,
+          messageKey,
+          first,
+        );
+        issued();
+        return;
+      }
+      writeFrame(
+        false,
+        first ? opcode : 0x0,
+        compressed.subarray(offset, offset + _WebSocketCore_FRAGMENT_SIZE),
+        function (err) {
+          if (err) {
+            sendCallback(err);
+            issued();
+            return;
+          }
+          offset += _WebSocketCore_FRAGMENT_SIZE;
+          first = false;
+          step();
+        },
+        messageKey,
+        first,
+      );
+    }
+
+    step();
+  }
+
+  function outboundPump() {
+    if (outboundActiveMessage !== null || outboundQueue.length === 0) {
+      return;
+    }
+    var message = outboundQueue.shift();
+    outboundActiveMessage = message;
+    var deflater = null;
+
+    function onFlushed(err) {
+      if (deflater !== outboundDeflater) {
+        // destroy()/failProtocol teardown ran while this flush was pending; the
+        // send callback was already settled there. This is the only outstanding
+        // zlib callback, so the deferred close can complete now.
+        outboundReleasePendingClose(deflater);
+        return;
+      }
+      outboundFlushPending = false;
+      if (err) {
+        outboundFailActive(err);
+        return;
+      }
+      // Snapshot the per-message accumulator and clear it IMMEDIATELY, before
+      // anything else can observe it, so no later send can contribute bytes to
+      // this message's output.
+      var snapshot = outboundAccumulator;
+      outboundAccumulator = [];
+      var compressed = Buffer.concat(snapshot);
+      // RFC 7692 §7.2.2: strip the trailing 00 00 FF FF sync-flush marker.
+      if (compressed.length >= 4) {
+        compressed = compressed.subarray(0, compressed.length - 4);
+      }
+      if (compressed.length === 0) {
+        // Unreachable with node's zlib: the smallest Z_SYNC_FLUSH output is the
+        // 5-byte 00 00 00 FF FF, so even an empty message strips to the single
+        // byte 00 below (what ws puts on the wire and what our receiver
+        // accepts). Kept as the §7.2.2 fallback for a zero-length message.
+        compressed = _WebSocketCore_SYNC_FLUSH_TAIL;
+      }
+      var settle = _WebSocketCore_once(function (error) {
+        outboundOutstanding.delete(settle);
+        message.callback(error || null);
+      });
+      outboundOutstanding.add(settle);
+      outboundWriteMessage(message.opcode, compressed, settle, function () {
+        outboundActiveMessage = null;
+        if (outboundResetPerMessage && deflater === outboundDeflater) {
+          // §7.2.2 context boundary: clear the LZ77 window AFTER this message's
+          // snapshot was taken and BEFORE the next message is compressed. The
+          // pipeline is serialized, so no zlib work is queued at this point and
+          // reset() cannot race a pending write.
+          try {
+            deflater.reset();
+          } catch (e) {
+            // already gone
+          }
+        }
+        outboundAfterMessage();
+      });
+    }
+
+    try {
+      deflater = outboundEnsureDeflater();
+      outboundAccumulator = [];
+      deflater.write(message.payload);
+      outboundFlushPending = true;
+      deflater.flush(outboundZlib.constants.Z_SYNC_FLUSH, onFlushed);
+    } catch (e) {
+      outboundFlushPending = false;
+      outboundFailActive(e);
+    }
+  }
+
   function sendData(opcode, payload, cb) {
     var callback = _WebSocketCore_once(cb);
     if (handle.state !== "open") {
       callback(notOpenError());
+      return;
+    }
+
+    if (permessageDeflate !== null) {
+      // Deterministic policy: every data message is compressed while the
+      // extension is negotiated (no threshold, no uncompressed shortcut).
+      outboundQueue.push({
+        opcode: opcode,
+        payload: payload,
+        callback: callback,
+      });
+      outboundPump();
       return;
     }
 
@@ -487,12 +806,62 @@ function _WebSocketCore_attach(nodeSocket, config) {
     stopEmitting = true;
     handle.state = "closing";
     armCloseTimer(); // abnormal destroy if the peer Close never arrives
+    if (outboundActiveMessage !== null || outboundQueue.length > 0) {
+      // A compressed data message is still in flight: deliver it before the
+      // Close frame so no data/continuation frame can reach the socket after
+      // our Close (the uncompressed path delivers it synchronously, hence
+      // before). The callback and payload stay exactly as they are, tied to
+      // the Close frame's socket write.
+      outboundClosePending = true;
+      outboundClosePayload = payload;
+      outboundCloseCallback = callback;
+      return;
+    }
     writeFrame(true, 0x8, payload, callback);
   };
+
+  // Tear the outbound pipeline down: settle every queued/in-flight send callback
+  // exactly once with err, drop the deferred Close callback the same way, and
+  // free the deflater without ever leaving a zlib.flush() callback dangling.
+  function outboundTeardown(error) {
+    if (
+      outboundActiveMessage === null &&
+      outboundQueue.length === 0 &&
+      outboundDeflater === null &&
+      outboundOutstanding.size === 0 &&
+      !outboundClosePending
+    ) {
+      return;
+    }
+    var message = outboundActiveMessage;
+    outboundActiveMessage = null;
+    var queued = outboundQueue;
+    outboundQueue = [];
+    if (outboundClosePending) {
+      outboundClosePending = false;
+      var closeCallback = outboundCloseCallback;
+      outboundClosePayload = null;
+      outboundCloseCallback = null;
+      if (closeCallback) {
+        closeCallback(error);
+      }
+    }
+    if (message !== null) {
+      message.callback(error);
+    }
+    for (var i = 0; i < queued.length; i++) {
+      queued[i].callback(error);
+    }
+    outboundOutstanding.forEach(function (settle) {
+      settle(error);
+    });
+    outboundDiscardDeflater();
+  }
 
   handle.destroy = function () {
     clearCloseTimer();
     handle.state = "closed";
+    outboundTeardown(notOpenError());
     try {
       nodeSocket.destroy();
     } catch (e) {
@@ -583,6 +952,10 @@ function _WebSocketCore_attach(nodeSocket, config) {
       return;
     }
     handle.state = "closing";
+    // Drop any outbound data still in the pipeline (settling its callbacks
+    // with the not-open error) so no data frame can reach the socket after
+    // the Close frame below.
+    outboundTeardown(notOpenError());
     // FIN right after the Close (mirroring the peer-Close reply below and
     // the ws Sender.fail() behavior): a protocol violation kills the byte
     // stream, so there is nothing left to read -- half-closing tells the
@@ -690,6 +1063,7 @@ function _WebSocketCore_attach(nodeSocket, config) {
   var frameMasked = false;
   var framePayloadLen = 0;
   var frameMaskKey = null;
+  var frameRsv1 = false; // RSV1 on the frame currently being parsed
 
   var fragmentOpcode = 0; // 0 = no fragmented message in progress
   var fragments = [];
@@ -701,6 +1075,149 @@ function _WebSocketCore_attach(nodeSocket, config) {
     fragments = [];
     fragmentBytes = 0;
     textDecoder = null;
+  }
+
+  // ---- permessage-deflate inbound state (RFC 7692 §6/§7.2.2) --------------
+  //
+  // INVARIANT PARSER_PAUSED: while awaitingInflate is true, no frame byte may
+  // be consumed and no per-message receive state may be reassigned. Each
+  // compressed message's payloads are ACCUMULATED into its own decode record
+  // (there is no shared mutable per-message state to clobber); at the message's
+  // FIN the 00 00 FF FF sync header plus a synthetic final block is appended
+  // and the whole buffer is handed to zlib.inflateRaw. That is the async
+  // (threadpool) buffer API -- it never blocks the event loop, so the pause is
+  // the only ordering mechanism. The parser is paused from the FIN frame until
+  // the callback lands, so a later frame can never be delivered ahead of the
+  // message it follows. Control frames are never handed to zlib: they are
+  // dispatched from onFrameComplete as before.
+  var currentDecode = null; // the ONE open compressed message's decode record
+  var awaitingInflate = false; // parser paused until the FIN decode callback
+  var compressedLimit = 2 * maxMessageSize + 65536; // §2 step 0 policy bound
+  // Rolling last <=32768 bytes of this connection's DELIVERED decompressed
+  // output: the take-over dictionary (RFC 7692 §7.2.2). Never filled when the
+  // negotiated context is reset per message.
+  var takeOverHistory = _WebSocketCore_EMPTY;
+
+  function recordTakeOverHistory(output) {
+    if (permessageDeflate.resetInboundPerMessage) {
+      return; // fresh context: no dictionary and no history buffer
+    }
+    var tail =
+      output.length >= _WebSocketCore_TAKE_OVER_HISTORY
+        ? output.subarray(output.length - _WebSocketCore_TAKE_OVER_HISTORY)
+        : Buffer.concat([takeOverHistory, output]);
+    takeOverHistory =
+      tail.length > _WebSocketCore_TAKE_OVER_HISTORY
+        ? Buffer.from(
+            tail.subarray(tail.length - _WebSocketCore_TAKE_OVER_HISTORY),
+          )
+        : Buffer.from(tail);
+  }
+
+  function startCompressedMessage(opcode, payload, fin) {
+    if (awaitingInflate) {
+      // Every caller is gated by PARSER_PAUSED (G1/G2), so this is
+      // unreachable for conformant input; refuse loudly on an interleave.
+      failProtocol(
+        1002,
+        "Invalid WebSocket frame: compressed message interleaving",
+      );
+      return;
+    }
+    currentDecode = {
+      opcode: opcode,
+      chunks: [payload],
+      bytes: payload.length,
+      fin: false,
+    };
+    acceptCompressedPayload(currentDecode, fin);
+  }
+
+  // A continuation frame of the open compressed message (RFC 7692 §6).
+  function appendCompressedPayload(payload, fin) {
+    var record = currentDecode;
+    record.chunks.push(payload);
+    record.bytes += payload.length;
+    acceptCompressedPayload(record, fin);
+  }
+
+  // §2 step 0: bound the buffer that must exist before maxOutputLength can
+  // fire (it only fires at FIN). 2x covers every legal DEFLATE expansion for a
+  // message whose decompressed size is within maxMessageSize (stored blocks
+  // add 5 B per 64 KiB, RFC 1951 §3.2.4; a symbol-wise Huffman block is capped
+  // at 15 bits/byte, 1.875x) plus 64 KiB of unconditional slack.
+  function acceptCompressedPayload(record, fin) {
+    if (record.bytes > compressedLimit) {
+      currentDecode = null;
+      failProtocol(1009, "Max payload size exceeded");
+      return;
+    }
+    if (!fin) {
+      return;
+    }
+    record.fin = true;
+    finishCompressedMessage(record);
+  }
+
+  function finishCompressedMessage(record) {
+    if (record !== currentDecode) {
+      return; // a stale/late callback can only no-op
+    }
+    if (record.bytes === 0) {
+      // §2 step 1: nothing was sent. A conforming sender's empty message is
+      // exactly 0x00 (a zero-length payload is a Z_DATA_ERROR under the §2
+      // signature), so deliver the empty message WITHOUT calling zlib.
+      currentDecode = null;
+      emitMessage(record.opcode, _WebSocketCore_EMPTY);
+      return;
+    }
+    awaitingInflate = true;
+    var zlib = require("node:zlib");
+    var input = Buffer.concat(
+      record.chunks.concat([_WebSocketCore_INFLATE_TAIL]),
+      record.bytes + _WebSocketCore_INFLATE_TAIL.length,
+    );
+    zlib.inflateRaw(
+      input,
+      {
+        windowBits: 15,
+        finishFlush: zlib.constants.Z_FINISH,
+        maxOutputLength: maxMessageSize,
+        dictionary: permessageDeflate.resetInboundPerMessage
+          ? undefined
+          : takeOverHistory,
+      },
+      function (err, output) {
+        onInflateDone(record, err, output);
+      },
+    );
+  }
+
+  function onInflateDone(record, err, output) {
+    if (record !== currentDecode) {
+      return; // stale/late callback: nothing to deliver and nothing to clear
+    }
+    if (err) {
+      currentDecode = null;
+      awaitingInflate = false;
+      if (err.code === "ERR_BUFFER_TOO_LARGE") {
+        failProtocol(1009, "Max payload size exceeded");
+      } else {
+        failProtocol(1002, "Invalid WebSocket frame: invalid compressed data");
+      }
+      return;
+    }
+    if (record.opcode === 0x1 && !_WebSocketCore_utf8IsValid(output)) {
+      currentDecode = null;
+      awaitingInflate = false;
+      failProtocol(1007, "Invalid WebSocket frame: invalid UTF-8 sequence");
+      return;
+    }
+    recordTakeOverHistory(output);
+    emitMessage(record.opcode, output);
+    currentDecode = null;
+    awaitingInflate = false;
+    resumeParsing();
   }
 
   function emitMessage(opcode, message) {
@@ -778,7 +1295,7 @@ function _WebSocketCore_attach(nodeSocket, config) {
     emitMessage(op, message);
   }
 
-  function onFrameComplete(fin, opcode, payload) {
+  function onFrameComplete(fin, opcode, payload, rsv1) {
     if (opcode === 0x9) {
       // Ping: answer Pong echoing the payload verbatim, out-of-band even
       // mid-fragmented-message (autobahn 4.1.5).
@@ -799,8 +1316,14 @@ function _WebSocketCore_attach(nodeSocket, config) {
     }
 
     if (opcode === 0x0) {
-      if (fragmentOpcode === 0) {
+      if (currentDecode === null && fragmentOpcode === 0) {
         failProtocol(1002, "Invalid WebSocket frame: invalid opcode 0"); // continuation without an open fragmented message
+        return;
+      }
+      if (currentDecode !== null && !currentDecode.fin) {
+        // Continuation of a permessage-deflate message: its bytes go to the
+        // open decode record, never to the fragment assembler (RFC 7692 §6).
+        appendCompressedPayload(payload, fin);
         return;
       }
       appendFragment(payload, fin);
@@ -808,8 +1331,15 @@ function _WebSocketCore_attach(nodeSocket, config) {
     }
 
     // Data frame starting a new message (text or binary).
-    if (fragmentOpcode !== 0) {
+    if (fragmentOpcode !== 0 || currentDecode !== null) {
       failProtocol(1002, "Invalid WebSocket frame: invalid opcode " + opcode); // new data frame while a fragmented message is open
+      return;
+    }
+    if (rsv1) {
+      // First frame of a permessage-deflate message (RFC 7692 §6): its payload
+      // is DEFLATE-compressed and inflated as a whole; the decompressed size is
+      // gated by maxOutputLength, the compressed size by §2 step 0.
+      startCompressedMessage(opcode, payload, fin);
       return;
     }
     if (payload.length > maxMessageSize) {
@@ -845,7 +1375,31 @@ function _WebSocketCore_attach(nodeSocket, config) {
     // must only wait for messages enqueued in THIS event.
     enqueuedThisEvent = 0;
     pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
+    if (awaitingInflate) {
+      // INVARIANT PARSER_PAUSED: a compressed message's decode is pending, so
+      // these bytes are BUFFERED; resumeParsing() re-enters in wire order once
+      // the callback lands. Never call parseFrames() unconditionally here.
+      return;
+    }
+    parseFrames();
+  }
 
+  // Re-enter the parser on bytes buffered while a compressed message's inflate
+  // callback was pending (see awaitingInflate). Wire order is preserved: the
+  // pause started exactly at the FIN frame that closed the message.
+  function resumeParsing() {
+    if (closeFired || awaitingInflate) {
+      return;
+    }
+    parseFrames();
+  }
+
+  function parseFrames() {
+    // INVARIANT PARSER_PAUSED (defence in depth, G2): no caller may consume a
+    // frame byte while a compressed message's async decode is pending.
+    if (closeFired || awaitingInflate) {
+      return;
+    }
     // ignore-next: loop breaks on every return path
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -860,14 +1414,30 @@ function _WebSocketCore_attach(nodeSocket, config) {
         frameMasked = (b1 & 0x80) !== 0;
         var len7 = b1 & 0x7f;
 
+        // RSV2/RSV3 are always protocol errors; RSV1 is the permessage-deflate
+        // marker and legal ONLY on the first frame of a data message when the
+        // extension was negotiated (RFC 7692 §6 -- RSV1 on a control frame or a
+        // continuation MUST fail the connection).
+        frameRsv1 = false;
         if ((b0 & 0x70) !== 0) {
-          failProtocol(
-            1002, // RSV1-3 set with no negotiated extensions
-            (b0 & 0x40) !== 0
-              ? "Invalid WebSocket frame: RSV1 must be clear"
-              : "Invalid WebSocket frame: RSV2 and RSV3 must be clear",
-          );
-          return;
+          var rsv1Set = (b0 & 0x40) !== 0;
+          if (
+            rsv1Set &&
+            (b0 & 0x30) === 0 &&
+            permessageDeflate !== null &&
+            !_WebSocketCore_isControlOpcode(frameOpcode) &&
+            frameOpcode !== 0x0
+          ) {
+            frameRsv1 = true;
+          } else {
+            failProtocol(
+              1002,
+              rsv1Set
+                ? "Invalid WebSocket frame: RSV1 must be clear"
+                : "Invalid WebSocket frame: RSV2 and RSV3 must be clear",
+            );
+            return;
+          }
         }
         if (!_WebSocketCore_opcodeIsValid(frameOpcode)) {
           failProtocol(
@@ -977,10 +1547,12 @@ function _WebSocketCore_attach(nodeSocket, config) {
         parseState = "header";
         var fin = frameFin;
         var opcode = frameOpcode;
-        onFrameComplete(fin, opcode, payload);
-        if (closeFired || deferredFailureDrainScheduled) {
-          // Close fired, or a violation deferred behind this event's
-          // deliveries: the byte stream is protocol-dead, stop parsing.
+        onFrameComplete(fin, opcode, payload, frameRsv1);
+        if (closeFired || deferredFailureDrainScheduled || awaitingInflate) {
+          // Close fired, a violation was deferred behind this event's
+          // deliveries, or a compressed message's inflate callback is still
+          // pending: the byte stream is protocol-dead or not yet in order,
+          // stop parsing.
           return;
         }
       }

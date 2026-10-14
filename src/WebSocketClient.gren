@@ -1,4 +1,4 @@
-effect module WebSocketClient where { subscription = ClientSubscription } exposing (CloseReason, ConnectError(..), Connection, Message(..), Option(..), Permission, connect, connectionId, initialize, onClose)
+effect module WebSocketClient where { subscription = ClientSubscription } exposing (CloseReason, Compression(..), ConnectError(..), Connection, Message(..), Option(..), Permission, connect, connectionId, initialize, onClose)
 
 {-| Connect to WebSocket servers and exchange messages.
 
@@ -9,7 +9,7 @@ outgoing messages via a [Writable](Stream#Writable) stream from
 
 ## Initialization
 
-@docs Permission, initialize, Option
+@docs Permission, initialize, Option, Compression
 
 ## Connecting
 
@@ -58,6 +58,18 @@ type ConnectError
     = ConnectError { code : String, message : String }
 
 
+{-| Whether the connection negotiates the permessage-deflate extension.
+
+permessage-deflate is offered to the server by default. Passing
+[`Compression Disabled`](#Compression) to [`connect`](#connect) sends no offer and
+accepts no extension in the server's response; the connection still succeeds, but
+any inbound RSV1 (compressed) frame closes it with code `1002`.
+
+-}
+type Compression
+    = Disabled
+
+
 {-| Optional configuration for [`connect`](#connect).
 
 Pass an empty list to use defaults for everything:
@@ -72,11 +84,12 @@ type Option
     = ReadBufferCapacity Int
     | MaxMessageSize Int
     | MaxFrameSize Int
+    | Compression Compression
 
 
 {-| Internal decoding of an `Array Option` into a plain record the kernel
 consumes directly. Defaults mirror the engine defaults (unbounded-ish 100 MiB
-message/frame caps, 16-message read queue).
+message/frame caps, 16-message read queue, compression enabled).
 
 If the same option is passed more than once, the last occurrence wins.
 -}
@@ -84,6 +97,7 @@ type alias Settings =
     { readBufferCapacity : Int
     , maxMessageSize : Int
     , maxFrameSize : Int
+    , compressionEnabled : Bool
     }
 
 
@@ -100,10 +114,14 @@ decodeOptions options =
 
                 MaxFrameSize value ->
                     { settings | maxFrameSize = value }
+
+                Compression Disabled ->
+                    { settings | compressionEnabled = False }
         )
         { readBufferCapacity = 16
         , maxMessageSize = 104857600
         , maxFrameSize = 104857600
+        , compressionEnabled = True
         }
         options
 
