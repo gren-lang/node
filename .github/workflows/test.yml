@@ -38,8 +38,11 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Pull Autobahn TestSuite image
-        run: docker pull crossbario/autobahn-testsuite
+      - name: Pull Autobahn TestSuite runtime image (digest-pinned)
+        # Runtime only: the tests run from the repo's vendored suite
+        # (integration-tests/autobahn/vendor, integrity-gated by
+        # verify-vendor.mjs); digest matches the runners' pin.
+        run: docker pull crossbario/autobahn-testsuite@sha256:519915fb568b04c9383f70a1c405ae3ff44ab9e35835b085239c258b6fac3074
 
       - name: Autobahn suites
         run: devbox run test:autobahn
