@@ -1,0 +1,4 @@
+# The vendored upstream suite is integrity-gated by sha256 (verify-vendor.mjs
+# vs the wheel RECORD) and consumed byte-for-byte by a Linux container, so
+# git must store and check out every file verbatim - no EOL normalization.
+* -text

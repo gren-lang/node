@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block inner %}
+
+   <h1>
+
+   {% if testresult.passed %}
+      <p class="pass">Pass ({{ testresult.duration | round(1) }} ms)</p>
+   {% else %}
+      <p class="fail">Fail</p>
+   {% endif %}
+
+      {{ testresult.testeeName }} - Test Case {{ testresult.caseName }}
+   </h1>
+
+   <hr>
+
+   <h2>Description</h2>
+
+   <p>
+      {{ testresult.description|safe }}
+   </p>
+   <p>
+      {{ testresult.expectation }}
+   </p>
+
+   <hr>
+
+   <h2>Expected</h2>
+
+      <table class="wamplog" style="width: 80%">
+         <tr>
+            <td style="min-width: 6em;">Session Index</td>
+            <td style="min-width: 10em;">Session ID</td>
+            <td style="min-width: 10em;">Topic</td>
+            <td style="width: 100%;">Payload</td>
+         </tr>
+         {% if testresult.expected %}
+            {% for sid in testresult.expected %}
+               {% if testresult.expected[sid]|length > 0 %}
+                  {% for event in testresult.expected[sid] %}
+                  <tr>
+                     <td><b>0</b></td>
+                     <td class="pre">{{ sid }}</td>
+                     <td><pre>{{ event[0] }}</pre></td>
+                     <td><pre>{{ event[1] }}</pre></td>
+                  </tr>
+                  {% endfor %}
+               {% else %}
+               {% endif %}
+            {% endfor %}
+         {% else %}
+         <tr>
+            <td colspan="4">Nothing.</td>
+         </tr>
+         {% endif %}
+      </table>
+
+   <hr>
+
+
+   <h2>Observed</h2>
+
+      <table class="wamplog" style="width: 80%">
+         <tr>
+            <td style="min-width: 6em;">Session Index</td>
+            <td style="min-width: 10em;">Session ID</td>
+            <td style="min-width: 10em;">Topic</td>
+            <td style="width: 100%;">Payload</td>
+         </tr>
+         {% if testresult.observed %}
+            {% for sid in testresult.observed %}
+               {% if testresult.observed[sid]|length > 0 %}
+                  {% for event in testresult.observed[sid] %}
+                  <tr>
+                     <td><b>0</b></td>
+                     <td class="pre">{{ sid }}</td>
+                     <td><pre>{{ event[0] }}</pre></td>
+                     <td><pre>{{ event[1] }}</pre></td>
+                  </tr>
+                  {% endfor %}
+               {% else %}
+               {% endif %}
+            {% endfor %}
+         {% else %}
+         <tr>
+            <td colspan="4">Nothing.</td>
+         </tr>
+         {% endif %}
+      </table>
+
+   <hr>
+
+
+   <h2>Log</h2>
+
+      <table class="wamplog">
+         <tr>
+            <td style="min-width: 4em;">Timestamp</td>
+            <td style="min-width: 6em;">Session Index</td>
+            <td style="min-width: 10em;">Session ID</td>
+            <td style="width: 100%;">Message</td>
+         </tr>
+         {% for line in testresult.log %}
+         <tr>
+            <td>{{ line[0] | round(6) }}</td>
+            <td><b>{% if line[1] is none %}&nbsp;{% else %}{{ line[1] }}{% endif %}</b></td>
+            <td class="pre">
+                  {% if line[2] is none %}&nbsp;{% else %}{{ line[2] }}{% endif %}
+            </td>
+            <td style="width: 100%;">{{ line[3] }}</td>
+         </tr>
+         {% endfor %}
+      </table>
+
+   <hr>
+
+{% endblock %}

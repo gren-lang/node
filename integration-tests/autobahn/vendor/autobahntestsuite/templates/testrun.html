@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block inner %}
+
+   <h1>Testrun</h1>
+
+   <table class="wamplog">
+      <tr>
+         <td>Test / Testees:</td>
+         {% for testee in testees %}
+         <td>{{ testee.name }}</td>
+         {% endfor %}
+      </tr>
+      {% for result in testresults %}
+      <tr>
+         <td>
+           {{ result.index }}
+         </td>
+         {% for testee in testees %}
+         <td>
+            <a href="/testresult/{{ result.results[testee.name].id }}">
+              {% if result.results[testee.name].passed %}
+              Pass
+              {% else %}
+              Fail
+              {% endif %}
+              ({{ result.results[testee.name].duration|round|int }} ms)
+           </a>
+         </td>
+         {% endfor %}
+      </tr>
+      {% endfor %}
+   </table>
+
+   <hr>
+
+{% endblock %}

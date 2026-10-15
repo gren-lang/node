@@ -1,0 +1,3 @@
+[console_scripts]
+wstest = autobahntestsuite.wstest:run
+

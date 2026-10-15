@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block inner %}
+
+   <h1>Testruns</h1>
+
+   <table class="wamplog" style="width: 80%">
+      <tr>
+         <td style="">Fuzzing Mode</td>
+         <td style="">Case Set</td>
+         <td style="">Spec</td>
+         <td style="">Started</td>
+         <td style="">Status</td>
+         <td style="">Testees</td>
+         <td style="">Tests</td>
+         <td style="">&nbsp;</td>
+      </tr>
+      {% for testrun in testruns %}
+      <tr>
+         <td>{{ testrun.runMode }}</td>
+         <td>{{ testrun.caseSetName }}</td>
+         <td><a href="/testspec/{{ testrun.specId }}">{{ testrun.specName }}</a></td>
+         <td>{{ testrun.started }}</td>
+         <td>
+            {% if testrun.ended %}
+            Completed in {{ testrun.duration }} s.
+            {% else %}
+            Running  since {{ testrun.duration }} s ..
+            {% endif %}
+         </td>
+         <td>
+            {{ testrun.testeeCount }}
+            {% if testrun.testeeFailedCount > 0 %}
+            ({{ testrun.testeeFailedCount }} failed)
+            {% else %}
+            (ok)
+            {% endif %}
+         </td>
+         <td>
+            {{ testrun.total }}
+            {% if testrun.failed > 0 %}
+            ({{ testrun.failed }} failed)
+            {% else %}
+            (ok)
+            {% endif %}
+         </td>
+         <td><a href="/testrun/{{ testrun.id }}">Goto test run</a></td>
+      </tr>
+      {% endfor %}
+   </table>
+
+   <hr>
+
+{% endblock %}

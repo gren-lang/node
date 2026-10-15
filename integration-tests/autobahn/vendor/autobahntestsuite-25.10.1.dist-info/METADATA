@@ -1,0 +1,79 @@
+Metadata-Version: 2.1
+Name: autobahntestsuite
+Version: 25.10.1
+Summary: AutobahnTestSuite - WebSocket protocol implementation conformance test suite.
+Home-page: https://github.com/crossbario/autobahn-testsuite
+Author: typedef int GmbH
+Author-email: UNKNOWN
+License: Apache License 2.0
+Keywords: autobahn websocket wamp realtime test testsuite rfc6455 wstest wsperf
+Platform: Any
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Framework :: Twisted
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Topic :: Internet
+Classifier: Topic :: Software Development :: Testing
+Requires-Dist: setuptools (==44.0.0)
+Requires-Dist: txaio (==2.1.0)
+Requires-Dist: incremental (==16.10.1)
+Requires-Dist: pyOpenSSL (==19.1.0)
+Requires-Dist: cryptography (==3.3.2)
+Requires-Dist: Twisted (==19.10.0)
+Requires-Dist: zope.interface (==4.6.0)
+Requires-Dist: jinja2 (==2.11.3)
+Requires-Dist: markupsafe (==1.1.1)
+Requires-Dist: Werkzeug (==1.0.1)
+Requires-Dist: klein (==17.10.0)
+Requires-Dist: pyopenssl (==19.1.0)
+Requires-Dist: service-identity (==18.1.0)
+Requires-Dist: unittest2 (==1.1.0)
+Requires-Dist: six (==1.16.0)
+Requires-Dist: autobahn[accelerate,twisted] (==0.10.9)
+
+WebSocket protocol implementation conformance test suite.
+
+Autobahn|Testsuite provides a fully automated test suite to verify client and
+server implementations of the WebSocket protocol.
+
+The test suite will check an implementation by doing basic WebSocket
+conversations, extensive protocol compliance verification and
+performance and limits testing.
+
+Contains over 500 test cases covering
+
+* Framing
+* Pings/Pongs
+* Reserved Bits
+* Opcodes
+* Fragmentation
+* UTF-8 Handling
+* Limits/Performance
+* Closing Handshake
+* Opening Handshake (under development)
+* WebSocket compression (permessage-deflate extension)
+
+Besides the automated test suite, wstest also includes a number
+of other handy developer tools:
+
+* WebSocket echo server and client
+* WebSocket broadcast server (and client driver)
+* Testee modes to test Autobahn itself against the test suite
+* wsperf controller and master (see http://www.zaphoyd.com/wsperf)
+* WAMP server and client, for developing WAMP implementations
+
+More information:
+
+Protocol Spec:    https://datatracker.ietf.org/doc/html/rfc6455
+Source Code:      https://github.com/crossbario/autobahn-testsuite
+Release Packages: https://pypi.org/project/autobahntestsuite
+Documentation:    https://autobahntestsuite.readthedocs.io
+Copyright:        typedef int GmbH (Germany/EU)
+License:          Apache License 2.0
+
+

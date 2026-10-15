@@ -28,8 +28,15 @@ const docker = childProc.spawn(
     path.join(ROOT, "config", "fuzzingserver.json") +
       ":/config/fuzzingserver.json:ro",
     "-v",
+    path.join(ROOT, "vendor") + ":/vendor:ro",
+    "-e",
+    "PYTHONPATH=/vendor",
+    "-v",
     path.join(ROOT, "reports") + ":/reports",
-    "crossbario/autobahn-testsuite",
+    // Runtime only (Python + Twisted): the tests come from vendor/, which
+    // PYTHONPATH=/vendor puts ahead of the image's site-packages. Digest-pinned
+    // so the runtime is reproducible too; provenance in vendor/README.md.
+    "crossbario/autobahn-testsuite@sha256:519915fb568b04c9383f70a1c405ae3ff44ab9e35835b085239c258b6fac3074",
     "wstest",
     "-m",
     "fuzzingserver",

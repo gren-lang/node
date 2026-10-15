@@ -53,6 +53,16 @@
 # host.docker.internal (which Docker Desktop routes to host loopback
 # listeners regardless of the --network mode) and drops --network host.
 #
+# Test provenance: the suites run the vendored test suite under vendor/,
+# NOT the copy baked into the Docker image. The runners bind-mount vendor/
+# read-only at /vendor and set PYTHONPATH=/vendor, which outranks the
+# image's site-packages, so the image is only a Python+Twisted runtime.
+# vendor/ is byte-for-byte the PyPI wheel autobahntestsuite-25.10.1 (sha256
+# b57ee6b2...); vendor/README.md carries the full provenance chain. The
+# vendor-check target re-hashes every vendored file against the wheel's
+# RECORD before each suite and fails the run on any deviation, so a green
+# suite always means "passed against unmodified upstream tests".
+#
 # Freshness (spec §6a): every app target depends on the whole library source
 # tree plus the local library manifest, not just its own src/<App>.gren, so a
 # library edit rebuilds the apps instead of leaving a stale binary. Primary
@@ -121,7 +131,7 @@ autobahn-client-app: Makefile gren.json ../../gren.json src/AutobahnClient.gren 
 # the fuzzingserver names per-case files gren_node_case_* in fuzzingserver
 # mode regardless of which suite ran.
 .PHONY: autobahn-server-suite
-autobahn-server-suite: autobahn-server-app
+autobahn-server-suite: autobahn-server-app vendor-check
 	@grep -q 'permessage-deflate' autobahn-server-app || { echo 'STALE BINARY: autobahn-server-app does not contain the library under test'; exit 1; }
 	@mkdir -p reports/server
 	@rm -f reports/server/index.json reports/server/index.html
@@ -129,12 +139,17 @@ autobahn-server-suite: autobahn-server-app
 	node server-suite-runner.mjs
 
 .PHONY: autobahn-client-suite
-autobahn-client-suite: autobahn-client-app
+autobahn-client-suite: autobahn-client-app vendor-check
 	@grep -q 'permessage-deflate' autobahn-client-app || { echo 'STALE BINARY: autobahn-client-app does not contain the library under test'; exit 1; }
 	@mkdir -p reports/client
 	@rm -f reports/client/index.json reports/client/index.html
 	@rm -f reports/client/gren_node_case_*.json reports/client/gren_node_case_*.html
 	node run-client-suite.mjs
+
+# Fail-fast integrity gate for the vendored tests (see header + vendor/README.md).
+.PHONY: vendor-check
+vendor-check:
+	@node verify-vendor.mjs
 
 .PHONY: clean
 clean:

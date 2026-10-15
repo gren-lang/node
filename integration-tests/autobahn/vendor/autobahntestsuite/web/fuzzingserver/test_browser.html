@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      <meta charset="UTF-8">
+
+      <style lang="css">
+         body
+         {
+            font-family: Segoe UI,Tahoma,Arial,Verdana,sans-serif;
+            color: #333;
+         }
+      </style>
+
+      <script type="text/javascript">
+
+         var wsuri = null;
+         var agent = null;
+         var ua = null;
+         var webSocket = null;
+         var currentCaseId = null;
+         var currentCaseTuple = null;
+         var caseCount = null;
+
+         window.onload =
+            function()
+            {
+               setWsUri();
+               setAgent();
+            }
+
+         function setWsUri()
+         {
+            wsuri = document.getElementById('wsuri').value;
+            if (wsuri == null || wsuri == "")
+            {
+               var hn = window.location.hostname;
+               if (hn == null || hn == "") {
+                  hn = "127.0.0.1";
+               }
+               if (window.location.protocol == "https:") {
+                  wsuri = "wss://" + hn + ":9001";
+               } else {
+                  wsuri = "ws://" + hn + ":9001";
+               }
+               document.getElementById('wsuri').value = wsuri;
+            }
+         }
+
+         function setPort()
+         {
+            port = document.getElementById('port').value;
+
+            if (port == null || port == "")
+            {
+               port = "9001";
+               document.getElementById('port').value = port;
+            }
+         }
+
+         function setAgent()
+         {
+            agent = document.getElementById('agent').value;
+            ua = navigator.userAgent;
+            document.getElementById('ua-detected').innerHTML = ua;
+
+            if (agent == null || agent == "")
+            {
+               console.log("user agent = " + ua);
+               if (ua.indexOf("Chrome") > -1)
+               {
+                  i = ua.indexOf("Chrome");
+                  j = ua.indexOf(" ", i);
+                  agent = ua.slice(i, j);
+                  updateStatus("Detected user agent " + agent + ".");
+               }
+               else if (ua.indexOf("Firefox") > -1)
+               {
+                  i = ua.indexOf("Firefox");
+                  j = ua.indexOf(" ", i);
+                  if (j < i) j = ua.length;
+                  s1 = ua.slice(i, j);
+                  console.log(s1);
+                  i = ua.indexOf("Gecko/");
+                  j = ua.indexOf(" ", i);
+                  s2 = ua.slice(i + "Gecko/".length, j).trim();
+                  if (s2 != "") {
+                     agent = s1 + "-" + s2;
+                  } else {
+                     agent = s1;
+                  }
+                  updateStatus("Detected user agent " + agent + ".");
+               }
+               else if (ua.indexOf("Safari") > -1)
+               {
+                  i = ua.indexOf("Safari");
+                  j = ua.indexOf(" ", i);
+                  if (j < 0) j = ua.length;
+                  agent = ua.slice(i, j);
+                  updateStatus("Detected user agent " + agent + ".");
+               }
+               else if (ua.indexOf("MSIE") > -1)
+               {
+                  i = ua.indexOf("MSIE");
+                  j = ua.indexOf(";", i);
+                  if (j < 0) j = ua.length;
+                  agent = ua.slice(i, j);
+                  updateStatus("Detected user agent " + agent + ".");
+               }
+               else
+               {
+                  agent = "unknown";
+                  updateStatus("Could not detect user agent .. will use '" + agent + "'.");
+               }
+
+               document.getElementById('agent').value = agent;
+            }
+         }
+
+         function startTestRun()
+         {
+            setWsUri();
+            setAgent();
+            updateStatus("Running test suite ..");
+            document.getElementById('resultlink').innerHTML = '';
+            currentCaseId = 1;
+            currentCaseTuple = null;
+            if (document.getElementById('singletest').checked)
+            {
+               currentCaseTuple = document.getElementById('casetuple').value;
+               caseCount = 1;
+               runNextCase();
+            }
+            else
+            {
+               getCaseCount(runNextCase);
+            }
+         }
+
+         function updateStatus(msg)
+         {
+            console.log(msg);
+            document.getElementById('statusline').innerHTML = msg;
+         }
+
+         function openWebSocket(ws_uri)
+         {
+            if ("WebSocket" in window) {
+               // Chrome, IE10
+               webSocket = new WebSocket(ws_uri);
+            } else if ("MozWebSocket" in window) {
+               // Firefox 7-10 (currently vendor prefixed)
+               webSocket = new MozWebSocket(ws_uri);
+            } else {
+               throw "neither WebSocket nor MozWebSocket available";
+            }
+            return webSocket;
+         }
+
+         function getCaseCount(cont)
+         {
+            var ws_uri = wsuri + "/getCaseCount";
+
+            webSocket = openWebSocket(ws_uri);
+
+            webSocket.onmessage =
+               function(e)
+               {
+                  caseCount = JSON.parse(e.data);
+                  updateStatus("Will run " + caseCount + " cases ..");
+               }
+
+            webSocket.onclose =
+               function(e)
+               {
+                  cont();
+               }
+         }
+
+         function updateReports()
+         {
+            var ws_uri = wsuri + "/updateReports?agent=" + agent;
+
+            webSocket = openWebSocket(ws_uri);
+
+            webSocket.onopen =
+               function(e)
+               {
+                  updateStatus("Updating reports ..");
+               }
+
+            webSocket.onclose =
+               function(e)
+               {
+                  webSocket = null;
+                  updateStatus("Reports updated.");
+                  updateStatus("Test suite finished!");
+
+                  /*document.getElementById('resultlink').innerHTML = '<a href="../reports/clients/index.html">Check test report</a>';*/
+               }
+         }
+
+         function runNextCase()
+         {
+            var ws_uri = null;
+
+            if (currentCaseTuple)
+            {
+               ws_uri = wsuri + "/runCase?casetuple=" + currentCaseTuple + "&agent=" + agent;
+            }
+            else
+            {
+               ws_uri = wsuri + "/runCase?case=" + currentCaseId + "&agent=" + agent;
+            }
+
+            webSocket = openWebSocket(ws_uri);
+            webSocket.binaryType = "arraybuffer";
+
+            webSocket.onopen =
+               function(e)
+               {
+                  updateStatus("Executing test case " + currentCaseId + "/" + caseCount);
+               }
+
+            webSocket.onclose =
+               function(e)
+               {
+                  webSocket = null;
+
+                  currentCaseId = currentCaseId + 1;
+                  if (currentCaseId <= caseCount)
+                  {
+                     runNextCase();
+                  }
+                  else
+                  {
+                     updateStatus("All test cases executed.");
+                     updateReports();
+                  }
+               }
+
+            //webSocket.onerror = webSocket.onclose;
+
+            webSocket.onmessage =
+               function(e)
+               {
+                  webSocket.send(e.data);
+               }
+         }
+
+      </script>
+   </head>
+
+   <body>
+      <h1>Autobahn WebSocket Test Suite : Run Browser Test</h1>
+      <p>Provided by <a href="https://autobahn-testsuite.readthedocs.io/">Autobahn</a>.</p><br/>
+      <form>
+         <p>Fuzzing Server URI<br/><input id="wsuri" type="text" size="20" maxlength="40"></p>
+         <p>User Agent Identifier<br/><input id="agent" type="text" size="30" maxlength="30"><br/>
+         <span style="font-size: 0.7em;" id="ua-detected"></span></p>
+         <p>
+            <input type="radio" id="alltests" name="runtests" value="all" checked="checked" onclick="document.getElementById('casetuple').disabled=true;"><label for="alltests">All tests</label>
+            <input type="radio" id="singletest" name="runtests" value="singletest" onclick="document.getElementById('casetuple').disabled=false;"><label for="singletest">Single test:</label> <input id="casetuple" type="text" size="10" maxlength="10" disabled="disabled">
+         </p>
+      </form>
+      <br/>
+      <p><button onclick='startTestRun();'>Start Tests</button> &nbsp;&nbsp; <i>Status:</i> <span id="statusline">Ready</span></p>
+      <p><button onclick='updateReports();'>Update Reports (Manual)</button></p>
+      <br/>
+      <p id="resultlink"></p>
+   </body>
+</html>
