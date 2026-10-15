@@ -1,0 +1,5 @@
+# Vendored upstream code (Autobahn TestSuite wheel contents) — checked in
+# byte-for-byte; formatting it would break the RECORD-verified provenance.
+integration-tests/autobahn/vendor/
+.gren/
+gren_packages/

@@ -30,6 +30,8 @@ App code does not change; `integration-tests/websocket/` must pass unchanged
 (it may keep using `ws` as a _test-only_ dev dependency — that is allowed,
 test harnesses are not shipped code).
 
+> **2026-10-12, cycle 8 sg5:** "pass unchanged" adjudication: no assertion is weakened, renamed, skipped, or deleted, and no library API/behaviour changes; stimulus/config premise corrections to the test app are permitted per the §6.5 premise-correction entry (the entry recording the measured value is added by a later step of this cycle).
+
 ## 2. Decisions and rationale
 
 **D1 — `Net` and `Tls` become first-class exposed modules.** `node:net` (TCP)
@@ -80,6 +82,8 @@ dropped. Autobahn `permessage-deflate.*` cases are excluded in v1 (see §6.5).
 `Stream.gzipCompression` etc. exist in core but permessage-deflate needs
 shared-context streaming (`server_no_context_takeover` etc.) — real work,
 defer (F1 in §8).
+
+> **2026-10-12, cycle 8 sg5 — SUPERSESSION:** `permessage-deflate` (RFC 7692) is now IMPLEMENTED for client and server and negotiated **by default**; opt out with the `Compression (Disabled)` option. The statements above — the `permessage-deflate.*` case exclusion and "defer (F1 in §8)" — stand as history only and are superseded; see the F1 note in §8 and the §6.5 update.
 
 **D5 — One shared kernel protocol core.** Client and server share
 framing/handshake/close logic in `src/Gren/Kernel/WebSocketCore.js`
@@ -252,6 +256,8 @@ A hand-rolled state machine over the inbound byte stream, per
 (keeping `ReadBufferCapacity Int` unchanged):
 `MaxMessageSize Int`, `MaxFrameSize Int`, plus server-only `HandshakeTimeout Int`
 (ms, default 60000). `Origin` checking, `Subprotocols`: follow-ups F2/F3 (§8).
+F1 (permessage-deflate, D4 supersession note in §2) later added, on both modules:
+new type `Compression = Disabled` and `Option` constructor `Compression Compression`.
 
 ### 4.4 `WebSocketClient.gren` / `WebSocketServer.gren`
 
@@ -268,7 +274,12 @@ matching today's behavior (`createServer` takes host/port only; nothing regresse
 
 ## 5. Breaking changes / migration
 
-- No public Gren API changes. No `gren.json` version-bound changes.
+- No public Gren API changes _from the v1 rewire this plan describes_. No `gren.json`
+  version-bound changes. Addendum for F1 (2026-10-12): the `Compression` type +
+  `Compression Compression` `Option` constructor are additive on both modules (no
+  signature breaks), but permessage-deflate negotiation is **on by default** — a
+  behaviour change for apps that did not ask for it; opt out with
+  `Compression (Disabled)` (see the D4 supersession note in §2).
 - Removed: implicit `ws` runtime dependency. Apps that installed `ws` to make
   WebSocket work can uninstall it (README note). `devbox` Node version 20 is
   fine — everything used (`ReadableStream`/`CountQueuingStrategy` globals,
@@ -297,10 +308,14 @@ integration-tests/autobahn/
   src/AutobahnClient.gren     # drives fuzzingserver case protocol on :9001
   config/fuzzingclient.json   # server-side tests (wstest fuzzingclient)
   config/fuzzingserver.json   # client-side tests (wstest fuzzingserver)
+  vendor/                     # unmodified autobahntestsuite 25.10.1 (see 6.7)
+  verify-vendor.mjs           # re-hashes vendor/ against the wheel RECORD
   check-reports.mjs           # gates on reports/*/index.json  (plain node, no npm deps)
-  run-client-suite.mjs        # boots fuzzingserver container, runs Gren client, checks reports
+  run-suite.mjs               # boots container(s), forks the Gren app(s), runs the gate
   reports/                    # gitignored
 ```
+
+> **2026-10-15, test re-vendoring:** the suites no longer run the test code baked into the Docker image. They run `vendor/` — the PyPI wheel `autobahntestsuite-25.10.1-py2-none-any.whl` (sha256 `b57ee6b2…383`) extracted unmodified — bind-mounted read-only with `PYTHONPATH=/vendor`, which outranks the image's `site-packages`; the digest-pinned image is only a Python+Twisted runtime. `make vendor-check` (prerequisite of both suite targets) re-hashes every vendored file against the wheel's RECORD and fails on any deviation. Provenance chain in `vendor/README.md`; see §6.8.
 
 The suite is separate from `integration-tests/websocket/` because it has an
 extra host prerequisite (Docker) and must not block `devbox run test:integration`
@@ -325,6 +340,8 @@ The classic `crossbario/autobahn-testsuite` image ships no permessage-deflate
 cases (see 6.5); the exclusion is precautionary so a future image swap cannot
 silently start "passing" extension tests by skipping them. Limits/performance
 cases (12.x) run and are handled as informational by the gate (6.4).
+
+> **2026-10-12, cycle 8 sg5 — correction:** both statements above are stale. The config excerpt's `"exclude-cases": ["permessage-deflate.*"]` is now `"exclude-cases": []` in this file, and the 12.x/13.x compressed-data-driven cases run in full (517/517 in each suite, cycle 7 sg4) now that `permessage-deflate` is implemented. See §6.5.
 
 Runner (server suite): start `autobahn-server-app` (a fork, same stdout-
 "server started" handshake as `websocket/run.mjs`), then
@@ -366,12 +383,12 @@ on the readable and `onClose` both feed `AwaitClose` (either may arrive first
 per case; race tolerated like `websocket/src/ClientTests.gren` already does).
 
 Config (`config/fuzzingserver.json`):
-`{"url":"ws://127.0.0.1:9001","outdir":"/reports","cases":["*"],
-"exclude-cases":["permessage-deflate.*"],"exclude-agent-cases":{}}` — run with
+`{"url":"ws://127.0.0.1:9001","outdir":"/reports/client","cases":["*"],
+"exclude-cases":[],"exclude-agent-cases":{}}` — run with
 `-p 9001:9001` (container listens, we dial in; no host network needed).
-`run-client-suite.mjs` boots the container, waits for the `listening` log
-line, forks `autobahn-client-app`, collects its exit code and the N it
-reported (stdout line `CASES=<n>`), then runs the gate.
+`run-suite.mjs client` boots the container, waits for the published port
+to answer HTTP, forks `autobahn-client-app`, collects its exit code and the
+N it reported (stdout line `CASES=<n>`), then runs the gate.
 
 ### 6.4 Pass gate (`check-reports.mjs`)
 
@@ -402,6 +419,8 @@ violation, and points at `reports/index.html`. Also the local-dev entry
 
 ### 6.5 Expected exclusions and the honesty list
 
+> **2026-10-12, cycle 8 sg5 — update (implemented status):** both autobahn configs now set `"exclude-cases": []`. 12.x/13.x are compressed-data-driven and ran **in full** — 517/517 executed in each suite (cycle 7 sg4 fresh runs: server 10m53s, client 11m9s). Honesty list, stated explicitly per case (source: `artifacts/cycle7-sg4-crosscheck.txt`): NON-STRICT = 6.4.3, 6.4.4; INFORMATIONAL = 7.1.6, 7.13.1, 7.13.2. No 1.8.1 case exists. The v1-era statements below remain as history, each with a dated correction note where contradicted by implemented status.
+
 v1 baseline expectation is **every included case PASS, no exceptions**. The
 gate (6.4) treats `behavior == "INFORMATIONAL"` as non-failing. What the
 classic `crossbario/autobahn-testsuite` image actually does with each
@@ -423,6 +442,7 @@ UNIMPLEMENTED` immediately when `_perMessageCompress is None`). With v1's
   configs (auditable), Makefile-documented. §6.5's earlier claim that 12.x
   reports `"INFORMATIONAL"` and 13.x passes strict was verified against
   the wrong (newer) suite and does not hold for this image.
+  — **Correction 2026-10-12, cycle 8 sg5:** superseded by the note atop this section: with `permessage-deflate` implemented, the 12.x/13.x cases are no longer excluded and no longer report UNIMPLEMENTED — they run in full with compressed data (517/517 per suite, cycle 7 sg4).
 - `6.4.3`/`6.4.4` (invalid UTF-8 chopped within one text frame) land
   NON-STRICT: no incremental validator can reject before FIN, so the
   close arrives after the robot's 2 s chop timer — stock ws on the same
@@ -434,7 +454,34 @@ UNIMPLEMENTED` immediately when `_perMessageCompress is None`). With v1's
   **no** extension cases (they exist in the newer Autobahn-Python suite), so
   no exclusion is needed for D4 to hold. When an image/test with extension
   cases is adopted, exclude by ID pattern in config only.
+  — **Correction 2026-10-12, cycle 8 sg5:** superseded by the note atop this section: the 12.x/13.x robots are permessage-deflate data-driven (bullet above) and now run in full with deflate negotiated by default — 517/517 executed per suite (cycle 7 sg4, `cycle7-sg4-crosscheck.txt`); no exclusion is needed and both configs carry `exclude-cases: []`.
 - Never case-skip in code; config-level only, with comment.
+
+**Premise correction — backpressure stimulus, 2026-10-12 (cycle 8 sg5):** the
+`integration-tests/websocket` case `writes are delayed by server backpressure`
+(`ClientTests.testBackpressure`, 20 × `setDelay 200`) had written
+`String.repeat 102400 "x"`. With permessage-deflate now negotiated by default,
+that stimulus compresses 102400 B → 116 B per message (ratio 0.0305), so 20
+messages fit inside loopback TCP buffers and the delayed leg finished in ~15 ms
+instead of > 1 s — the test's _premise_ (writes actually stall on server
+backpressure) was invalidated, not its logic (n25). The stimulus is now the
+deterministic pseudo-random builder `incompressibleText` (xorshift32 seeded by
+`i * 2654435761`, mapped to codepoints in `U+10000..U+10FFFF` so each character
+carries ~20 bits of entropy and the message stays deflate-incompressible). The
+assertion, its thresholds, and the three `writeLoop` call sites are unchanged;
+no compression option is set anywhere, so default-on remains untested-by-config.
+Measured wire evidence: client→server bytes per `node run.mjs` = 15,334,435 over
+961 data frames + 1 close = 962 wire frames → **R = 2.9950** against the spec denominator 5,120,000 (gate R ≥ 0.5,
+total ≥ 2.5 MB), inflated back byte-for-byte to the builder output; RSV1 appears
+on message-first frames only. Because astral codepoints are 4 UTF-8 bytes, the
+raw pre-compression payload is 20.48 MB (not 6.4 MB) — byte-level deflate still
+shrinks the wire by ~25 % (0.75 B/B). Non-vacuity is proven both ways: the
+9/9 pass requires the fix (`String.repeat "x"` in a scratch copy reproduces the
+8/9 backpressure FAIL — 5/15 runs still flaked at the printable-ASCII variant (runs 1, 2, 3, 9, 14),
+ratio 0.83, whose 1.7 MB leg was within loopback buffer-absorption range), and
+the 9/9 result is deterministic (20 consecutive 9/9 runs). Evidence:
+`cycle8-sg5-t5a-ratio-wire.txt`, `-t5b-determinism.txt`, `-t5c-mutation-control.txt`,
+`-t5d-rsv1-wire.txt`.
 
 ### 6.6 CI
 
@@ -463,6 +510,45 @@ Docker pull is cached implicitly by ubuntu-latest layer caching; add
 `docker pull crossbario/autobahn-testsuite` up front so pull failures are fast
 and distinct from test failures.
 
+### 6.7 Server-suite connect-abort at host.docker.internal:9009 — permanent host characteristic (infra, PROVEN)
+
+Recorded 2026-10-14 (goal diagnose-autobahn-server-suite-connect-aborts-at-h, cycle 6 sg3).
+Paths below are relative to `goals/diagnose-autobahn-server-suite-connect-aborts-at-h/artifacts/` (ART) and the completed prior goal `goals/completed/implement-rfc-7692-permessage-deflate-in-gren-la/artifacts/` (PRIOR).
+
+1. **Proof.** "INFRA (Docker Desktop userland proxy connect loss) proven for this abort; product accept path exonerated for this instance" (ART/cycle5-sg2-verdict.md:49). Proven = kernel packet-absence + server listening; the Docker-Desktop userland-proxy attribution of the MECHANISM is [INFERENCE] (connect-route anchor 192.168.65.254: "('connected', ('192.168.65.254', 9009))", ART/cycle2-sg1-preflight.txt:83). The abort: "Running test case ID 6.12.4" (ART/cycle5-sg2-attempt2-make.txt:150), "Connection to ws://host.docker.internal:9009 failed (User timeout caused connection failure.)" (:151), "executed case count 115 != expected N=517" (:170). The failed connect — the 116th connect, one beyond the 115 completed cases — "emitted ZERO packets on lo0 AND en0" (ART/cycle5-sg2-verdict.md:39) across the give-up span (headline R_upper=30.507 s, verdict.md:29; derived silent span 30.494 s = 1791965857.557000 − 1791965827.062558, epochs at verdict.md:29/:39, last lo0 packet 08:17:07.062558), the only in-window connection being case 115's own completed closing connection on port 58566 [D] (127.0.0.1.58566, verdict.md:39), census "census-lo0 = 115/115 (en0 blind: 24 B / 0 pkts)" (verdict.md:26); server pid 5393 held listen=1 in 28/28 in-window liveness samples [D] (recount of ART/cycle5-sg2-attempt2-liveness.txt; 38/38 post-bind). Evidence: ART/cycle5-sg2-verdict.md; ART/cycle5-sg2-attempt2-{make,timeline,liveness,docker-events,correlate}.txt; ART/cycle5-sg2-attempt2-tcpdump-lo0.pcap00 + ART/cycle5-sg2-attempt2-tcpdump-lo0-index.txt; ART/cycle5-sg2-attempt2-tcpdump-en0.pcap00 + ART/cycle5-sg2-attempt2-tcpdump-en0-index.txt; ART/cycle5-sg2-batch.log; ART/cycle5-sg2-ladder-counter.txt (attempt2 has no pcap01).
+2. **Retry policy — PERMANENT macOS Docker-Desktop host characteristic, not a defect to work around.** On a mid-suite zero-FAIL connect-abort at host.docker.internal:9009, retry ONCE with byte-identical binaries (binary sha256 + node version pinned in the transcript header; aborted transcript kept; make rc captured per runbook item 4). Rates, population-labeled, never averaged: ~50% first-attempt on prior-goal uninstrumented runs — "1. Treat a first-attempt server-suite connect-abort as EXPECTED (observed ~50% on this host): retry serially, same binaries." (PRIOR/cycle7-n34-server-flake-handoff.md:20); 1-of-5 (20%) on this goal's fully-hooked instrumented runs [D]. Tally/history: 6 confirmed aborts across the prior goal; the retry-serially policy (item 1) was applied after each — "Known tally at amendment time: **6 confirmed**" (PRIOR/cycle8-act-adjudication.md:153); one of the cited aborts is "cited without a" retained transcript (:154). No 6-of-6-first-retry-success claim is made anywhere.
+3. **Item-5 goal-wide abort counter formally retired 2026-10-14, frozen at 4.** This goal's item-5 ladder ran 3→4: "counter-init: 3 (tier-2 running total from cycles 2-4)" (ART/cycle5-sg2-batch.log:1) to "ladder-counter=4" (ART/cycle5-sg2-batch.log:14); the captured abort did not increment (frozen value 4, ART/cycle5-sg2-ladder-counter.txt). Population reconciliation: the prior goal's "Known tally at amendment time: **6 confirmed**" (PRIOR/cycle8-act-adjudication.md:153; item-5 counter definition :140) counts that goal's runs — a different population from this goal's ladder — and is quoted here as prior-goal history only. Runbook items 1–4 remain in force, subsumed by the policy in item 2. No replacement counter; if any successor ever counts, clean-runs / instrumented-runs / abort-runs stay three separate fields.
+
+### 6.8 Test vendoring: unmodified upstream tests, integrity-gated
+
+Recorded 2026-10-15. Motivation: during development the harness's _configs_
+were edited twice (case exclusions added pre-`permessage-deflate`, removed
+with its implementation — see the §6.2/§6.3/§6.5 correction notes), which
+motivated an audit of the test material itself. Finding: the test _code_
+lived only inside `crossbario/autobahn-testsuite` (never in this repo) and a
+recursive byte diff against the PyPI wheel `autobahntestsuite-25.10.1-py2-none-any.whl`
+proved the image's copy unmodified (195/195 files identical, 2026-10-15).
+The configs carry `cases: ["*"]`, `exclude-cases: []` — no case is skipped.
+
+Decision (durable form of that audit): vendor the suite.
+
+- `vendor/autobahntestsuite/` = the wheel's package, extracted byte-for-byte
+  (only the wheel's hashless `*.pyc` entries dropped; RECORD lists them
+  without digests, PyPy recompiles from source).
+- The runner (`run-suite.mjs`) mounts
+  `vendor:/vendor:ro` + `PYTHONPATH=/vendor` and address the runtime image by
+  digest (`sha256:519915fb…3074`), so a registry retag can't change the
+  Python/Twisted underneath either. Verified inside the pinned container:
+  `autobahntestsuite.__file__` and the 12.x/13.x `testdata` resolve under
+  `/vendor`.
+- `verify-vendor.mjs` (Makefile `vendor-check`, prerequisite of both suite
+  targets) re-hashes every file against `vendor/autobahntestsuite-25.10.1.dist-info/RECORD`,
+  fails on mismatch/missing/extra files, and prints the count checked
+  (`195 hashed files verified`). A suite result that didn't come from these
+  exact bytes cannot print a green gate.
+- Provenance (URL, wheel sha256 `b57ee6b22de624a03256878ad453c9897d2ad7ee08a4c38b35ee2847637e1383`,
+  image digest, refresh procedure) in `vendor/README.md`.
+
 ## 7. Phases, deliverables, acceptance
 
 | #   | Deliverable                                                                    | Files                                                                                                                          | Acceptance                                                                                                                                                                 |
@@ -483,6 +569,7 @@ that suite is the compatibility oracle for the old `ws` semantics.
 ## 8. Follow-ups (explicitly out of v1)
 
 - F1 `permessage-deflate` extension (then un-exclude autobahn cases).
+  **IMPLEMENTED 2026-10-12, cycle 8 sg5** (work spans goal cycles 1–8): client + server `permessage-deflate` (RFC 7692), negotiated by default, `Compression (Disabled)` to opt out; autobahn cases un-excluded — `exclude-cases: []` in both configs, 517/517 executed per suite. See the D4 supersession note (§2) and the §6.5 update.
 - F2 subprotocol negotiation (`Subprotocols (Array String)` option + echo selection).
 - F3 `AllowedOrigins` server option / browser-embed guard.
 - F4 `wss://` server support (needs cert options on `createServer`; client wss
@@ -523,6 +610,7 @@ that suite is the compatibility oracle for the old `ws` semantics.
 2. `devbox run test:autobahn` green: fuzzingclient vs Gren server AND
    fuzzingserver vs Gren client; `check-reports.mjs` exit 0.
 3. `grep -rn 'require(' src/` yields only `node:` builtins.
+   _(2026-10-12, cycle 8 sg5: the one bare specifier — `require("http")` at `src/Gren/Kernel/HttpServer.js:12` — was normalized to `require("node:http")`; the `require(` sweep now passes literally, 27/27 sites `node:`.)_
 4. CI: `run-tests` job on both OSes + `autobahn` job on ubuntu, reports artifact
    attached.
 5. README: "WebSocket" section rewritten (no `ws` mention), new Net/Tls sections.

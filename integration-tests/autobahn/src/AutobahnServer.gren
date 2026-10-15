@@ -4,6 +4,7 @@ import Bytes exposing (Bytes)
 import Dict exposing (Dict)
 import Init
 import Node exposing (Environment, Program)
+import Process
 import Stream
 import Stream.Log
 import Task exposing (Task)
@@ -37,6 +38,7 @@ type Msg
         }
     | ClientDisconnected WebSocketServer.Connection
     | SendResult (Result WsConn.Error {})
+    | DeferredExit Int
 
 
 init : Environment -> Init.Task { model : Model, command : Cmd Msg }
@@ -69,10 +71,13 @@ update msg model =
                     }
 
                 Err (WebSocketServer.ServerError { code, message }) ->
+                    -- A failed bind is fatal: exit nonzero so the runner
+                    -- fails fast instead of waiting on a dead port.
                     { model = model
                     , command =
                         Stream.Log.line model.stderr ("Server error: " ++ code ++ " " ++ message)
-                            |> Task.execute
+                            |> Task.andThen (\_ -> Process.sleep 250)
+                            |> Task.attempt (\_ -> DeferredExit 1)
                     }
 
         ClientConnected connection ->
@@ -122,6 +127,9 @@ update msg model =
 
         SendResult _ ->
             { model = model, command = Cmd.none }
+
+        DeferredExit code ->
+            { model = model, command = Node.exitWithCode code }
 
 
 subscriptions : Model -> Sub Msg
