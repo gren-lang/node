@@ -44,8 +44,8 @@ var _HttpClient_request = function (config) {
       duplex: "half",
       body: _HttpClient_extractRequestBody(config),
       signal: controller.signal,
-    })
-      .then((res) => {
+    }).then(
+      (res) => {
         if (!res.ok) {
           return res.arrayBuffer().then((b) => {
             return callback(
@@ -75,6 +75,7 @@ var _HttpClient_request = function (config) {
                 );
               }
             });
+
           case "ANYTHING":
             return callback(
               __Scheduler_succeed(_HttpClient_formatResponse(res, {})),
@@ -125,8 +126,8 @@ var _HttpClient_request = function (config) {
               __Scheduler_succeed(_HttpClient_formatResponse(res, res.body)),
             );
         }
-      })
-      .catch((e) => {
+      },
+      (e) => {
         if (controller.signal.reason === "ERR_TIMEOUT") {
           return callback(__Scheduler_fail(__HttpClient_Timeout));
         } else if (e.code === "ERR_INVALID_HTTP_TOKEN") {
@@ -140,7 +141,8 @@ var _HttpClient_request = function (config) {
             ),
           );
         }
-      });
+      },
+    );
 
     return () => {
       controller.abort();
